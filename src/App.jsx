@@ -259,4 +259,110 @@ const EzIDApp = () => {
               key={spec.id}
               onClick={() => setCurrentSpec(spec)}
               className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                currentSpec.id === spec.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-
+                currentSpec.id === spec.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400'
+              }`}
+            >
+              {spec.id === '2inch' ? '2 吋' : (spec.id === '1inch' ? '1 吋' : '4+4 混合')}
+            </button>
+          ))}
+        </div>
+
+        {!image ? (
+          <div className="w-full flex flex-col gap-4">
+            <label className="w-full py-12 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center bg-gray-50 cursor-pointer active:bg-gray-100 transition-colors">
+              <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white text-2xl mb-3 shadow-lg shadow-blue-100">＋</div>
+              <span className="text-blue-600 font-bold">從相簿選取</span>
+            </label>
+          </div>
+        ) : (
+          <div className="w-full space-y-6">
+            {/* 編輯區域 */}
+            <div className="relative mx-auto bg-gray-100 rounded-2xl p-3 shadow-inner" style={{ width: '280px' }}>
+              <canvas ref={canvasRef} width={350} height={450} className="w-full rounded-lg bg-white shadow-md" />
+              <div className="absolute top-6 right-6 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-md">
+                {currentSpec.label}
+              </div>
+            </div>
+
+            {/* 控制器 */}
+            <div className="bg-gray-50 p-5 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">背景顏色</span>
+              </div>
+              <div className="flex justify-around gap-2">
+                {BACKGROUND_COLORS.map(color => (
+                  <button
+                    key={color.id}
+                    onClick={() => setSelectedBgColor(color.hex)}
+                    className={`w-10 h-10 rounded-full border-2 transition-all ${
+                      selectedBgColor === color.hex ? 'border-blue-600 shadow-md' : 'border-gray-300'
+                    }`}
+                    style={{ backgroundColor: color.hex }}
+                    title={color.label}
+                  ></button>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-4">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">調整縮放</span>
+                <span className="text-xs font-mono text-blue-600 font-bold">{Math.round(scale * 100)}%</span>
+              </div>
+              <input 
+                type="range" min="0.1" max="2" step="0.01" value={scale} 
+                onChange={(e) => setScale(parseFloat(e.target.value))}
+                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button 
+                  onClick={() => setOffset(o => ({...o, y: o.y-10}))} 
+                  className="py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold active:bg-gray-100 text-gray-700"
+                >
+                  上移
+                </button>
+                <button 
+                  onClick={() => setOffset(o => ({...o, y: o.y+10}))} 
+                  className="py-2 bg-white border border-gray-200 rounded-lg text-sm font-bold active:bg-gray-100 text-gray-700"
+                >
+                  下移
+                </button>
+              </div>
+            </div>
+
+            {/* 功能按鈕 */}
+            <div className="grid grid-cols-1 gap-3">
+              <button 
+                onClick={removeBackground}
+                disabled={isRemovingBg}
+                className="w-full py-4 bg-purple-600 text-white rounded-2xl font-bold shadow-xl shadow-purple-100 active:scale-[0.98] transition-all disabled:bg-gray-400"
+              >
+                {isRemovingBg ? 'AI 去背中...' : '一鍵 AI 去背'}
+              </button>
+              <button 
+                onClick={generateIbonPrint}
+                disabled={isProcessing}
+                className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-xl shadow-blue-100 active:scale-[0.98] transition-all disabled:bg-gray-400"
+              >
+                {isProcessing ? '正在處理...' : `輸出 ${currentSpec.total || ''} 張拼板檔`}
+              </button>
+            </div>
+            <button onClick={resetApp} className="w-full text-sm text-gray-400 font-bold">重新選擇照片</button>
+          </div>
+        )}
+      </main>
+
+      <footer className="p-6 text-center">
+        <div className="inline-block bg-orange-50 px-4 py-2 rounded-lg border border-orange-100">
+          <p className="text-[10px] text-orange-600 font-medium leading-tight">
+            💡 ibon 列印提示：選擇「4x6 相片紙列印」<br />
+            並確認比例為「原始大小」
+          </p>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">© 2023 EzID-Taiwan. All rights reserved.</p>
+      </footer>
+      <canvas ref={exportCanvasRef} className="hidden" />
+    </div>
+  );
+};
+
+export default EzIDApp;
