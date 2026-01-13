@@ -15,15 +15,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # 🔴 關鍵修改：刪除或是註解掉下面這一行 cache 設定
+          # cache: 'npm' 
+
       - name: Install dependencies
+        # 🔴 關鍵修改：使用 npm install 而非 npm ci，這樣不需要 lock 檔也能跑
         run: npm install
+
       - name: Build
         run: npm run build
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
