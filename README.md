@@ -1,9 +1,28 @@
 # EzID-Taiwan
-台灣證件照自助產生器 (Taiwan ID Photo Maker)
-Taiwan ID Photo Maker (台灣證件照自助產生器)一個基於 Web 技術開發的仿 APP 證件照製作工具，專為台灣身份證、護照、健保卡規格設計。支援手機瀏覽器操作，並可直接輸出符合 7-11 ibon 列印規格的排版檔。
-✨ 特色功能🔒 隱私第一： 採用瀏覽器端 AI 去背技術，照片不須上傳伺服器，完全保護個人隱私。
-📏 精準對齊： 內建台灣護照標準對齊輔助線，確保頭部比例符合內政部規定 ($3.2\text{ cm} \sim 3.6\text{ cm}$)。
-🎨 AI 去背： 整合強大去背演算法，模擬 Apple AI 去背體驗。🖨️ 多格式輸出：支援 1 吋、2 吋 (大/小) 標準規格。
-7-11 ibon 最佳化： 解決列印時可能產生的縮放位移問題。提供 4x6 拼板 JPG，直接去超商印 $6$ 元就能搞定。
-🚀 三步驟製作拍照/選取： 上傳單人半身照。編輯對齊： 透過縮放將臉部置於虛線框內，點選「一鍵去背」。輸出拼板： 選擇 4x6 規格或數位電子檔，下載後前往超商列印。
-🛠 技術實現Framework: React 18Processing: Canvas API + ML Background RemovalStyling: Tailwind CSS (Mobile-first)
+# 🇹🇼 EzID-Taiwan：台灣證件照自助產生器
+
+[![Deploy to GitHub Pages](https://github.com/HPL1130/EzID-Taiwan/actions/workflows/deploy.yml/badge.svg)](https://github.com/HPL1130/EzID-Taiwan/actions/workflows/deploy.yml)
+
+> **只需三步驟，在家完成符合規範的證件照，支援 7-11 ibon 4x6 快速輸出。**
+
+## ✨ 專案特色
+- **🔒 隱私安全**：所有照片處理均在瀏覽器端完成，照片不會上傳到任何伺服器。
+- **📐 規格精準**：內建台灣護照/身分證標準輔助線（頭頂至下顎 3.2-3.6cm）。
+- **🖨️ ibon 最佳化**：自動生成 4x6 拼板 JPG，預留邊距，避免超商機台裁切。
+- **📱 PWA 支援**：可安裝至手機桌面，操作流暢度媲美原生 APP。
+
+## 🛠️ 技術棧
+- **Frontend**: React.js / Vite
+- **Styling**: Tailwind CSS
+- **Canvas**: 用於高解析度拼板與對齊檢測
+
+## 📖 使用教學
+1. **拍照/選取**：上傳單人、背景簡單的照片。
+2. **對齊調整**：手動縮放照片，讓臉部置於紅色虛線橢圓內。
+3. **下載輸出**：點選「下載 ibon 拼板」，取得 4x6 JPG 檔案。
+4. **超商列印**：前往 7-11 使用 ibon 上傳，選擇「4x6 相片紙列印」。
+
+## 🚀 開發計畫 (Roadmap)
+- [ ] 整合 AI 一鍵去背功能 (使用 @imgly/background-removal)
+- [ ] 支援 1 吋照片輸出
+- [ ] 支援多種背景顏色切換 (白、淺灰、藍)
