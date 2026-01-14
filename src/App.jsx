@@ -1,23 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { removeBackground } from "@imgly/background-removal"; 
 
-// --- 配置區 ---
-const REPO_NAME = '/EzID-Taiwan'; // 你的 GitHub 倉庫名稱
-
-const getPath = (path) => {
-  const isGitHub = window.location.hostname.includes('github.io');
-  return isGitHub ? `${REPO_NAME}${path}` : path;
-};
-
+// --- 核心規格配置 ---
 const SPECS = {
   TWO_INCH: { id: 'TWO_INCH', label: '2 吋 (8張)', mmW: 35, mmH: 45, max: 8, cols: 4, rows: 2 },
   ONE_INCH: { id: 'ONE_INCH', label: '1 吋 (10張)', mmW: 28, mmH: 35, max: 10, cols: 5, rows: 2 },
   MIXED: { id: 'MIXED', label: '2吋+1吋 (4+4張)', mmW: { '2inch': 35, '1inch': 28 }, mmH: { '2inch': 45, '1inch': 35 }, max: 8 }
 };
 
+// 使用 Vite 內建方式處理路徑，這會自動補全 /EzID-Taiwan/
+const BASE_URL = import.meta.env.BASE_URL;
+
 const CLOTHES_DATA = {
-  MALE: Array.from({ length: 5 }, (_, i) => ({ id: `m${i+1}`, label: `男裝 ${i+1}`, url: getPath(`/clothes/suit-m${i+1}.png`) })),
-  FEMALE: Array.from({ length: 5 }, (_, i) => ({ id: `f${i+1}`, label: `女裝 ${i+1}`, url: getPath(`/clothes/suit-f${i+1}.png`) }))
+  MALE: Array.from({ length: 5 }, (_, i) => ({ 
+    id: `m${i+1}`, label: `男裝 ${i+1}`, url: `${BASE_URL}clothes/suit-m${i+1}.png` 
+  })),
+  FEMALE: Array.from({ length: 5 }, (_, i) => ({ 
+    id: `f${i+1}`, label: `女裝 ${i+1}`, url: `${BASE_URL}clothes/suit-f${i+1}.png` 
+  }))
 };
 
 const BACKGROUND_COLORS = [
@@ -44,7 +44,7 @@ const EzIDApp = () => {
   const exportCanvasRef = useRef(null);
   const uploadedFileRef = useRef(null);
 
-  // 繪製預覽
+  // 繪製預覽 (Canvas 渲染)
   useEffect(() => {
     if (!image || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext('2d');
@@ -112,7 +112,7 @@ const EzIDApp = () => {
         setImage(null);
       };
       sImg.onerror = () => {
-        alert("找不到衣服圖檔，將存入原始照片");
+        alert("找不到衣服檔案，將存入原始照片");
         setPhotoList(prev => [...prev, tempCanvas.toDataURL('image/png')]);
         setImage(null);
       };
@@ -161,41 +161,38 @@ const EzIDApp = () => {
   };
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-gray-100 min-h-screen font-sans text-sm">
+    <div className="max-w-md mx-auto p-4 bg-gray-100 min-h-screen font-sans">
       <header className="text-center mb-4">
-        <h1 className="text-blue-600 font-black text-2xl tracking-tighter">EzID 智慧證件 V2.9</h1>
-        <p className="text-[10px] text-gray-400">男5/女5 服飾修正版</p>
+        <h1 className="text-blue-600 font-black text-2xl tracking-tighter">EzID 智慧證件 V3.0</h1>
       </header>
       
-      {/* 規格切換 */}
       <div className="flex gap-1 mb-4 bg-gray-200 p-1 rounded-xl shadow-inner">
         {Object.values(SPECS).map(s => (
           <button key={s.id} onClick={() => {setCurrentSpec(s); setPhotoList([]);}} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg ${currentSpec.id === s.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>{s.label}</button>
         ))}
       </div>
 
-      {/* 排隊區 */}
       <div className="flex gap-2 overflow-x-auto mb-4 bg-white p-3 rounded-2xl border min-h-[70px] no-scrollbar">
-        {photoList.length === 0 && <div className="text-gray-300 w-full text-center py-2">尚未加入照片</div>}
+        {photoList.length === 0 && <div className="text-gray-300 w-full text-center py-2 text-xs">尚未加入照片</div>}
         {photoList.map((img, i) => (
-          <img key={i} src={img} className="h-14 w-11 rounded border object-cover shadow-sm flex-shrink-0" alt="queue" />
+          <img key={i} src={img} className="h-14 w-11 rounded border object-cover shadow-sm flex-shrink-0" />
         ))}
       </div>
 
       {!image ? (
         <div className="space-y-4">
-          <label className="block border-4 border-dashed border-gray-300 rounded-[2.5rem] p-16 text-center cursor-pointer bg-white hover:border-blue-400">
+          <label className="block border-4 border-dashed border-gray-300 rounded-[2.5rem] p-16 text-center cursor-pointer bg-white">
             <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
             <span className="text-5xl block mb-4">📸</span>
             <span className="font-bold text-gray-500">上傳人像照</span>
           </label>
           {photoList.length > 0 && (
-            <button onClick={downloadPrint} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg">下載 4x6 拼板</button>
+            <button onClick={downloadPrint} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black text-lg">下載 4x6 拼板</button>
           )}
         </div>
       ) : (
         <div className="bg-white p-5 rounded-[2.5rem] shadow-2xl border space-y-4">
-          <div className="relative w-full aspect-[35/45] rounded-3xl overflow-hidden bg-gray-200 shadow-inner">
+          <div className="relative w-full aspect-[35/45] rounded-3xl overflow-hidden bg-gray-200">
             <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
             {selectedSuit && (
               <img 
@@ -209,7 +206,7 @@ const EzIDApp = () => {
                 onError={(e) => { e.target.style.opacity = '0'; }}
               />
             )}
-            {isRemovingBg && <div className="absolute inset-0 bg-white/70 flex items-center justify-center font-bold text-blue-600">AI 去背中...</div>}
+            {isRemovingBg && <div className="absolute inset-0 bg-white/70 flex items-center justify-center font-bold">AI 去背中...</div>}
           </div>
 
           <div className="space-y-4 bg-gray-50 p-4 rounded-3xl border">
@@ -217,34 +214,22 @@ const EzIDApp = () => {
               <div className="flex gap-2">
                 {BACKGROUND_COLORS.map(c => <button key={c.id} onClick={() => setSelectedBgColor(c.hex)} className={`w-7 h-7 rounded-full border-2 ${selectedBgColor === c.hex ? 'border-blue-500' : 'border-white'}`} style={{backgroundColor: c.hex}} />)}
               </div>
-              <button onClick={handleRemoveBg} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold">一鍵去背</button>
+              <button onClick={handleRemoveBg} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">一鍵去背</button>
             </div>
 
             <div className="border-t pt-4">
               <div className="flex gap-2 mb-3">
-                <button onClick={() => setGender('MALE')} className={`flex-1 py-2 rounded-xl font-bold ${gender === 'MALE' ? 'bg-blue-600 text-white shadow' : 'bg-gray-200 text-gray-500'}`}>男西裝</button>
-                <button onClick={() => setGender('FEMALE')} className={`flex-1 py-2 rounded-xl font-bold ${gender === 'FEMALE' ? 'bg-pink-600 text-white shadow' : 'bg-gray-200 text-gray-500'}`}>女套裝</button>
+                <button onClick={() => setGender('MALE')} className={`flex-1 py-2 rounded-xl font-bold ${gender === 'MALE' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400'}`}>男西裝</button>
+                <button onClick={() => setGender('FEMALE')} className={`flex-1 py-2 rounded-xl font-bold ${gender === 'FEMALE' ? 'bg-pink-600 text-white' : 'bg-gray-200 text-gray-400'}`}>女套裝</button>
               </div>
-              <div className="flex gap-2 overflow-x-auto py-1 no-scrollbar items-center">
+              <div className="flex gap-2 overflow-x-auto py-1 no-scrollbar">
                 <button onClick={() => setSelectedSuit(null)} className="w-14 h-14 border-2 border-dashed rounded-xl flex-shrink-0 text-[10px] text-gray-400 bg-white">原本</button>
                 {CLOTHES_DATA[gender].map(s => (
                   <button key={s.id} onClick={() => setSelectedSuit(s)} className={`w-14 h-14 border-2 rounded-xl flex-shrink-0 overflow-hidden ${selectedSuit?.id === s.id ? 'border-blue-500 bg-blue-50' : 'border-transparent bg-white'}`}>
-                    <img 
-                      src={s.url} 
-                      className="w-full h-full object-contain" 
-                      onError={(e) => { e.target.src = "https://via.placeholder.com/50?text=Error"; }}
-                    />
+                    <img src={s.url} className="w-full h-full object-contain" onError={(e) => { e.target.src = "https://via.placeholder.com/50?text=Error"; }} />
                   </button>
                 ))}
               </div>
-              {selectedSuit && (
-                <div className="grid grid-cols-4 gap-2 mt-3">
-                  <button onClick={() => setSuitConfig(p => ({...p, y: p.y-1}))} className="bg-white border py-2 rounded-lg font-bold">↑</button>
-                  <button onClick={() => setSuitConfig(p => ({...p, y: p.y+1}))} className="bg-white border py-2 rounded-lg font-bold">↓</button>
-                  <button onClick={() => setSuitConfig(p => ({...p, scale: p.scale+0.02}))} className="bg-white border py-2 rounded-lg font-bold">＋</button>
-                  <button onClick={() => setSuitConfig(p => ({...p, scale: p.scale-0.02}))} className="bg-white border py-2 rounded-lg font-bold">－</button>
-                </div>
-              )}
             </div>
 
             <div className="border-t pt-4 flex items-center gap-4">
@@ -254,8 +239,8 @@ const EzIDApp = () => {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={() => {setImage(null); setSelectedSuit(null);}} className="flex-1 bg-gray-200 text-gray-500 py-4 rounded-2xl font-bold">取消</button>
-            <button onClick={addToQueue} className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg">確認加入排版</button>
+            <button onClick={() => setImage(null)} className="flex-1 bg-gray-200 text-gray-500 py-4 rounded-2xl font-bold">取消</button>
+            <button onClick={addToQueue} className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg">加入排版</button>
           </div>
         </div>
       )}
