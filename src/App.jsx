@@ -7,23 +7,25 @@ const SPECS = {
   MIXED: { id: 'MIXED', label: '2吋+1吋 (4+4張)', mmW: { '2inch': 35, '1inch': 28 }, mmH: { '2inch': 45, '1inch': 35 }, max: 8 }
 };
 
-// --- 關鍵修正：將網址改為大寫 HPL1130 並使用絕對路徑 ---
+// --- 暴力修復：直接定義大寫網址，並加上 Cache Buster (?v=1) ---
 const CLOTHES_BASE = "https://HPL1130.github.io/EzID-Taiwan/clothes/";
+
+const getSuitUrl = (name) => `${CLOTHES_BASE}${name}.png?v=2026`;
 
 const CLOTHES_DATA = {
   MALE: [
-    { id: 'm1', url: CLOTHES_BASE + 'suit-m1.png' },
-    { id: 'm2', url: CLOTHES_BASE + 'suit-m2.png' },
-    { id: 'm3', url: CLOTHES_BASE + 'suit-m3.png' },
-    { id: 'm4', url: CLOTHES_BASE + 'suit-m4.png' },
-    { id: 'm5', url: CLOTHES_BASE + 'suit-m5.png' }
+    { id: 'm1', url: getSuitUrl('suit-m1') },
+    { id: 'm2', url: getSuitUrl('suit-m2') },
+    { id: 'm3', url: getSuitUrl('suit-m3') },
+    { id: 'm4', url: getSuitUrl('suit-m4') },
+    { id: 'm5', url: getSuitUrl('suit-m5') }
   ],
   FEMALE: [
-    { id: 'f1', url: CLOTHES_BASE + 'suit-f1.png' },
-    { id: 'f2', url: CLOTHES_BASE + 'suit-f2.png' },
-    { id: 'f3', url: CLOTHES_BASE + 'suit-f3.png' },
-    { id: 'f4', url: CLOTHES_BASE + 'suit-f4.png' },
-    { id: 'f5', url: CLOTHES_BASE + 'suit-f5.png' }
+    { id: 'f1', url: getSuitUrl('suit-f1') },
+    { id: 'f2', url: getSuitUrl('suit-f2') },
+    { id: 'f3', url: getSuitUrl('suit-f3') },
+    { id: 'f4', url: getSuitUrl('suit-f4') },
+    { id: 'f5', url: getSuitUrl('suit-f5') }
   ]
 };
 
@@ -36,7 +38,7 @@ const EzIDApp = () => {
   const [bgRemovedImage, setBgRemovedImage] = useState(null);
   const [currentSpec, setCurrentSpec] = useState(SPECS.TWO_INCH);
   
-  // 人像調整 (新增移動功能)
+  // 人像調整狀態
   const [scale, setScale] = useState(0.5);
   const [posX, setPosX] = useState(0);
   const [posY, setPosY] = useState(0);
@@ -47,7 +49,7 @@ const EzIDApp = () => {
   const [gender, setGender] = useState('MALE');
   const [selectedSuit, setSelectedSuit] = useState(null);
   
-  // 衣服調整
+  // 衣服調整狀態
   const [suitY, setSuitY] = useState(55);
   const [suitScale, setSuitScale] = useState(0.6);
 
@@ -126,6 +128,11 @@ const EzIDApp = () => {
         setPhotoList(prev => [...prev, tempCanvas.toDataURL('image/png')]);
         setImage(null);
       };
+      sImg.onerror = () => {
+        alert("衣服圖片載入失敗，請確認網址大小寫。");
+        setPhotoList(prev => [...prev, tempCanvas.toDataURL('image/png')]);
+        setImage(null);
+      };
     } else {
       setPhotoList(prev => [...prev, tempCanvas.toDataURL('image/png')]);
       setImage(null);
@@ -169,7 +176,7 @@ const EzIDApp = () => {
 
   return (
     <div className="max-w-md mx-auto p-4 bg-gray-100 min-h-screen font-sans">
-      <header className="text-center mb-4"><h1 className="text-blue-600 font-black text-2xl">EzID V3.17</h1></header>
+      <header className="text-center mb-4"><h1 className="text-blue-600 font-black text-2xl tracking-tight">EzID V3.18</h1></header>
       
       <div className="flex gap-1 mb-4 bg-gray-200 p-1 rounded-xl shadow-inner">
         {Object.values(SPECS).map(s => (
@@ -183,14 +190,14 @@ const EzIDApp = () => {
       </div>
 
       {!image ? (
-        <label className="block border-4 border-dashed border-gray-300 rounded-[2.5rem] p-16 text-center cursor-pointer bg-white">
+        <label className="block border-4 border-dashed border-gray-300 rounded-[2.5rem] p-16 text-center cursor-pointer bg-white shadow-sm">
           <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
           <span className="text-5xl block mb-4">📸</span>
-          <span className="font-bold text-gray-500 text-lg">點我上傳人像</span>
+          <span className="font-bold text-gray-500 text-lg">上傳照片</span>
         </label>
       ) : (
         <div className="bg-white p-5 rounded-[2.5rem] shadow-2xl border space-y-4">
-          <div className="relative w-full aspect-[35/45] rounded-3xl overflow-hidden bg-gray-200">
+          <div className="relative w-full aspect-[35/45] rounded-3xl overflow-hidden bg-gray-200 shadow-inner">
             <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
             {selectedSuit && (
               <img 
@@ -200,6 +207,12 @@ const EzIDApp = () => {
                   left: '50%', top: `${suitY}%`, 
                   transform: `translate(-50%, -50%) scale(${suitScale * 2.2})`, 
                   width: '100%'
+                }}
+                onError={(e) => {
+                  // 如果大寫 HPL1130 還是 404，嘗試小寫作為最後手段
+                  if (e.target.src.includes('HPL1130')) {
+                    e.target.src = e.target.src.replace('HPL1130', 'hpl1130');
+                  }
                 }}
               />
             )}
@@ -211,24 +224,24 @@ const EzIDApp = () => {
               <div className="flex gap-2">
                 {BACKGROUND_COLORS.map(c => <button key={c.id} onClick={() => setSelectedBgColor(c.hex)} className={`w-7 h-7 rounded-full border-2 ${selectedBgColor === c.hex ? 'border-blue-500' : 'border-white'}`} style={{backgroundColor: c.hex}} />)}
               </div>
-              <button onClick={handleRemoveBg} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold">一鍵去背</button>
+              <button onClick={handleRemoveBg} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">一鍵去背</button>
             </div>
 
             <div className="border-t pt-4">
-              <span className="text-[10px] font-black text-gray-400 block mb-2">人像調整 (位移與縮放)</span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPosY(posY - 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">上移</button>
-                <button onClick={() => setPosY(posY + 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">下移</button>
-                <button onClick={() => setPosX(posX - 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">左移</button>
-                <button onClick={() => setPosX(posX + 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">右移</button>
+              <span className="text-[10px] font-black text-gray-400 block mb-2 uppercase">人像對齊調整</span>
+              <div className="grid grid-cols-4 gap-1">
+                <button onClick={() => setPosY(posY - 3)} className="bg-white border p-2 rounded-lg text-[10px] font-bold shadow-sm">人像上</button>
+                <button onClick={() => setPosY(posY + 3)} className="bg-white border p-2 rounded-lg text-[10px] font-bold shadow-sm">人像下</button>
+                <button onClick={() => setPosX(posX - 3)} className="bg-white border p-2 rounded-lg text-[10px] font-bold shadow-sm">人像左</button>
+                <button onClick={() => setPosX(posX + 3)} className="bg-white border p-2 rounded-lg text-[10px] font-bold shadow-sm">人像右</button>
               </div>
-              <input type="range" min="0.1" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="w-full mt-2 accent-blue-600" />
+              <input type="range" min="0.1" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="w-full mt-3 accent-blue-600" />
             </div>
 
             <div className="border-t pt-4">
               <div className="flex gap-2 mb-3">
-                <button onClick={() => setGender('MALE')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${gender === 'MALE' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400'}`}>男西裝</button>
-                <button onClick={() => setGender('FEMALE')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${gender === 'FEMALE' ? 'bg-pink-600 text-white' : 'bg-gray-200 text-gray-400'}`}>女套裝</button>
+                <button onClick={() => setGender('MALE')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${gender === 'MALE' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400'}`}>男裝</button>
+                <button onClick={() => setGender('FEMALE')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${gender === 'FEMALE' ? 'bg-pink-600 text-white' : 'bg-gray-200 text-gray-400'}`}>女裝</button>
               </div>
               <div className="flex gap-2 overflow-x-auto py-1 no-scrollbar mb-2">
                 <button onClick={() => setSelectedSuit(null)} className="w-12 h-12 border-2 border-dashed rounded-lg flex-shrink-0 text-[10px] text-gray-400 bg-white">原本</button>
@@ -241,22 +254,22 @@ const EzIDApp = () => {
 
               {selectedSuit && (
                 <div className="grid grid-cols-4 gap-1">
-                  <button onClick={() => setSuitY(suitY - 1)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服上</button>
-                  <button onClick={() => setSuitY(suitY + 1)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服下</button>
-                  <button onClick={() => setSuitScale(suitScale + 0.01)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服大</button>
-                  <button onClick={() => setSuitScale(suitScale - 0.01)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服小</button>
+                  <button onClick={() => setSuitY(suitY - 1)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服上</button>
+                  <button onClick={() => setSuitY(suitY + 1)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服下</button>
+                  <button onClick={() => setSuitScale(suitScale + 0.01)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服大</button>
+                  <button onClick={() => setSuitScale(suitScale - 0.01)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服小</button>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button onClick={() => setImage(null)} className="flex-1 bg-gray-200 py-4 rounded-2xl font-bold text-gray-600">取消</button>
+          <div className="flex gap-3">
+            <button onClick={() => setImage(null)} className="flex-1 bg-gray-200 py-4 rounded-2xl font-bold text-gray-500">取消</button>
             <button onClick={addToQueue} className="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg">確認加入</button>
           </div>
         </div>
       )}
-      {photoList.length > 0 && !image && <button onClick={downloadPrint} className="w-full mt-4 bg-green-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg">下載拼板</button>}
+      {photoList.length > 0 && !image && <button onClick={downloadPrint} className="w-full mt-4 bg-green-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg animate-bounce">下載 4x6 拼板</button>}
       <canvas ref={exportCanvasRef} className="hidden" />
     </div>
   );
