@@ -1,0 +1,58 @@
+/*! coi-serviceworker v0.1.7 | MIT License | https://github.com/gzuidhof/coi-serviceworker */
+if (typeof window === 'undefined') {
+    self.addEventListener("install", () => self.skipWaiting());
+    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+
+    self.addEventListener("fetch", (event) => {
+        if (event.request.cache === "only-if-cached" && event.request.mode !== "same-origin") {
+            return;
+        }
+
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    if (response.status === 0) {
+                        return response;
+                    }
+
+                    const newHeaders = new Headers(response.headers);
+                    newHeaders.set("Cross-Origin-Embedder-Policy", "require-corp");
+                    newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
+
+                    return new Response(response.body, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: newHeaders,
+                    });
+                })
+                .catch((e) => console.error(e))
+        );
+    });
+} else {
+    (() => {
+        const script = document.currentScript;
+        const reloader = () => {
+            if (window.sessionStorage.getItem("coiReloaded")) {
+                window.sessionStorage.removeItem("coiReloaded");
+            } else {
+                window.sessionStorage.setItem("coiReloaded", "true");
+                window.location.reload();
+            }
+        };
+
+        if (!window.crossOriginIsolated && "serviceWorker" in navigator) {
+            navigator.serviceWorker.register(script.src).then((registration) => {
+                console.log("COOP/COEP Service Worker 已註冊:", registration.scope);
+                registration.addEventListener("updatefound", () => {
+                    reloader();
+                });
+
+                if (registration.active && !navigator.serviceWorker.controller) {
+                    reloader();
+                }
+            }, (err) => {
+                console.error("COOP/COEP Service Worker 註冊失敗:", err);
+            });
+        }
+    })();
+}
