@@ -7,7 +7,7 @@ const SPECS = {
   MIXED: { id: 'MIXED', label: '2吋+1吋 (4+4張)', mmW: { '2inch': 35, '1inch': 28 }, mmH: { '2inch': 45, '1inch': 35 }, max: 8 }
 };
 
-// --- 關鍵修正：將帳號改為大寫 HPL1130 ---
+// --- 關鍵修正：將網址改為大寫 HPL1130 並使用絕對路徑 ---
 const CLOTHES_BASE = "https://HPL1130.github.io/EzID-Taiwan/clothes/";
 
 const CLOTHES_DATA = {
@@ -36,7 +36,7 @@ const EzIDApp = () => {
   const [bgRemovedImage, setBgRemovedImage] = useState(null);
   const [currentSpec, setCurrentSpec] = useState(SPECS.TWO_INCH);
   
-  // 人像調整
+  // 人像調整 (新增移動功能)
   const [scale, setScale] = useState(0.5);
   const [posX, setPosX] = useState(0);
   const [posY, setPosY] = useState(0);
@@ -55,7 +55,6 @@ const EzIDApp = () => {
   const exportCanvasRef = useRef(null);
   const uploadedFileRef = useRef(null);
 
-  // 渲染預覽
   useEffect(() => {
     if (!image || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext('2d');
@@ -64,13 +63,11 @@ const EzIDApp = () => {
     
     const activeImg = bgRemovedImage || image;
     ctx.save();
-    // 使用 posX, posY 讓使用者可以移動人像去對準衣服
     ctx.translate(175 + posX, 225 + posY);
     ctx.scale(scale, scale);
     ctx.drawImage(activeImg, -activeImg.width / 2, -activeImg.height / 2);
     ctx.restore();
     
-    // 繪製對齊輔助線
     ctx.strokeStyle = 'rgba(255, 0, 0, 0.2)';
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
@@ -142,7 +139,6 @@ const EzIDApp = () => {
     const paperH = mmToPx(PAPER_4X6.mmW);
     canvas.width = paperW; canvas.height = paperH;
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, paperW, paperH);
-    
     const finalPhotos = Array.from({ length: currentSpec.max }, (_, i) => photoList[i % photoList.length]);
     const promises = finalPhotos.map((dataUrl, index) => {
       return new Promise((resolve) => {
@@ -173,31 +169,28 @@ const EzIDApp = () => {
 
   return (
     <div className="max-w-md mx-auto p-4 bg-gray-100 min-h-screen font-sans">
-      <header className="text-center mb-4"><h1 className="text-blue-600 font-black text-2xl">EzID V3.16</h1></header>
+      <header className="text-center mb-4"><h1 className="text-blue-600 font-black text-2xl">EzID V3.17</h1></header>
       
-      {/* 1. 尺寸選擇 */}
       <div className="flex gap-1 mb-4 bg-gray-200 p-1 rounded-xl shadow-inner">
         {Object.values(SPECS).map(s => (
           <button key={s.id} onClick={() => {setCurrentSpec(s); setPhotoList([]);}} className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg ${currentSpec.id === s.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>{s.label}</button>
         ))}
       </div>
 
-      {/* 2. 照片清單 */}
       <div className="flex gap-2 overflow-x-auto mb-4 bg-white p-3 rounded-2xl border min-h-[70px]">
         {photoList.length === 0 && <div className="text-gray-300 w-full text-center py-2 text-xs font-bold">尚未加入照片</div>}
         {photoList.map((img, i) => (<img key={i} src={img} className="h-14 w-11 rounded border shadow-sm flex-shrink-0" />))}
       </div>
 
       {!image ? (
-        <label className="block border-4 border-dashed border-gray-300 rounded-[2.5rem] p-16 text-center cursor-pointer bg-white shadow-sm">
+        <label className="block border-4 border-dashed border-gray-300 rounded-[2.5rem] p-16 text-center cursor-pointer bg-white">
           <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
           <span className="text-5xl block mb-4">📸</span>
           <span className="font-bold text-gray-500 text-lg">點我上傳人像</span>
         </label>
       ) : (
         <div className="bg-white p-5 rounded-[2.5rem] shadow-2xl border space-y-4">
-          {/* 畫布 */}
-          <div className="relative w-full aspect-[35/45] rounded-3xl overflow-hidden bg-gray-200 shadow-inner">
+          <div className="relative w-full aspect-[35/45] rounded-3xl overflow-hidden bg-gray-200">
             <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
             {selectedSuit && (
               <img 
@@ -214,27 +207,24 @@ const EzIDApp = () => {
           </div>
 
           <div className="space-y-4 bg-gray-50 p-4 rounded-3xl border">
-            {/* 背景與去背 */}
             <div className="flex justify-between items-center">
               <div className="flex gap-2">
                 {BACKGROUND_COLORS.map(c => <button key={c.id} onClick={() => setSelectedBgColor(c.hex)} className={`w-7 h-7 rounded-full border-2 ${selectedBgColor === c.hex ? 'border-blue-500' : 'border-white'}`} style={{backgroundColor: c.hex}} />)}
               </div>
-              <button onClick={handleRemoveBg} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-md">一鍵去背</button>
+              <button onClick={handleRemoveBg} className="bg-purple-600 text-white px-4 py-2 rounded-xl text-xs font-bold">一鍵去背</button>
             </div>
 
-            {/* 人像位置調整 */}
             <div className="border-t pt-4">
-              <span className="text-[10px] font-black text-gray-400 block mb-2">人像位移與縮放</span>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setPosY(posY - 2)} className="bg-white border p-2 rounded flex-1 text-xs font-bold shadow-sm">上移</button>
-                <button onClick={() => setPosY(posY + 2)} className="bg-white border p-2 rounded flex-1 text-xs font-bold shadow-sm">下移</button>
-                <button onClick={() => setPosX(posX - 2)} className="bg-white border p-2 rounded flex-1 text-xs font-bold shadow-sm">左移</button>
-                <button onClick={() => setPosX(posX + 2)} className="bg-white border p-2 rounded flex-1 text-xs font-bold shadow-sm">右移</button>
+              <span className="text-[10px] font-black text-gray-400 block mb-2">人像調整 (位移與縮放)</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPosY(posY - 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">上移</button>
+                <button onClick={() => setPosY(posY + 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">下移</button>
+                <button onClick={() => setPosX(posX - 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">左移</button>
+                <button onClick={() => setPosX(posX + 2)} className="bg-white border p-2 rounded flex-1 text-[10px] font-bold">右移</button>
               </div>
-              <input type="range" min="0.1" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="w-full mt-3 accent-blue-600" />
+              <input type="range" min="0.1" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="w-full mt-2 accent-blue-600" />
             </div>
 
-            {/* 衣服選擇與微調 */}
             <div className="border-t pt-4">
               <div className="flex gap-2 mb-3">
                 <button onClick={() => setGender('MALE')} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${gender === 'MALE' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-400'}`}>男西裝</button>
@@ -251,10 +241,10 @@ const EzIDApp = () => {
 
               {selectedSuit && (
                 <div className="grid grid-cols-4 gap-1">
-                  <button onClick={() => setSuitY(suitY - 1)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服上移</button>
-                  <button onClick={() => setSuitY(suitY + 1)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服下移</button>
-                  <button onClick={() => setSuitScale(suitScale + 0.01)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服放大</button>
-                  <button onClick={() => setSuitScale(suitScale - 0.01)} className="bg-blue-50 text-blue-600 border border-blue-200 py-1.5 rounded text-[10px] font-bold">衣服縮小</button>
+                  <button onClick={() => setSuitY(suitY - 1)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服上</button>
+                  <button onClick={() => setSuitY(suitY + 1)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服下</button>
+                  <button onClick={() => setSuitScale(suitScale + 0.01)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服大</button>
+                  <button onClick={() => setSuitScale(suitScale - 0.01)} className="bg-blue-50 text-blue-600 border border-blue-100 py-1.5 rounded text-[10px] font-bold">衣服小</button>
                 </div>
               )}
             </div>
@@ -266,7 +256,7 @@ const EzIDApp = () => {
           </div>
         </div>
       )}
-      {photoList.length > 0 && !image && <button onClick={downloadPrint} className="w-full mt-4 bg-green-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg animate-pulse">下載拼板 (4x6)</button>}
+      {photoList.length > 0 && !image && <button onClick={downloadPrint} className="w-full mt-4 bg-green-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg">下載拼板</button>}
       <canvas ref={exportCanvasRef} className="hidden" />
     </div>
   );
