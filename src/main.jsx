@@ -38,13 +38,11 @@ const EzIDApp = () => {
   const exportCanvasRef = useRef(null);
   const uploadedFileRef = useRef(null);
 
-  // 核心渲染：支援預覽與匯出
   const renderToCanvas = (ctx, isExport = false) => {
     return new Promise((resolve) => {
       const w = 350, h = 450;
       ctx.fillStyle = selectedBgColor;
       ctx.fillRect(0, 0, w, h);
-
       const activeImg = bgRemovedImage || image;
       if (activeImg) {
         ctx.save();
@@ -53,7 +51,6 @@ const EzIDApp = () => {
         ctx.drawImage(activeImg, -activeImg.width / 2, -activeImg.height / 2);
         ctx.restore();
       }
-
       if (selectedSuit) {
         const sImg = new Image();
         sImg.crossOrigin = "anonymous";
@@ -111,7 +108,10 @@ const EzIDApp = () => {
       const img = new Image();
       img.onload = () => { setBgRemovedImage(img); setIsRemovingBg(false); };
       img.src = url;
-    } catch (e) { alert("去背失敗"); setIsRemovingBg(false); }
+    } catch (e) { 
+      alert("去背失敗，請確認網路或嘗試重新整理。"); 
+      setIsRemovingBg(false); 
+    }
   };
 
   const addToQueue = async () => {
@@ -155,90 +155,51 @@ const EzIDApp = () => {
   };
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-gray-100 min-h-screen font-sans">
-      <header className="text-center mb-4"><h1 className="text-blue-700 font-black text-2xl tracking-tighter">EzID 台灣證件照</h1></header>
+    <div className="max-w-2xl mx-auto p-4 sm:p-6 bg-gray-100 min-h-screen font-sans">
+      <header className="text-center mb-6"><h1 className="text-blue-700 font-black text-3xl tracking-tighter">EzID 台灣證件照</h1></header>
       
-      <div className="flex gap-1 mb-4 bg-gray-200 p-1 rounded-xl shadow-inner">
+      {/* 規格選擇 - 在手機上會自動橫向捲動 */}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
         {Object.values(SPECS).map(s => (
-          <button key={s.id} onClick={() => {setCurrentSpec(s); setPhotoList([]);}} className={`flex-1 py-2 text-[10px] font-bold rounded-lg ${currentSpec.id === s.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>{s.label}</button>
+          <button key={s.id} onClick={() => {setCurrentSpec(s); setPhotoList([]);}} className={`whitespace-nowrap px-4 py-3 text-sm font-bold rounded-2xl transition-all shadow-sm ${currentSpec.id === s.id ? 'bg-blue-600 text-white shadow-blue-200' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>{s.label}</button>
         ))}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto mb-4 bg-white p-3 rounded-2xl border min-h-[60px]">
-        {photoList.map((img, i) => (<img key={i} src={img} className="h-12 w-9 rounded border shadow-sm" />))}
-        {photoList.length === 0 && <div className="text-gray-300 w-full text-center py-2 text-xs">等待照片加入...</div>}
+      <div className="flex gap-2 overflow-x-auto mb-6 bg-white p-4 rounded-3xl border shadow-inner min-h-[80px]">
+        {photoList.map((img, i) => (<img key={i} src={img} className="h-16 w-12 rounded-lg border-2 border-gray-100 shadow-sm flex-shrink-0" />))}
+        {photoList.length === 0 && <div className="text-gray-300 w-full text-center py-4 font-medium italic">尚未加入照片...</div>}
       </div>
 
       {!image ? (
-        <label className="block border-4 border-dashed border-gray-300 rounded-[2rem] p-12 text-center cursor-pointer bg-white hover:bg-gray-50 transition-all">
+        <label className="block border-4 border-dashed border-gray-300 rounded-[3rem] p-16 text-center cursor-pointer bg-white hover:border-blue-400 hover:bg-blue-50 transition-all group">
           <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
-          <span className="text-5xl block mb-2">📸</span>
-          <span className="font-bold text-gray-500">上傳大頭照</span>
+          <span className="text-7xl block mb-4 group-hover:scale-110 transition-transform">📸</span>
+          <span className="font-black text-gray-500 text-xl">點擊上傳或拍照</span>
         </label>
       ) : (
-        <div className="bg-white p-5 rounded-[2rem] shadow-xl border space-y-4">
-          <div className="relative w-full aspect-[35/45] rounded-2xl overflow-hidden bg-white border shadow-inner">
-            <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
-            {isRemovingBg && <div className="absolute inset-0 bg-white/80 flex items-center justify-center font-bold text-blue-600">AI 去背中...</div>}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={handleRemoveBg} className="bg-purple-600 text-white p-3 rounded-xl font-bold active:scale-95 transition-all">✨ 一鍵去背</button>
-            <button onClick={addToQueue} className="bg-blue-600 text-white p-3 rounded-xl font-bold active:scale-95 transition-all">✅ 加入排版</button>
-          </div>
-
-          <div className="space-y-3 bg-gray-50 p-4 rounded-2xl border text-[11px] font-bold text-gray-400">
-            <div className="flex justify-between items-center border-b pb-2">
-              <span>背景：</span>
-              <div className="flex gap-2">
-                {BACKGROUND_COLORS.map(c => <button key={c.id} onClick={() => setSelectedBgColor(c.hex)} className={`w-6 h-6 rounded-full border-2 ${selectedBgColor === c.hex ? 'border-blue-500' : 'border-white'}`} style={{backgroundColor: c.hex}} />)}
-              </div>
-            </div>
-            <div className="space-y-2 border-b pb-2">
-              <span>人像調整：</span>
-              <div className="grid grid-cols-4 gap-1">
-                {['上','下','左','右'].map((d,i) => (
-                  <button key={d} onClick={() => {
-                    if(i===0) setPosY(posY-2); if(i===1) setPosY(posY+2);
-                    if(i===2) setPosX(posX-2); if(i===3) setPosX(posX+2);
-                  }} className="bg-white border p-1 rounded-md text-gray-600 active:bg-blue-50"> {d} </button>
-                ))}
-              </div>
-              <input type="range" min="0.2" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <button onClick={()=>setGender('MALE')} className={`flex-1 p-1 rounded ${gender==='MALE'?'bg-blue-600 text-white':'bg-gray-200'}`}>男裝</button>
-                <button onClick={()=>setGender('FEMALE')} className={`flex-1 p-1 rounded ${gender==='FEMALE'?'bg-pink-500 text-white':'bg-gray-200'}`}>女裝</button>
-              </div>
-              <div className="flex gap-2 overflow-x-auto py-1">
-                {CLOTHES_DATA[gender].map(s => (
-                  <img key={s.id} src={s.url} onClick={()=>setSelectedSuit(s)} className={`w-10 h-10 border-2 rounded p-0.5 ${selectedSuit?.id===s.id?'border-blue-500':'border-transparent bg-white shadow-sm'}`} />
-                ))}
-              </div>
-              {selectedSuit && (
-                <div className="grid grid-cols-3 gap-1">
-                  {['衣上','衣下','大','衣左','衣右','小'].map((t,i) => (
-                    <button key={t} onClick={() => {
-                      if(i===0) setSuitY(suitY-0.5); if(i===1) setSuitY(suitY+0.5);
-                      if(i===2) setSuitScale(suitScale+0.01); if(i===3) setSuitX(suitX-0.5);
-                      if(i===4) setSuitX(suitX+0.5); if(i===5) setSuitScale(suitScale-0.01);
-                    }} className="bg-white border p-1 rounded text-[9px] text-blue-600 font-bold active:bg-blue-50">{t}</button>
-                  ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-[3rem] shadow-2xl border">
+          {/* 左側：預覽區 */}
+          <div className="space-y-4">
+            <div className="relative w-full aspect-[35/45] rounded-[2rem] overflow-hidden bg-white border-8 border-gray-50 shadow-inner">
+              <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
+              {isRemovingBg && (
+                <div className="absolute inset-0 bg-blue-600/90 flex flex-col items-center justify-center text-white px-6 text-center">
+                  <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin mb-4"></div>
+                  <span className="font-black text-lg">AI 正在努力去背...</span>
+                  <span className="text-xs mt-2 opacity-80">初次使用需載入模型，請稍候</span>
                 </div>
               )}
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={handleRemoveBg} className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white p-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all text-lg">✨ 一鍵去背</button>
+              <button onClick={addToQueue} className="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all text-lg">✅ 確認加入</button>
+            </div>
           </div>
-        </div>
-      )}
 
-      {photoList.length > 0 && !image && (
-        <button onClick={downloadPrint} className="w-full mt-4 bg-green-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all">💾 下載拼板成品</button>
-      )}
-      <canvas ref={exportCanvasRef} className="hidden" />
-    </div>
-  );
-};
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<EzIDApp />);
+          {/* 右側：控制區 */}
+          <div className="space-y-6">
+            <div className="space-y-4 bg-gray-50 p-6 rounded-[2rem] border border-gray-100">
+              <div className="flex justify-between items-center">
+                <span className="font-black text-gray-700">背景顏色</span>
+                <div className="flex gap-3">
+                  {BACKGROUND_COLORS.
