@@ -1,34 +1,31 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan - 穩定修正版</title>
-
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <script type="module">
-        import imglyRemoveBackground from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/+esm";
-        window.removeBg = imglyRemoveBackground;
-    </script>
-
-    <style>
-        body { background-color: #121212; color: #e2e8f0; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
-        canvas { background: white; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 100%; height: auto; }
-        .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 55%; height: 55%; border: 2px dashed rgba(255, 68, 68, 0.5); border-radius: 50%; pointer-events: none; }
-        .app-card { background: #1e1e1e; border-radius: 24px; border: 1px solid #333; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        input[type=range] { width: 100%; height: 30px; background: transparent; cursor: pointer; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>EzID Taiwan - 行動 APP 版</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Imgly Background Removal 瀏覽器版 -->
+<script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/browser.umd.js"></script>
+<style>
+body { background-color: #121212; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+canvas { background: white; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); max-width: 100%; height: auto; }
+.guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 55%; height: 55%; border: 2px dashed rgba(255,68,68,0.6); border-radius: 50%; pointer-events: none; z-index: 10; }
+.app-card { background: #1e1e1e; border-radius: 24px; border: 1px solid #333; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+input[type=range] { height: 32px; -webkit-appearance: none; background: transparent; }
+input[type=range]::-webkit-slider-runnable-track { background: #334155; height: 6px; border-radius: 3px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; margin-top: -7px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+</style>
 </head>
 <body class="p-3 md:p-6 no-scrollbar">
-    <div id="root"></div>
+<div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect } = React;
 
 const EzIDApp = () => {
     const [image, setImage] = useState(null);
@@ -36,23 +33,16 @@ const EzIDApp = () => {
     const [mode, setMode] = useState('MIXED');
     const [p, setP] = useState({ x: 0, y: 0, s: 0.6 });
     const [suit, setSuit] = useState({ id: null, x: 175, y: 340, s: 0.3 });
-    const [isProcessing, setIsProcessing] = useState(false);
 
     const canvasRef = useRef(null);
     const videoRef = useRef(null);
-    const suitImgRef = useRef(new Image());
+    const suitImg = useRef(new Image());
 
-    // 動態取得正確的圖片路徑 (修正 GitHub Pages 找不到圖片問題)
-    const getSuitPath = (id) => {
-        const baseUrl = window.location.href.split('/').slice(0, -1).join('/');
-        return `${baseUrl}/suit-${id}.png`;
-    };
-
-    const render = useCallback(() => {
+    // 重新繪圖
+    useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        
         ctx.fillStyle = "white";
         ctx.fillRect(0, 0, 350, 450);
 
@@ -65,140 +55,149 @@ const EzIDApp = () => {
         }
 
         if (suit.id) {
-            const targetSrc = getSuitPath(suit.id);
-            if (suitImgRef.current.src !== targetSrc) {
-                suitImgRef.current.src = targetSrc;
-                suitImgRef.current.onload = render;
-            }
-            if (suitImgRef.current.complete && suitImgRef.current.naturalWidth !== 0) {
+            suitImg.current.src = `./clothes/suit-${suit.id}.png`;
+            if (suitImg.current.complete) {
                 ctx.save();
                 ctx.translate(parseInt(suit.x), parseInt(suit.y));
                 ctx.scale(suit.s * 1.5, suit.s * 1.5);
-                ctx.drawImage(suitImgRef.current, -suitImgRef.current.width/2, -suitImgRef.current.height/2);
+                ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2);
                 ctx.restore();
+            } else {
+                suitImg.current.onload = () => { setSuit(s => ({...s})); };
             }
         }
     }, [image, p, suit]);
 
-    useEffect(() => { render(); }, [render]);
-
+    // 相機啟動
     const startCam = async () => {
         setIsCam(true);
         try {
             const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
             videoRef.current.srcObject = s;
-        } catch (e) { alert("無法開啟相機"); setIsCam(false); }
+        } catch(e) { alert("無法開啟相機"); setIsCam(false); }
     };
 
+    // 拍照
     const snap = () => {
         const tc = document.createElement('canvas');
         tc.width = videoRef.current.videoWidth;
         tc.height = videoRef.current.videoHeight;
         const tctx = tc.getContext('2d');
-        tctx.translate(tc.width, 0); tctx.scale(-1, 1);
-        tctx.drawImage(videoRef.current, 0, 0);
+        tctx.translate(tc.width,0); tctx.scale(-1,1);
+        tctx.drawImage(videoRef.current,0,0);
         const img = new Image();
         img.onload = () => { setImage(img); setIsCam(false); };
         img.src = tc.toDataURL();
-        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+        videoRef.current.srcObject.getTracks().forEach(t=>t.stop());
     };
 
+    // 上傳
+    const uploadImage = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) { alert("請上傳圖片"); return; }
+        const reader = new FileReader();
+        reader.onload = f => { const img = new Image(); img.onload=()=>setImage(img); img.src=f.target.result; };
+        reader.readAsDataURL(file);
+    };
+
+    // 去背
     const removeBG = async () => {
-        if (!image) return alert("請先準備照片");
-        setIsProcessing(true);
-        try {
-            // 修正：某些版本需要傳入影像位址或 Blob
-            const resultBlob = await window.removeBg(image.src);
-            const url = URL.createObjectURL(resultBlob);
-            const newImg = new Image();
-            newImg.onload = () => { setImage(newImg); setIsProcessing(false); };
-            newImg.src = url;
-        } catch (e) { 
-            console.error(e);
-            alert("去背失敗，請確認圖片格式"); 
-            setIsProcessing(false); 
-        }
+        if (!image) return alert("請先上傳或拍照");
+        const result = await window.bgRemoval.removeBackground({ image: image });
+        const img = new Image();
+        img.onload = () => setImage(img);
+        img.src = result;
     };
 
+    // 下載橫式排版
     const download = () => {
         const pc = document.createElement('canvas');
         const ctx = pc.getContext('2d');
         pc.width = 1800; pc.height = 1200;
-        ctx.fillStyle = "white"; ctx.fillRect(0, 0, 1800, 1200);
-        if (mode === 'MIXED') {
-            for(let i=0; i<4; i++) ctx.drawImage(canvasRef.current, 0,0,350,450, 80+i*425, 80, 413, 531);
-            for(let i=0; i<5; i++) ctx.drawImage(canvasRef.current, 0,0,350,450, 80+i*340, 650, 331, 449);
-        } else if (mode === 'TWO') {
-            for(let i=0; i<8; i++) ctx.drawImage(canvasRef.current, 0,0,350,450, 100+(i%4)*410, 80+(Math.floor(i/4)*540), 413, 531);
+        ctx.fillStyle = "white"; ctx.fillRect(0,0,1800,1200);
+
+        if(mode==='MIXED'){
+            for(let i=0;i<4;i++) ctx.drawImage(canvasRef.current,0,0,350,450, 80+i*425,80, 413,531);
+            for(let i=0;i<5;i++) ctx.drawImage(canvasRef.current,0,0,350,450, 80+i*340,650, 331,449);
+        } else if(mode==='TWO'){
+            for(let i=0;i<8;i++) ctx.drawImage(canvasRef.current,0,0,350,450, 100+(i%4)*410,80+Math.floor(i/4)*540,413,531);
         } else {
-            for(let i=0; i<10; i++) ctx.drawImage(canvasRef.current, 0,0,350,450, 80+(i%5)*340, 100+(Math.floor(i/5)*460), 331, 449);
+            for(let i=0;i<10;i++) ctx.drawImage(canvasRef.current,0,0,350,450, 80+(i%5)*340,100+Math.floor(i/5)*460,331,449);
         }
+
         const a = document.createElement('a');
-        a.download = "ezid_print.png"; a.href = pc.toDataURL(); a.click();
+        a.download="ibon_print.png";
+        a.href=pc.toDataURL();
+        a.click();
     };
 
     return (
         <div className="max-w-md mx-auto lg:max-w-6xl flex flex-col lg:flex-row gap-6">
+            {/* 左側預覽 */}
             <div className="w-full lg:w-[400px] flex flex-col items-center shrink-0">
                 <div className="relative mb-6 w-full max-w-[350px]">
-                    {isCam ? <video ref={videoRef} autoPlay className="w-full aspect-[35/45] object-cover rounded-2xl scale-x-[-1]" /> : <canvas ref={canvasRef} width={350} height={450} className="w-full" />}
+                    {isCam ? (
+                        <video ref={videoRef} autoPlay className="w-full aspect-[35/45] object-cover rounded-2xl shadow-2xl scale-x-[-1]" />
+                    ) : (
+                        <canvas ref={canvasRef} width={350} height={450} className="w-full" />
+                    )}
                     <div className="guide-overlay"></div>
-                    {isProcessing && <div className="absolute inset-0 bg-black/70 rounded-2xl flex items-center justify-center text-white font-bold">去背處理中...</div>}
                 </div>
-                <div className="w-full space-y-3 px-2">
-                    {isCam ? <button onClick={snap} className="w-full bg-red-500 py-4 rounded-2xl font-black text-xl active:scale-95 transition">拍照</button> : (
+
+                <div className="w-full space-y-3">
+                    {isCam ? (
+                        <button onClick={snap} className="w-full bg-red-500 hover:bg-red-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">按下拍照</button>
+                    ) : (
                         <>
-                            <button onClick={download} className="w-full bg-emerald-600 py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">下載排版圖</button>
-                            <button onClick={removeBG} className="w-full bg-purple-600 py-3 rounded-xl font-bold active:scale-95 transition">自動去背</button>
+                            <button onClick={download} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">下載 4x6 橫式排版</button>
                             <div className="grid grid-cols-2 gap-3">
-                                <button onClick={startCam} className="bg-blue-600 py-3 rounded-xl font-bold active:scale-95 transition">相機</button>
-                                <label className="bg-zinc-700 py-3 rounded-xl font-bold text-center cursor-pointer active:scale-95 transition">相簿 <input type="file" className="hidden" onChange={e=>{
-                                    const r=new FileReader(); r.onload=f=>{const i=new Image(); i.onload=()=>setImage(i); i.src=f.target.result;};
-                                    r.readAsDataURL(e.target.files[0]);
-                                }} /></label>
+                                <button onClick={startCam} className="bg-blue-600 text-white py-3 rounded-xl font-bold active:scale-95 transition">啟動相機</button>
+                                <label className="bg-zinc-700 text-zinc-200 py-3 rounded-xl font-bold text-center cursor-pointer active:scale-95 transition">
+                                    上傳照片 <input type="file" className="hidden" onChange={uploadImage} />
+                                </label>
                             </div>
+                            <button onClick={removeBG} className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-2xl font-bold shadow-lg transition">去背</button>
                         </>
                     )}
                 </div>
             </div>
 
-            <div className="flex-1 app-card p-5 md:p-8 space-y-8 shadow-2xl">
+            {/* 右側控制 */}
+            <div className="flex-1 app-card p-5 md:p-8 space-y-8">
                 <div>
-                    <p className="text-xs font-black text-zinc-500 mb-3 tracking-widest uppercase">排版規格</p>
-                    <div className="flex gap-2">
-                        {[['MIXED','混合'],['TWO','2吋'],['ONE','1吋']].map(([k,v]) => (
-                            <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-bold ${mode===k?'bg-blue-600 text-white shadow-lg shadow-blue-500/30':'bg-zinc-800 text-zinc-400'}`}>{v}</button>
+                    <p className="text-xs font-black text-zinc-500 uppercase mb-4 tracking-widest">排版規格</p>
+                    <div className="flex flex-wrap gap-2">
+                        {[['MIXED','混合(4大5小)'],['TWO','全2吋'],['ONE','全1吋']].map(([k,v])=>(
+                            <button key={k} onClick={()=>setMode(k)} className={`flex-1 min-w-[100px] py-3 rounded-xl font-bold text-sm transition ${mode===k?'bg-blue-600 text-white shadow-lg shadow-blue-900/20':'bg-zinc-800 text-zinc-400'}`}>{v}</button>
                         ))}
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <p className="text-xs font-black text-blue-500 tracking-widest uppercase">人像微調</p>
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>縮放</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:e.target.value})} /></div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e=>setP({...p, x:e.target.value})} /></div>
-                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e=>setP({...p, y:e.target.value})} /></div>
+                <div className="space-y-6">
+                    <p className="text-xs font-black text-blue-500 uppercase tracking-widest">人像微調</p>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>縮放</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p,s:e.target.value})} className="flex-1" /></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e=>setP({...p,x:e.target.value})} className="flex-1" /></div>
+                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e=>setP({...p,y:e.target.value})} className="flex-1" /></div>
                         </div>
                     </div>
                 </div>
 
                 <div className="space-y-6 border-t border-zinc-800 pt-6">
-                    <p className="text-xs font-black text-indigo-400 tracking-widest uppercase">衣服選擇 (圖庫)</p>
-                    <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-                        {['m1','m2','m3','m4','m5'].map(n => (
-                            <div key={n} onClick={()=>setSuit({...suit, id:n})} className={`p-1 rounded-2xl border-2 shrink-0 transition ${suit.id===n?'border-blue-500 bg-blue-500/20 shadow-lg shadow-blue-500/20':'border-zinc-800 bg-zinc-900'}`}>
-                                <img src={getSuitPath(n)} className="w-16 h-16 object-contain rounded-xl" alt={n} 
-                                     onError={(e) => { e.target.style.display='none'; }} />
-                            </div>
+                    <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">衣服控制</p>
+                    <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+                        {['m1','m2','m3','m4','m5'].map(n=>(
+                            <img key={n} src={`./clothes/suit-${n}.png`} onClick={()=>setSuit({...suit,id:n})} className={`w-16 h-16 border-2 shrink-0 rounded-2xl p-1 cursor-pointer transition ${suit.id===n?'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20':'border-zinc-800 bg-zinc-900'}`} />
                         ))}
-                        <button onClick={()=>setSuit({...suit, id:null})} className="px-6 border-2 border-dashed border-zinc-700 rounded-2xl text-zinc-500 shrink-0 font-bold text-sm">清除</button>
+                        <button onClick={()=>setSuit({...suit,id:null})} className="px-5 border-2 border-dashed border-zinc-700 shrink-0 rounded-2xl text-xs font-bold text-zinc-500">清除</button>
                     </div>
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>大小</span><input type="range" min="0.1" max="1.0" step="0.01" value={suit.s} onChange={e=>setSuit({...suit, s:e.target.value})} /></div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>左右</span><input type="range" min="0" max="350" value={suit.x} onChange={e=>setSuit({...suit, x:e.target.value})} /></div>
-                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>上下</span><input type="range" min="100" max="500" value={suit.y} onChange={e=>setSuit({...suit, y:e.target.value})} /></div>
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>大小</span><input type="range" min="0.1" max="1.0" step="0.01" value={suit.s} onChange={e=>setSuit({...suit,s:e.target.value})} className="flex-1" /></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>左右</span><input type="range" min="0" max="350" value={suit.x} onChange={e=>setSuit({...suit,x:e.target.value})} className="flex-1" /></div>
+                            <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>上下</span><input type="range" min="100" max="500" value={suit.y} onChange={e=>setSuit({...suit,y:e.target.value})} className="flex-1" /></div>
                         </div>
                     </div>
                 </div>
