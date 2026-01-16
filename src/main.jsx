@@ -1,6 +1,5 @@
 const { useState, useRef, useEffect } = React;
 
-// 數據定義保持不變
 const SPECS = {
   TWO_INCH: { id: 'TWO_INCH', label: '2 吋 (8張)', mmW: 35, mmH: 45, max: 8, cols: 4, rows: 2 },
   ONE_INCH: { id: 'ONE_INCH', label: '1 吋 (10張)', mmW: 28, mmH: 35, max: 10, cols: 5, rows: 2 },
@@ -14,6 +13,7 @@ const CLOTHES_DATA = {
 
 const BACKGROUND_COLORS = [{ id: 'w', hex: '#FFFFFF' }, { id: 'b', hex: '#E6F3FF' }, { id: 'g', hex: '#F5F5F5' }];
 const mmToPx = (mm) => Math.round((mm * 300) / 25.4);
+const PAPER_4X6 = { mmW: 101.6, mmH: 152.4 };
 
 const EzIDApp = () => {
   const [image, setImage] = useState(null);
@@ -35,8 +35,8 @@ const EzIDApp = () => {
   const exportCanvasRef = useRef(null);
   const uploadedFileRef = useRef(null);
 
-  // 繪製核心：確保衣服跟隨數值即時更新
-  const drawAll = (ctx, isExport = false) => {
+  // 渲染函數：處理畫布重繪
+  const renderToCanvas = (ctx, isExport = false) => {
     return new Promise((resolve) => {
       const w = 350, h = 450;
       ctx.fillStyle = selectedBgColor;
@@ -54,7 +54,6 @@ const EzIDApp = () => {
       if (selectedSuit) {
         const sImg = new Image();
         sImg.crossOrigin = "anonymous";
-        sImg.src = selectedSuit.url;
         sImg.onload = () => {
           ctx.save();
           ctx.translate((suitX / 100) * w, (suitY / 100) * h);
@@ -64,6 +63,7 @@ const EzIDApp = () => {
           if (!isExport) drawGuide(ctx);
           resolve();
         };
+        sImg.src = selectedSuit.url;
       } else {
         if (!isExport) drawGuide(ctx);
         resolve();
@@ -78,12 +78,8 @@ const EzIDApp = () => {
     ctx.setLineDash([]);
   };
 
-  // 監聽所有數值，只要一變就重畫
   useEffect(() => {
-    if (image && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
-      drawAll(ctx, false);
-    }
+    if (image && canvasRef.current) renderToCanvas(canvasRef.current.getContext('2d'), false);
   }, [image, bgRemovedImage, scale, posX, posY, selectedBgColor, selectedSuit, suitX, suitY, suitScale]);
 
   const handleUpload = (e) => {
@@ -106,26 +102,146 @@ const EzIDApp = () => {
     try {
       const remover = window.imglyBackgroundRemoval;
       const blob = await remover.removeBackground(uploadedFileRef.current, {
-        publicPath: "https://staticimgly.com/@imgly/background-removal-data/1.5.3/dist/"
+        publicPath: "https://unpkg.com/@imgly/background-removal-data@1.5.3/dist/"
       });
       const url = URL.createObjectURL(blob);
       const img = new Image();
       img.onload = () => { setBgRemovedImage(img); setIsRemovingBg(false); };
       img.src = url;
-    } catch (e) {
-      console.error(e);
-      alert("去背模組載入失敗。請確認是否按過 Ctrl+F5，或網路是否穩定。");
-      setIsRemovingBg(false);
-    }
+    } catch (e) { alert("去背失敗"); setIsRemovingBg(false); }
   };
 
   const addToQueue = async () => {
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = 350; tempCanvas.height = 450;
-    await drawAll(tempCanvas.getContext('2d'), true);
+    await renderToCanvas(tempCanvas.getContext('2d'), true);
     setPhotoList(prev => [...prev, tempCanvas.toDataURL('image/png')]);
-    setImage(null); setBgRemovedImage(null); setSelectedSuit(null);
+    setImage(null); setSelectedSuit(null);
   };
 
-  // 下載邏輯保持不變 ... (其餘 UI 代碼省略，請使用之前的 V3.4 完整佈局)
-  // 記得在 return 之前補上 downloadPrint 函數與 render 結構
+  const downloadPrint = () => {
+    const canvas = exportCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const paperW = mmToPx(PAPER_4X6.mmH), paperH = mmToPx(PAPER_4X6.mmW);
+    canvas.width = paperW; canvas.height = paperH;
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, paperW, paperH);
+    const photos = Array.from({ length: currentSpec.max }, (_, i) => photoList[i % photoList.length]);
+    const promises = photos.map((dataUrl, index) => {
+      return new Promise((res) => {
+        const img = new Image();
+        img.onload = () => {
+          let x, y, w, h;
+          if (currentSpec.id === 'MIXED') {
+            const is2 = index < 4; w = mmToPx(is2 ? 35 : 28); h = mmToPx(is2 ? 45 : 35);
+            x = (index % 4) * (paperW / 4) + (paperW / 4 - w) / 2;
+            y = is2 ? (paperH / 4 - h / 2) : (paperH * 0.75 - h / 2);
+          } else {
+            w = mmToPx(currentSpec.mmW); h = mmToPx(currentSpec.mmH);
+            x = (index % currentSpec.cols) * (paperW / currentSpec.cols) + (paperW / currentSpec.cols - w) / 2;
+            y = Math.floor(index / currentSpec.cols) * (paperH / currentSpec.rows) + (paperH / currentSpec.rows - h) / 2;
+          }
+          ctx.drawImage(img, x, y, w, h); res();
+        };
+        img.src = dataUrl;
+      });
+    });
+    Promise.all(promises).then(() => {
+      const link = document.createElement('a');
+      link.download = `EzID_Print.jpg`; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click();
+    });
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 bg-gray-100 min-h-screen font-sans">
+      <header className="text-center mb-6"><h1 className="text-blue-700 font-black text-3xl">EzID 台灣證件照</h1></header>
+      
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+        {Object.values(SPECS).map(s => (
+          <button key={s.id} onClick={() => {setCurrentSpec(s); setPhotoList([]);}} className={`px-4 py-2 text-sm font-bold rounded-xl transition-all ${currentSpec.id === s.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-500'}`}>{s.label}</button>
+        ))}
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto mb-6 bg-white p-4 rounded-2xl border min-h-[80px]">
+        {photoList.map((img, i) => (<img key={i} src={img} className="h-16 w-12 rounded border shadow-sm flex-shrink-0" />))}
+      </div>
+
+      {!image ? (
+        <label className="block border-4 border-dashed border-gray-300 rounded-[2rem] p-16 text-center cursor-pointer bg-white group hover:border-blue-400">
+          <input type="file" className="hidden" accept="image/*" onChange={handleUpload} />
+          <span className="text-6xl block mb-4 group-hover:scale-110 transition-transform">📸</span>
+          <span className="font-bold text-gray-500 text-lg">點擊上傳大頭照</span>
+        </label>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-[2rem] shadow-xl">
+          <div className="space-y-4">
+            <div className="relative w-full aspect-[35/45] rounded-xl overflow-hidden bg-white border">
+              <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
+              {isRemovingBg && <div className="absolute inset-0 bg-white/80 flex items-center justify-center font-bold text-blue-600">AI 去背中...</div>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={handleRemoveBg} className="bg-purple-600 text-white p-3 rounded-xl font-bold active:scale-95">✨ 一鍵去背</button>
+              <button onClick={addToQueue} className="bg-blue-600 text-white p-3 rounded-xl font-bold active:scale-95">✅ 確認加入</button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-4 rounded-xl space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-gray-600 text-sm">背景顏色</span>
+                <div className="flex gap-2">
+                  {BACKGROUND_COLORS.map(c => <button key={c.id} onClick={() => setSelectedBgColor(c.hex)} className={`w-8 h-8 rounded-full border-2 ${selectedBgColor === c.hex ? 'border-blue-500' : 'border-white'}`} style={{backgroundColor: c.hex}} />)}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="font-bold text-gray-600 text-sm">人像調整</span>
+                <div className="grid grid-cols-4 gap-1">
+                  {['上','下','左','右'].map((d,i) => (
+                    <button key={d} onClick={() => {
+                      if(i===0) setPosY(posY-4); if(i===1) setPosY(posY+4);
+                      if(i===2) setPosX(posX-4); if(i===3) setPosX(posX+4);
+                    }} className="bg-white border p-2 rounded-lg font-bold text-gray-500 active:bg-blue-50"> {d} </button>
+                  ))}
+                </div>
+                <input type="range" min="0.2" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+              </div>
+
+              <div className="space-y-2 border-t pt-2">
+                <div className="flex gap-2">
+                  <button onClick={()=>setGender('MALE')} className={`flex-1 p-2 rounded-lg font-bold ${gender==='MALE'?'bg-blue-600 text-white':'bg-gray-200'}`}>男裝</button>
+                  <button onClick={()=>setGender('FEMALE')} className={`flex-1 p-2 rounded-lg font-bold ${gender==='FEMALE'?'bg-pink-500 text-white':'bg-gray-200'}`}>女裝</button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto py-1 scrollbar-hide">
+                  <button onClick={()=>setSelectedSuit(null)} className="w-12 h-12 border-2 border-dashed rounded flex-shrink-0 text-[10px] text-gray-400">無</button>
+                  {CLOTHES_DATA[gender].map(s => (
+                    <img key={s.id} src={s.url} onClick={()=>setSelectedSuit(s)} className={`w-12 h-12 border-2 rounded p-0.5 cursor-pointer ${selectedSuit?.id===s.id?'border-blue-500 bg-blue-50':'border-transparent bg-white shadow-sm'}`} />
+                  ))}
+                </div>
+                {selectedSuit && (
+                  <div className="grid grid-cols-3 gap-1">
+                    {['衣上','衣下','衣服大','衣左','衣右','衣服小'].map((t,i) => (
+                      <button key={t} onClick={() => {
+                        if(i===0) setSuitY(suitY-0.5); if(i===1) setSuitY(suitY+0.5);
+                        if(i===2) setSuitScale(suitScale+0.01); if(i===3) setSuitX(suitX-0.5);
+                        if(i===4) setSuitX(suitX+0.5); if(i===5) setSuitScale(suitScale-0.01);
+                      }} className="bg-white border p-1 rounded-lg text-[10px] font-bold text-blue-600 active:bg-blue-50">{t}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={()=>setImage(null)} className="w-full text-gray-400 text-sm font-bold py-2">重新上傳</button>
+          </div>
+        </div>
+      )}
+
+      {photoList.length > 0 && !image && (
+        <button onClick={downloadPrint} className="w-full mt-6 bg-green-600 text-white py-5 rounded-2xl font-black text-2xl shadow-lg active:scale-95 transition-all">💾 下載 4x6 拼板成品</button>
+      )}
+      <canvas ref={exportCanvasRef} className="hidden" />
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<EzIDApp />);
