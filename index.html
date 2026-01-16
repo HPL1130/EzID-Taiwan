@@ -3,25 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v1.2.5</title>
+    <title>EzID Taiwan v1.2.6</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script type="module">
-        import imglyRemoveBackground from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/+esm";
-        window.removeBg = imglyRemoveBackground;
+        import { removeBackground } from "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/+esm";
+        window.imglyRemoveBg = removeBackground;
     </script>
 
     <style>
-        /* 背景改為深灰藍色調，增加層次感 */
-        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
-        canvas { background: white; border-radius: 12px; max-width: 100%; height: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
-        .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 55%; height: 55%; border: 2px dashed rgba(255, 68, 68, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
-        .app-card { background: #1e293b; border-radius: 24px; border: 1px solid #334155; }
+        /* 改為淺色背景與明亮配色 */
+        body { background-color: #f1f5f9; color: #1e293b; font-family: -apple-system, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+        canvas { background: white; border-radius: 12px; max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+        .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 55%; height: 55%; border: 2px dashed rgba(239, 68, 68, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
+        .app-card { background: #ffffff; border-radius: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        input[type=range] { width: 100%; height: 28px; background: transparent; cursor: pointer; }
+        input[type=range] { width: 100%; height: 28px; accent-color: #2563eb; cursor: pointer; }
     </style>
 </head>
 <body class="p-3 md:p-6 no-scrollbar">
@@ -104,15 +104,18 @@ const EzIDApp = () => {
 
     const removeBG = async () => {
         if (!image) return alert("請先選擇照片");
+        if (!window.imglyRemoveBg) return alert("去背模組尚未就緒，請稍候再試");
+        
         setIsProcessing(true);
         try {
-            const blob = await window.removeBg(image.src);
+            const blob = await window.imglyRemoveBg(image.src);
             const url = URL.createObjectURL(blob);
             const newImg = new Image();
             newImg.onload = () => { setImage(newImg); setIsProcessing(false); };
             newImg.src = url;
         } catch (e) { 
-            alert("去背處理發生錯誤"); 
+            console.error("BG Error:", e);
+            alert("去背失敗：可能是網路限制或瀏覽器版本過舊。"); 
             setIsProcessing(false); 
         }
     };
@@ -132,28 +135,29 @@ const EzIDApp = () => {
         };
         layouts[mode]();
         const a = document.createElement('a');
-        a.download = `ezid_v125_${mode}.png`; a.href = pc.toDataURL(); a.click();
+        a.download = `ezid_v126_${mode}.png`; a.href = pc.toDataURL(); a.click();
     };
 
     return (
         <div className="max-w-md mx-auto lg:max-w-6xl flex flex-col lg:flex-row gap-6">
             <div className="w-full lg:w-[400px] flex flex-col items-center shrink-0">
                 <div className="relative mb-6 w-full max-w-[350px]">
-                    {isCam ? <video ref={videoRef} autoPlay className="w-full aspect-[35/45] object-cover rounded-2xl scale-x-[-1]" /> : <canvas ref={canvasRef} width={350} height={450} className="w-full" />}
+                    {isCam ? <video ref={videoRef} autoPlay className="w-full aspect-[35/45] object-cover rounded-2xl scale-x-[-1] border-2 border-white shadow-lg" /> : <canvas ref={canvasRef} width={350} height={450} className="w-full" />}
                     <div className="guide-overlay"></div>
-                    {isProcessing && <div className="absolute inset-0 bg-slate-900/80 rounded-2xl flex flex-col items-center justify-center text-white font-bold">
-                        <div className="mb-2 animate-pulse">處理中...</div>
+                    {isProcessing && <div className="absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center text-blue-600 font-bold">
+                        <div className="mb-2 animate-bounce">去背中...</div>
+                        <div className="text-xs text-slate-400">首次運行需載入約 30MB 模組</div>
                     </div>}
                 </div>
                 <div className="w-full space-y-3 px-2">
-                    {isCam ? <button onClick={snap} className="w-full bg-rose-500 py-4 rounded-2xl font-black text-xl active:scale-95 transition">拍攝照片</button> : (
+                    {isCam ? <button onClick={snap} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black text-xl active:scale-95 transition shadow-lg">拍攝</button> : (
                         <>
-                            <button onClick={download} className="w-full bg-cyan-600 py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">下載排版圖</button>
-                            <button onClick={removeBG} className="w-full bg-indigo-600 py-3 rounded-xl font-bold active:scale-95 transition">自動去背</button>
+                            <button onClick={download} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">下載 4x6 排版</button>
+                            <button onClick={removeBG} className="w-full bg-indigo-500 text-white py-3 rounded-xl font-bold active:scale-95 transition shadow-sm">AI 自動去背</button>
                             <div className="grid grid-cols-2 gap-3">
-                                <button onClick={startCam} className="bg-blue-600 py-3 rounded-xl font-bold active:scale-95 transition">相機</button>
-                                <label className="bg-slate-700 py-3 rounded-xl font-bold text-center cursor-pointer active:scale-95 transition">
-                                    相簿 <input type="file" className="hidden" onChange={e=>{
+                                <button onClick={startCam} className="bg-slate-700 text-white py-3 rounded-xl font-bold active:scale-95 transition shadow-sm">開相機</button>
+                                <label className="bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-center cursor-pointer active:scale-95 transition shadow-sm">
+                                    選照片 <input type="file" className="hidden" onChange={e=>{
                                         const r=new FileReader(); r.onload=f=>{const i=new Image(); i.onload=()=>setImage(i); i.src=f.target.result;};
                                         r.readAsDataURL(e.target.files[0]);
                                     }} />
@@ -166,40 +170,40 @@ const EzIDApp = () => {
 
             <div className="flex-1 app-card p-6 md:p-8 space-y-8">
                 <div>
-                    <p className="text-[10px] font-black text-slate-400 mb-3 tracking-widest uppercase">排版規格 (v1.2.5)</p>
+                    <p className="text-[11px] font-bold text-slate-400 mb-3 tracking-widest uppercase">排版規格 (v1.2.6)</p>
                     <div className="flex gap-2">
                         {[['MIXED','混合'],['TWO','2吋'],['ONE','1吋']].map(([k,v]) => (
-                            <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-bold transition ${mode===k?'bg-blue-600 text-white shadow-lg':'bg-slate-800 text-slate-400'}`}>{v}</button>
+                            <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-bold transition ${mode===k?'bg-blue-600 text-white shadow-md':'bg-slate-100 text-slate-500'}`}>{v}</button>
                         ))}
                     </div>
                 </div>
 
                 <div className="space-y-4">
-                    <p className="text-[10px] font-black text-blue-400 tracking-widest uppercase">人像微調</p>
+                    <p className="text-[11px] font-bold text-blue-500 tracking-widest uppercase">人像位置調整</p>
                     <div className="space-y-4">
-                        <div className="flex items-center gap-4 text-xs font-bold text-slate-400"><span>縮放</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:e.target.value})} /></div>
-                        <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-400">
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500"><span>大小</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:e.target.value})} /></div>
+                        <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
                             <div className="flex items-center gap-2"><span>左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e=>setP({...p, x:e.target.value})} /></div>
                             <div className="flex items-center gap-2"><span>上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e=>setP({...p, y:e.target.value})} /></div>
                         </div>
                     </div>
                 </div>
 
-                <div className="space-y-6 border-t border-slate-700 pt-6">
-                    <p className="text-[10px] font-black text-indigo-400 tracking-widest uppercase">衣服選擇</p>
+                <div className="space-y-6 border-t border-slate-100 pt-6">
+                    <p className="text-[11px] font-bold text-indigo-500 tracking-widest uppercase">更換衣服圖庫</p>
                     <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                         {['m1','m2','m3','m4','m5'].map(n => (
                             <div key={n} onClick={()=>setSuit({...suit, id:n})} 
-                                 className={`p-1 rounded-2xl border-2 shrink-0 transition ${suit.id===n?'border-blue-500 bg-blue-500/20 shadow-lg shadow-blue-500/20':'border-slate-700 bg-slate-900'}`}>
-                                <img src={getClothesPath(n)} className="w-16 h-16 object-contain rounded-xl" alt={n} 
-                                     onError={(e) => { e.target.style.opacity = '0.1'; }} />
+                                 className={`p-1 rounded-2xl border-2 shrink-0 transition bg-white ${suit.id===n?'border-blue-500 shadow-md':'border-slate-100'}`}>
+                                <img src={getClothesPath(n)} className="w-16 h-16 object-contain" alt={n} 
+                                     onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
                             </div>
                         ))}
-                        <button onClick={()=>setSuit({...suit, id:null})} className="px-6 border-2 border-dashed border-slate-700 rounded-2xl text-slate-500 shrink-0 font-bold text-xs uppercase">清除</button>
+                        <button onClick={()=>setSuit({...suit, id:null})} className="px-6 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 shrink-0 font-bold text-xs">清除</button>
                     </div>
                     <div className="space-y-4">
-                        <div className="flex items-center gap-4 text-xs font-bold text-slate-400"><span>大小</span><input type="range" min="0.1" max="1.0" step="0.01" value={suit.s} onChange={e=>setSuit({...suit, s:e.target.value})} /></div>
-                        <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-400">
+                        <div className="flex items-center gap-4 text-xs font-bold text-slate-500"><span>尺寸</span><input type="range" min="0.1" max="1.0" step="0.01" value={suit.s} onChange={e=>setSuit({...suit, s:e.target.value})} /></div>
+                        <div className="grid grid-cols-2 gap-4 text-xs font-bold text-slate-500">
                             <div className="flex items-center gap-2"><span>左右</span><input type="range" min="0" max="350" value={suit.x} onChange={e=>setSuit({...suit, x:e.target.value})} /></div>
                             <div className="flex items-center gap-2"><span>上下</span><input type="range" min="100" max="500" value={suit.y} onChange={e=>setSuit({...suit, y:e.target.value})} /></div>
                         </div>
