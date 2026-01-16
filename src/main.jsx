@@ -202,4 +202,64 @@ const EzIDApp = () => {
               <div className="flex justify-between items-center">
                 <span className="font-black text-gray-700">背景顏色</span>
                 <div className="flex gap-3">
-                  {BACKGROUND_COLORS.
+                  {BACKGROUND_COLORS.map(c => <button key={c.id} onClick={() => setSelectedBgColor(c.hex)} className={`w-10 h-10 rounded-full border-4 ${selectedBgColor === c.hex ? 'border-blue-600 scale-110 shadow-md' : 'border-white'}`} style={{backgroundColor: c.hex}} />)}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <span className="font-black text-gray-700 block">人像微調</span>
+                <div className="grid grid-cols-4 gap-2">
+                  {['上','下','左','右'].map((d,i) => (
+                    <button key={d} onClick={() => {
+                      if(i===0) setPosY(posY-4); if(i===1) setPosY(posY+4);
+                      if(i===2) setPosX(posX-4); if(i===3) setPosX(posX+4);
+                    }} className="bg-white border-2 border-gray-200 p-3 rounded-xl font-bold text-gray-600 active:bg-blue-600 active:text-white transition-colors"> {d} </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-bold text-gray-400">縮放</span>
+                  <input type="range" min="0.2" max="1.5" step="0.01" value={scale} onChange={e => setScale(parseFloat(e.target.value))} className="flex-1 h-3 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600" />
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-gray-200">
+                <div className="flex gap-2">
+                  <button onClick={()=>setGender('MALE')} className={`flex-1 p-3 rounded-xl font-black transition-all ${gender==='MALE'?'bg-blue-600 text-white shadow-md':'bg-gray-200 text-gray-400'}`}>男西裝</button>
+                  <button onClick={()=>setGender('FEMALE')} className={`flex-1 p-3 rounded-xl font-black transition-all ${gender==='FEMALE'?'bg-pink-500 text-white shadow-md':'bg-gray-200 text-gray-400'}`}>女套裝</button>
+                </div>
+                <div className="flex gap-3 overflow-x-auto py-2 scrollbar-hide">
+                  <button onClick={()=>setSelectedSuit(null)} className="w-14 h-14 border-4 border-dashed rounded-xl flex-shrink-0 font-bold text-gray-300">原本</button>
+                  {CLOTHES_DATA[gender].map(s => (
+                    <img key={s.id} src={s.url} onClick={()=>setSelectedSuit(s)} className={`w-14 h-14 border-4 rounded-xl p-1 cursor-pointer transition-all ${selectedSuit?.id===s.id?'border-blue-600 bg-blue-50 scale-105':'border-transparent bg-white shadow-sm'}`} />
+                  ))}
+                </div>
+                {selectedSuit && (
+                  <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-top-2">
+                    {['衣上','衣下','衣服大','衣左','衣右','衣服小'].map((t,i) => (
+                      <button key={t} onClick={() => {
+                        if(i===0) setSuitY(suitY-0.5); if(i===1) setSuitY(suitY+0.5);
+                        if(i===2) setSuitScale(suitScale+0.01); if(i===3) setSuitX(suitX-0.5);
+                        if(i===4) setSuitX(suitX+0.5); if(i===5) setSuitScale(suitScale-0.01);
+                      }} className="bg-white border-2 border-blue-100 p-2 rounded-xl text-xs font-black text-blue-600 active:bg-blue-600 active:text-white transition-all">{t}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <button onClick={()=>setImage(null)} className="w-full p-4 text-gray-400 font-bold hover:text-red-500 transition-colors">取消並重新上傳</button>
+          </div>
+        </div>
+      )}
+
+      {photoList.length > 0 && !image && (
+        <button onClick={downloadPrint} className="w-full mt-8 bg-gradient-to-r from-green-500 to-green-600 text-white py-6 rounded-[2rem] font-black text-2xl shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3">
+          <span>💾 下載 4x6 拼板成品</span>
+        </button>
+      )}
+      <canvas ref={exportCanvasRef} className="hidden" />
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<EzIDApp />);
