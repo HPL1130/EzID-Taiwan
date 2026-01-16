@@ -3,18 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EzID 台灣證件照 V3.7</title>
+    <title>EzID 台灣證件照 Pro</title>
 
     <script src="coi-serviceworker.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.3/dist/bundle.js"></script>
+    <script src="https://unpkg.com/@imgly/background-removal@1.5.3/dist/bundle.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        body { background-color: #f8fafc; }
-        canvas { max-width: 100%; height: auto; border-radius: 1rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        body { background-color: #f1f5f9; }
+        .canvas-container { position: relative; width: 100%; max-width: 350px; margin: 0 auto; }
+        canvas { width: 100%; height: auto; border-radius: 1rem; background: #fff; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); }
     </style>
 </head>
 <body>
@@ -23,131 +24,208 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
+        const SPECS = {
+            TWO_INCH: { id: 'TWO_INCH', label: '2 吋 (8張)', mmW: 35, mmH: 45, max: 8, cols: 4, rows: 2 },
+            ONE_INCH: { id: 'ONE_INCH', label: '1 吋 (10張)', mmW: 28, mmH: 35, max: 10, cols: 5, rows: 2 }
+        };
+
+        const BACKGROUNDS = [
+            { id: 'w', hex: '#FFFFFF', label: '白' },
+            { id: 'b', hex: '#E6F3FF', label: '藍' },
+            { id: 'g', hex: '#F5F5F5', label: '灰' }
+        ];
+
         const EzIDApp = () => {
             const [image, setImage] = useState(null);
-            const [bgRemovedImage, setBgRemovedImage] = useState(null);
-            const [posX, setPosX] = useState(0);
-            const [posY, setPosY] = useState(0);
-            const [scale, setScale] = useState(0.5);
-            const [isRemovingBg, setIsRemovingBg] = useState(false);
+            const [bgRemoved, setBgRemoved] = useState(null);
+            const [isRemoving, setIsRemoving] = useState(false);
+            const [currentSpec, setCurrentSpec] = useState(SPECS.TWO_INCH);
+            const [photoList, setPhotoList] = useState([]);
+            const [bgColor, setBgColor] = useState('#FFFFFF');
             
-            const [selectedSuit, setSelectedSuit] = useState(null);
-            const [suitX, setSuitX] = useState(175);
-            const [suitY, setSuitY] = useState(250);
-            const [suitScale, setSuitScale] = useState(0.6);
-            
-            const canvasRef = useRef(null);
-            const uploadedFileRef = useRef(null);
+            // 人像座標
+            const [pX, setPX] = useState(0);
+            const [pY, setPY] = useState(0);
+            const [pScale, setPScale] = useState(0.5);
 
-            // 核心繪製邏輯：只要數值一變就重畫
+            // 衣服座標
+            const [suit, setSuit] = useState(null);
+            const [sX, setSX] = useState(175);
+            const [sY, setSY] = useState(250);
+            const [sScale, setSScale] = useState(0.6);
+
+            const mainCanvasRef = useRef(null);
+            const exportCanvasRef = useRef(null);
+
+            // 【核心修復】同步繪製畫布
             useEffect(() => {
-                const canvas = canvasRef.current;
-                if (!canvas || (!image && !bgRemovedImage)) return;
+                const canvas = mainCanvasRef.current;
+                if (!canvas) return;
                 const ctx = canvas.getContext('2d');
                 
-                // 1. 畫背景
-                ctx.fillStyle = "#FFFFFF";
+                // 1. 背景
+                ctx.fillStyle = bgColor;
                 ctx.fillRect(0, 0, 350, 450);
 
-                // 2. 畫人像
-                const activeImg = bgRemovedImage || image;
-                if (activeImg) {
+                // 2. 人像 (優先使用去背圖)
+                const img = bgRemoved || image;
+                if (img) {
                     ctx.save();
-                    ctx.translate(175 + posX, 225 + posY);
-                    ctx.scale(scale, scale);
-                    ctx.drawImage(activeImg, -activeImg.width / 2, -activeImg.height / 2);
+                    ctx.translate(175 + pX, 225 + pY);
+                    ctx.scale(pScale, pScale);
+                    ctx.drawImage(img, -img.width/2, -img.height/2);
                     ctx.restore();
                 }
 
-                // 3. 畫衣服 (確保隨動且修正路徑)
-                if (selectedSuit) {
-                    const sImg = new Image();
-                    sImg.src = selectedSuit.url;
-                    sImg.onload = () => {
+                // 3. 衣服 (確保圖片載入後繪製)
+                if (suit) {
+                    const imgS = new Image();
+                    imgS.src = suit;
+                    imgS.onload = () => {
                         ctx.save();
-                        ctx.translate(suitX, suitY);
-                        ctx.scale(suitScale * 2.2, suitScale * 2.2);
-                        ctx.drawImage(sImg, -sImg.width / 2, -sImg.height / 2);
+                        ctx.translate(sX, sY);
+                        ctx.scale(sScale * 2.2, sScale * 2.2);
+                        ctx.drawImage(imgS, -imgS.width/2, -imgS.height/2);
                         ctx.restore();
                     };
                 }
-            }, [image, bgRemovedImage, posX, posY, scale, selectedSuit, suitX, suitY, suitScale]);
+            }, [image, bgRemoved, pX, pY, pScale, suit, sX, sY, sScale, bgColor]);
 
             const handleUpload = (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    uploadedFileRef.current = file;
-                    const reader = new FileReader();
-                    reader.onload = (f) => {
-                        const img = new Image();
-                        img.onload = () => { setImage(img); setBgRemovedImage(null); };
-                        img.src = f.target.result;
-                    };
-                    reader.readAsDataURL(file);
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (f) => {
+                    const img = new Image();
+                    img.onload = () => { setImage(img); setBgRemoved(null); };
+                    img.src = f.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const runRemoveBg = async () => {
+                if (!image) return;
+                setIsRemoving(true);
+                try {
+                    // 修正套件抓取邏輯
+                    const lib = window.imglyBackgroundRemoval || (window.imgly && window.imgly.backgroundRemoval);
+                    if (!lib) throw new Error("去背模組載入失敗，請確認網路連線");
+
+                    const blob = await lib.removeBackground(image.src, {
+                        publicPath: "https://unpkg.com/@imgly/background-removal-data@1.5.3/dist/"
+                    });
+                    const img = new Image();
+                    img.onload = () => { setBgRemoved(img); setIsRemoving(false); };
+                    img.src = URL.createObjectURL(blob);
+                } catch (e) {
+                    alert(e.message);
+                    setIsRemoving(false);
                 }
             };
 
-            const handleRemoveBg = async () => {
-                if (!uploadedFileRef.current) return;
-                setIsRemovingBg(true);
-                try {
-                    const lib = window.imglyBackgroundRemoval;
-                    const blob = await lib.removeBackground(uploadedFileRef.current, {
-                        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.5.3/dist/"
-                    });
+            const addToQueue = () => {
+                setPhotoList(prev => [...prev, mainCanvasRef.current.toDataURL('image/png')]);
+                setImage(null); setBgRemoved(null); setSuit(null);
+            };
+
+            const downloadPrint = () => {
+                const canvas = exportCanvasRef.current;
+                const ctx = canvas.getContext('2d');
+                // 4x6 吋 @ 300dpi = 1800x1200 px (橫放)
+                canvas.width = 1800; canvas.height = 1200;
+                ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 1800, 1200);
+
+                const photoW = (currentSpec.mmW * 300) / 25.4;
+                const photoH = (currentSpec.mmH * 300) / 25.4;
+
+                photoList.slice(0, currentSpec.max).forEach((src, i) => {
                     const img = new Image();
-                    img.onload = () => { setBgRemovedImage(img); setIsRemovingBg(false); };
-                    img.src = URL.createObjectURL(blob);
-                } catch (e) {
-                    alert("去背失敗: " + e.message);
-                    setIsRemovingBg(false);
-                }
+                    img.onload = () => {
+                        const col = i % currentSpec.cols;
+                        const row = Math.floor(i / currentSpec.cols);
+                        const x = col * (1800 / currentSpec.cols) + (1800 / currentSpec.cols - photoW) / 2;
+                        const y = row * (1200 / currentSpec.rows) + (1200 / currentSpec.rows - photoH) / 2;
+                        ctx.drawImage(img, x, y, photoW, photoH);
+                        if (i === Math.min(photoList.length, currentSpec.max) - 1) {
+                            const a = document.createElement('a');
+                            a.download = 'EzID_Print.jpg';
+                            a.href = canvas.toDataURL('image/jpeg', 0.9);
+                            a.click();
+                        }
+                    };
+                    img.src = src;
+                });
             };
 
             return (
-                <div className="max-w-md mx-auto p-6 bg-white shadow-2xl mt-10 rounded-[2.5rem]">
-                    <h1 className="text-2xl font-black text-center text-indigo-900 mb-6 italic">EzID Taiwan</h1>
+                <div className="max-w-xl mx-auto p-4 sm:p-8">
+                    <h1 className="text-3xl font-black text-center text-blue-900 mb-8 tracking-tighter">EzID TAIWAN</h1>
                     
+                    {/* 規格與預覽 */}
+                    <div className="flex gap-2 mb-4 overflow-x-auto">
+                        {Object.values(SPECS).map(s => (
+                            <button key={s.id} onClick={() => setCurrentSpec(s)} className={`px-4 py-2 rounded-full text-sm font-bold transition ${currentSpec.id === s.id ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 border'}`}>{s.label}</button>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-2 mb-6 bg-white p-3 rounded-2xl shadow-inner min-h-[80px] border-2 border-dashed border-slate-200">
+                        {photoList.map((p, i) => <img key={i} src={p} className="h-16 rounded shadow-sm" />)}
+                    </div>
+
                     {!image ? (
-                        <label className="block border-4 border-dashed border-indigo-100 p-20 text-center rounded-[2rem] cursor-pointer hover:bg-indigo-50 transition-all">
-                            <input type="file" className="hidden" onChange={handleUpload} />
-                            <div className="text-5xl mb-4">📸</div>
-                            <p className="font-bold text-indigo-400">點擊上傳照片</p>
+                        <label className="block bg-white border-4 border-dashed border-blue-100 rounded-[2.5rem] p-20 text-center cursor-pointer hover:bg-blue-50 transition">
+                            <input type="file" className="hidden" onChange={handleUpload} accept="image/*" />
+                            <div className="text-6xl mb-4">📸</div>
+                            <p className="text-blue-400 font-bold">點擊上傳原始大頭照</p>
                         </label>
                     ) : (
-                        <div className="space-y-6">
-                            <div className="relative border-4 border-slate-50 rounded-2xl overflow-hidden">
-                                <canvas ref={canvasRef} width={350} height={450} className="w-full h-auto" />
-                                {isRemovingBg && <div className="absolute inset-0 bg-white/80 flex items-center justify-center font-bold text-indigo-600 animate-pulse">AI 正在去背中...</div>}
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-3">
-                                <button onClick={handleRemoveBg} className="bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition">✨ 一鍵去背</button>
-                                <button onClick={() => setImage(null)} className="bg-slate-100 text-slate-500 font-bold py-3 rounded-xl active:scale-95 transition">重選照片</button>
+                        <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl space-y-6">
+                            <div className="canvas-container">
+                                <canvas ref={mainCanvasRef} width={350} height={450} />
+                                {isRemoving && <div className="absolute inset-0 bg-white/80 rounded-[1rem] flex items-center justify-center font-black text-blue-600">AI 去背中...</div>}
                             </div>
 
-                            <div className="bg-slate-50 p-4 rounded-2xl space-y-4">
-                                <div className="grid grid-cols-3 gap-2">
-                                    <button onClick={() => setSuitY(y => y - 3)} className="bg-white border py-2 rounded-lg font-bold hover:bg-indigo-600 hover:text-white transition-colors">↑ 衣上</button>
-                                    <button onClick={() => setSuitY(y => y + 3)} className="bg-white border py-2 rounded-lg font-bold hover:bg-indigo-600 hover:text-white transition-colors">↓ 衣下</button>
-                                    <button onClick={() => setSuitScale(s => s + 0.02)} className="bg-white border py-2 rounded-lg font-bold">＋ 大</button>
-                                    <button onClick={() => setSuitX(x => x - 3)} className="bg-white border py-2 rounded-lg font-bold hover:bg-indigo-600 hover:text-white transition-colors">← 衣左</button>
-                                    <button onClick={() => setSuitX(x => x + 3)} className="bg-white border py-2 rounded-lg font-bold hover:bg-indigo-600 hover:text-white transition-colors">→ 衣右</button>
-                                    <button onClick={() => setSuitScale(s => s - 0.02)} className="bg-white border py-2 rounded-lg font-bold">－ 小</button>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button onClick={runRemoveBg} className="bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition">✨ 智能去背</button>
+                                <button onClick={addToQueue} className="bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition">✅ 加入排版</button>
+                            </div>
+
+                            <div className="bg-slate-50 p-5 rounded-[1.5rem] space-y-5">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-bold text-slate-400">背景顏色</span>
+                                    <div className="flex gap-2">
+                                        {BACKGROUNDS.map(b => (
+                                            <button key={b.id} onClick={() => setBgColor(b.hex)} className={`w-8 h-8 rounded-full border-2 ${bgColor === b.hex ? 'border-blue-600' : 'border-white'}`} style={{backgroundColor: b.hex}} title={b.label} />
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="flex gap-2 overflow-x-auto py-2">
-                                    {[1, 2, 3, 4, 5].map(i => (
-                                        <img 
-                                            key={i} 
-                                            src={`./suit-m${i}.png`} 
-                                            onClick={() => setSelectedSuit({url: `./suit-m${i}.png`})} 
-                                            className="w-14 h-14 border-2 rounded-xl p-1 cursor-pointer bg-white hover:border-indigo-600" 
-                                        />
-                                    ))}
+
+                                <div className="space-y-3">
+                                    <p className="text-sm font-bold text-slate-400 border-b pb-1">👔 正裝調整</p>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <button onClick={() => setSY(s => s-3)} className="bg-white border py-3 rounded-xl font-bold active:bg-blue-600 active:text-white transition-colors">↑ 上移</button>
+                                        <button onClick={() => setSY(s => s+3)} className="bg-white border py-3 rounded-xl font-bold active:bg-blue-600 active:text-white transition-colors">↓ 下移</button>
+                                        <button onClick={() => setSScale(s => s+0.02)} className="bg-white border py-3 rounded-xl font-bold">＋ 放大</button>
+                                        <button onClick={() => setSX(s => s-3)} className="bg-white border py-3 rounded-xl font-bold active:bg-blue-600 active:text-white transition-colors">← 左移</button>
+                                        <button onClick={() => setSX(s => s+3)} className="bg-white border py-3 rounded-xl font-bold active:bg-blue-600 active:text-white transition-colors">→ 右移</button>
+                                        <button onClick={() => setSScale(s => s-0.02)} className="bg-white border py-3 rounded-xl font-bold">－ 縮小</button>
+                                    </div>
+                                    <div className="flex gap-2 overflow-x-auto py-2">
+                                        <button onClick={() => setSuit(null)} className="flex-shrink-0 w-14 h-14 border-2 border-dashed border-slate-300 rounded-xl text-[10px] text-slate-400 font-bold">無套用</button>
+                                        {[1, 2, 3, 4, 5].map(i => (
+                                            <img key={i} src={`./suit-m${i}.png`} onClick={() => setSuit(`./suit-m${i}.png`)} className={`w-14 h-14 border-2 rounded-xl p-1 bg-white cursor-pointer ${suit === `./suit-m${i}.png` ? 'border-blue-600 shadow-md' : 'border-transparent'}`} />
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     )}
+
+                    {photoList.length > 0 && !image && (
+                        <button onClick={downloadPrint} className="w-full mt-8 bg-green-600 text-white py-5 rounded-[2rem] font-black text-xl shadow-xl hover:bg-green-700 transition active:scale-95">💾 下載 4x6 吋列印拼板</button>
+                    )}
+                    
+                    <canvas ref={exportCanvasRef} className="hidden" />
                 </div>
             );
         };
