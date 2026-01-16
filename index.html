@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EzID Taiwan - ibon 4x6 修正版</title>
+    <title>EzID Taiwan - ibon 4x6 最終拍照版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -19,6 +19,7 @@
             border-radius: 50% / 50%;
             pointer-events: none; z-index: 10;
         }
+        .camera-video { transform: scaleX(-1); } /* 鏡像顯示 */
     </style>
 </head>
 <body class="bg-slate-100">
@@ -27,7 +28,6 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // 4x6 吋橫式畫布 (1800x1200 px)
         const SPECS = {
             TWO_INCH: { id: 'TWO_INCH', label: '2吋(8張)', w: 413, h: 531, cols: 4, rows: 2 },
             ONE_INCH: { id: 'ONE_INCH', label: '1吋(10張)', w: 331, h: 449, cols: 5, rows: 2 },
@@ -36,14 +36,15 @@
 
         const EzIDApp = () => {
             const [image, setImage] = useState(null);
+            const [isCameraActive, setIsCameraActive] = useState(false);
             const [currentSpec, setCurrentSpec] = useState(SPECS.TWO_INCH);
             const [p, setP] = useState({ x: 0, y: 0, s: 0.6 });
             const [suit, setSuit] = useState({ id: null, x: 175, y: 340, s: 0.7 });
             
             const canvasRef = useRef(null);
+            const videoRef = useRef(null);
             const suitImg = useRef(new Image());
 
-            // 實時繪製單張預覽
             useEffect(() => {
                 const draw = () => {
                     const canvas = canvasRef.current;
@@ -69,15 +70,45 @@
                             ctx.scale(suit.s * 2.2, suit.s * 2.2);
                             ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2);
                             ctx.restore();
-                        } else {
-                            suitImg.current.onload = draw;
-                        }
+                        } else { suitImg.current.onload = draw; }
                     }
                 };
                 draw();
             }, [image, p, suit]);
 
-            // 下載 ibon 4x6 橫式排版
+            // 相機啟動
+            const startCamera = async () => {
+                setIsCameraActive(true);
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                    if (videoRef.current) videoRef.current.srcObject = stream;
+                } catch (err) {
+                    alert("無法啟動相機，請檢查權限");
+                    setIsCameraActive(false);
+                }
+            };
+
+            // 拍照截圖
+            const takePhoto = () => {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = videoRef.current.videoWidth;
+                tempCanvas.height = videoRef.current.videoHeight;
+                const ctx = tempCanvas.getContext('2d');
+                // 處理鏡像
+                ctx.translate(tempCanvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(videoRef.current, 0, 0);
+                
+                const img = new Image();
+                img.onload = () => {
+                    setImage(img);
+                    setIsCameraActive(false);
+                    // 關閉攝影機鏡頭
+                    videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+                };
+                img.src = tempCanvas.toDataURL('image/png');
+            };
+
             const downloadIbon = () => {
                 const pc = document.createElement('canvas');
                 const ctx = pc.getContext('2d');
@@ -85,56 +116,54 @@
                 ctx.fillStyle = "white";
                 ctx.fillRect(0, 0, 1800, 1200);
 
-                const single = canvasRef.current;
-                
                 if (currentSpec.isMixed) {
-                    // 混合排版: 4張2吋 (413x531) + 5張1吋 (331x449)
-                    // 第一排：4張2吋
-                    for(let i=0; i<4; i++) {
-                        const x = 80 + i * 425;
-                        const y = 80;
-                        ctx.drawImage(single, 0, 0, 350, 450, x, y, 413, 531);
-                        ctx.strokeStyle = "#eee"; ctx.strokeRect(x, y, 413, 531);
-                    }
-                    // 第二排：5張1吋
-                    for(let i=0; i<5; i++) {
-                        const x = 80 + i * 340;
-                        const y = 660;
-                        ctx.drawImage(single, 0, 0, 350, 450, x, y, 331, 449);
-                        ctx.strokeStyle = "#eee"; ctx.strokeRect(x, y, 331, 449);
-                    }
+                    // 4張2吋 + 5張1吋
+                    for(let i=0; i<4; i++) ctx.drawImage(canvasRef.current, 0,0,350,450, 80+i*425, 80, 413, 531);
+                    for(let i=0; i<5; i++) ctx.drawImage(canvasRef.current, 0,0,350,450, 80+i*340, 660, 331, 449);
                 } else {
                     const { w, h, cols, rows } = currentSpec;
-                    const gapX = 30, gapY = 50;
-                    const startX = (1800 - (cols * w + (cols - 1) * gapX)) / 2;
-                    const startY = (1200 - (rows * h + (rows - 1) * gapY)) / 2;
-                    for (let r = 0; r < rows; r++) {
-                        for (let c = 0; c < cols; c++) {
-                            const x = startX + c * (w + gapX);
-                            const y = startY + r * (h + gapY);
-                            ctx.drawImage(single, 0, 0, 350, 450, x, y, w, h);
-                            ctx.strokeStyle = "#eee"; ctx.strokeRect(x, y, w, h);
+                    for (let r=0; r<rows; r++) {
+                        for (let c=0; c<cols; c++) {
+                            ctx.drawImage(canvasRef.current, 0,0,350,450, 100+c*(w+30), 80+r*(h+50), w, h);
                         }
                     }
                 }
                 const link = document.createElement('a');
-                link.download = `EzID_ibon_4x6.png`;
+                link.download = `EzID_ibon_print.png`;
                 link.href = pc.toDataURL('image/png');
                 link.click();
             };
 
             return (
                 <div className="flex flex-col lg:flex-row h-screen p-4 gap-4 overflow-hidden">
-                    {/* 左側：預覽與下載 */}
                     <div className="w-full lg:w-[380px] flex flex-col gap-4 bg-white p-4 rounded-3xl shadow-lg shrink-0">
-                        <div className="relative">
-                            <canvas ref={canvasRef} width={350} height={450} className="w-full h-auto mx-auto" />
-                            {image && <div className="guide-overlay"></div>}
+                        <div className="relative aspect-[35/45] bg-slate-100 rounded-xl overflow-hidden border">
+                            {isCameraActive ? (
+                                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover camera-video" />
+                            ) : (
+                                <canvas ref={canvasRef} width={350} height={450} className="w-full h-auto" />
+                            )}
+                            <div className="guide-overlay"></div>
                         </div>
-                        <button onClick={downloadIbon} className="bg-blue-700 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-blue-800 transition">下載 4x6 橫式排版圖</button>
+                        
+                        {isCameraActive ? (
+                            <button onClick={takePhoto} className="bg-red-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-red-700">按下拍照</button>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                <button onClick={downloadIbon} className="bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg hover:bg-emerald-700 transition">下載橫式排版圖</button>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={startCamera} className="bg-blue-600 text-white py-2 rounded-xl text-sm font-bold shadow">啟動相機</button>
+                                    <input type="file" onChange={(e) => {
+                                        const reader = new FileReader();
+                                        reader.onload = (f) => { const img = new Image(); img.onload = () => setImage(img); img.src = f.target.result; };
+                                        reader.readAsDataURL(e.target.files[0]);
+                                    }} className="hidden" id="file-up" />
+                                    <label htmlFor="file-up" className="bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold shadow text-center cursor-pointer">上傳檔案</label>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* 右側：控制面板 */}
                     <div className="flex-1 bg-white p-6 rounded-3xl shadow-lg control-panel border border-slate-200">
                         <div className="space-y-6">
                             <div>
@@ -146,36 +175,27 @@
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-slate-400 mb-2">上傳照片</label>
-                                <input type="file" onChange={(e) => {
-                                    const reader = new FileReader();
-                                    reader.onload = (f) => { const img = new Image(); img.onload = () => setImage(img); img.src = f.target.result; };
-                                    reader.readAsDataURL(e.target.files[0]);
-                                }} className="text-sm" />
-                            </div>
-
                             <div className="p-4 bg-slate-50 rounded-2xl space-y-4">
-                                <p className="text-xs font-bold text-slate-500 uppercase italic">👤 人像位置調整</p>
-                                <input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e => setP({...p, s: e.target.value})} />
+                                <p className="text-xs font-bold text-slate-500 uppercase italic">👤 人像調整</p>
+                                <div className="flex items-center gap-2"><span className="text-[10px] w-8 text-slate-400">縮放</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e => setP({...p, s: e.target.value})} className="flex-1" /></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="flex flex-col gap-1"><span className="text-[10px] text-slate-400">左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e => setP({...p, x: e.target.value})} /></div>
-                                    <div className="flex flex-col gap-1"><span className="text-[10px] text-slate-400">上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e => setP({...p, y: e.target.value})} /></div>
+                                    <div className="flex items-center gap-2"><span className="text-[10px] text-slate-400">左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e => setP({...p, x: e.target.value})} /></div>
+                                    <div className="flex items-center gap-2"><span className="text-[10px] text-slate-400">上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e => setP({...p, y: e.target.value})} /></div>
                                 </div>
                             </div>
 
                             <div className="p-4 bg-indigo-50 rounded-2xl space-y-4 border border-indigo-100">
-                                <p className="text-xs font-bold text-indigo-500 uppercase italic">👔 衣服選擇與位置</p>
+                                <p className="text-xs font-bold text-indigo-500 uppercase italic">👔 衣服微調</p>
                                 <div className="flex gap-2 overflow-x-auto pb-2">
                                     {['m1','m2','m3','m4','m5'].map(id => (
                                         <img key={id} src={`./suit-${id}.png`} onClick={() => setSuit({...suit, id})} className={`w-14 h-14 border-2 rounded-lg bg-white cursor-pointer transition ${suit.id === id ? 'border-indigo-600 scale-105 shadow-md' : 'border-white'}`} 
                                         onError={(e) => { e.target.style.display='none'; }} />
                                     ))}
-                                    <button onClick={() => setSuit({...suit, id: null})} className="px-3 border-2 border-dashed rounded-lg text-[10px] text-slate-400">清除衣服</button>
+                                    <button onClick={() => setSuit({...suit, id: null})} className="px-3 border-2 border-dashed rounded-lg text-[10px] text-slate-400">清除</button>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="flex flex-col gap-1"><span className="text-[10px] text-indigo-400">衣服縮放</span><input type="range" min="0.3" max="1.5" step="0.01" value={suit.s} onChange={e => setSuit({...suit, s: e.target.value})} /></div>
-                                    <div className="flex flex-col gap-1"><span className="text-[10px] text-indigo-400">衣服上下</span><input type="range" min="100" max="500" value={suit.y} onChange={e => setSuit({...suit, y: e.target.value})} /></div>
+                                    <div className="flex items-center gap-2"><span className="text-[10px] text-indigo-400">衣服縮放</span><input type="range" min="0.3" max="1.5" step="0.01" value={suit.s} onChange={e => setSuit({...suit, s: e.target.value})} /></div>
+                                    <div className="flex items-center gap-2"><span className="text-[10px] text-indigo-400">上下位置</span><input type="range" min="100" max="500" value={suit.y} onChange={e => setSuit({...suit, y: e.target.value})} /></div>
                                 </div>
                             </div>
                         </div>
