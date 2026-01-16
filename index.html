@@ -1,179 +1,271 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>證件照換裝系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <title>EzID Taiwan Pro - 相機修復增強版</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/@imgly/background-removal@1.5.3/dist/index.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.3/dist/bundle.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 橢圓定位框的自定義樣式 */
-        .head-guide {
-            width: 200px;
-            height: 260px;
-            border: 3px dashed rgba(255, 255, 255, 0.8);
-            border-radius: 50% / 50%;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* 黑色半透明遮罩 */
-            position: relative;
-        }
-        .head-guide::after {
-            content: '請將頭部對準此圓框';
+        .control-panel { max-height: 85vh; overflow-y: auto; }
+        input[type="range"] { accent-color: #4f46e5; height: 8px; width: 100%; }
+        canvas { background-color: white; border: 1px solid #e2e8f0; }
+        /* 相機對頭圓框樣式 */
+        .camera-guide {
             position: absolute;
-            bottom: -30px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            white-space: nowrap;
-            font-size: 14px;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -60%);
+            width: 180px; height: 240px;
+            border: 3px dashed rgba(255, 255, 255, 0.7);
+            border-radius: 50% / 50%;
+            pointer-events: none;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-slate-200">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        function App() {
-            const videoRef = useRef(null);
-            const canvasRef = useRef(null);
-            const [capturedImage, setCapturedImage] = useState(null);
-            const [isRemovingBg, setIsRemovingBg] = useState(false);
-            const [selectedSuit, setSelectedSuit] = useState(null);
+        const SPECS = {
+            TWO_INCH: { id: 'TWO_INCH', label: '2吋(8張)', mmW: 35, mmH: 45, max: 8, cols: 4, rows: 2 },
+            ONE_INCH: { id: 'ONE_INCH', label: '1吋(10張)', mmW: 28, mmH: 35, max: 10, cols: 5, rows: 2 },
+            MIXED: { id: 'MIXED', label: '混合(2吋*4 + 1吋*5)', isMixed: true, max: 9 }
+        };
+
+        const EzIDApp = () => {
+            const [image, setImage] = useState(null);
+            const [bgRemoved, setBgRemoved] = useState(null);
+            const [isRemoving, setIsRemoving] = useState(false);
+            const [isCameraActive, setIsCameraActive] = useState(false);
+            const [currentSpec, setCurrentSpec] = useState(SPECS.TWO_INCH);
+            const [photoList, setPhotoList] = useState([]);
             
-            // 衣服清單 - 確保檔案就在 HTML 旁邊
-            const suits = [
-                { id: 'm1', url: './suit-m1.png', label: '西裝 1' },
-                { id: 'm2', url: './suit-m2.png', label: '西裝 2' },
-                { id: 'm3', url: './suit-m3.png', label: '西裝 3' },
-                { id: 'm4', url: './suit-m4.png', label: '西裝 4' },
-                { id: 'm5', url: './suit-m5.png', label: '西裝 5' }
-            ];
+            // 座標狀態
+            const [p, setP] = useState({ x: 0, y: 0, s: 0.55 });
+            const [suit, setSuit] = useState({ id: null, x: 175, y: 350, s: 0.7 });
+            
+            const canvasRef = useRef(null);
+            const videoRef = useRef(null);
+            const suitImg = useRef(new Image());
 
-            // 啟動相機
+            // 繪圖核心
             useEffect(() => {
-                async function startCamera() {
-                    try {
-                        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-                        if (videoRef.current) videoRef.current.srcObject = stream;
-                    } catch (err) {
-                        alert("無法開啟相機，請檢查權限或連線。");
-                    }
-                }
-                startCamera();
-            }, []);
+                const draw = () => {
+                    const canvas = canvasRef.current;
+                    if (!canvas) return;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, 350, 450);
+                    
+                    // 1. 底色
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, 0, 350, 450);
 
-            // 拍照並去背
-            const takePhoto = async () => {
-                const video = videoRef.current;
-                const canvas = canvasRef.current;
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                
-                const imageData = canvas.toDataURL('image/png');
-                
-                // 開始去背
-                setIsRemovingBg(true);
+                    // 2. 人像
+                    const activeImg = bgRemoved || image;
+                    if (activeImg) {
+                        ctx.save();
+                        ctx.translate(175 + parseInt(p.x), 225 + parseInt(p.y));
+                        ctx.scale(p.s, p.s);
+                        ctx.drawImage(activeImg, -activeImg.width/2, -activeImg.height/2);
+                        ctx.restore();
+                    }
+
+                    // 3. 衣服
+                    if (suit.id) {
+                        suitImg.current.src = `./suit-${suit.id}.png`;
+                        if (suitImg.current.complete) {
+                            ctx.save();
+                            ctx.translate(parseInt(suit.x), parseInt(suit.y));
+                            ctx.scale(suit.s * 2.2, suit.s * 2.2);
+                            ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2);
+                            ctx.restore();
+                        } else {
+                            suitImg.current.onload = draw;
+                        }
+                    }
+
+                    // 4. 定位紅框
+                    ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath(); ctx.moveTo(0, 80); ctx.lineTo(350, 80); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, 320); ctx.lineTo(350, 320); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(175, 0); ctx.lineTo(175, 450); ctx.stroke();
+                    ctx.setLineDash([]);
+                };
+                draw();
+            }, [image, bgRemoved, p, suit]);
+
+            // 去背功能
+            const runRemoveBg = async () => {
+                if (!image) return;
+                setIsRemoving(true);
                 try {
-                    // 使用 imgly 去背
-                    const blob = await imglyConfig.removeBackground(imageData);
-                    const noBgUrl = URL.createObjectURL(blob);
-                    setCapturedImage(noBgUrl);
-                } catch (error) {
-                    console.error("去背失敗:", error);
-                    alert("去背失敗，請確認是否在伺服器環境(Live Server)下執行。");
-                    setCapturedImage(imageData); // 失敗則顯示原圖
-                } finally {
-                    setIsRemovingBg(false);
+                    const imgly = window.imglyBackgroundRemoval;
+                    const blob = await imgly.removeBackground(image.src);
+                    const img = new Image();
+                    img.onload = () => { 
+                        setBgRemoved(img); 
+                        setIsRemoving(false); 
+                    };
+                    img.src = URL.createObjectURL(blob);
+                } catch (e) {
+                    console.error(e);
+                    alert("去背失敗，請確保在伺服器環境(Live Server)執行。");
+                    setIsRemoving(false); // 修正變數名錯誤
                 }
             };
 
-            return (
-                <div className="flex flex-col items-center p-4">
-                    <h1 className="text-2xl font-bold mb-4">智能證件照系統</h1>
+            // 相機控制
+            const startCamera = async () => {
+                setIsCameraActive(true);
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                    if (videoRef.current) videoRef.current.srcObject = stream;
+                } catch (err) {
+                    alert("無法開啟相機");
+                    setIsCameraActive(false);
+                }
+            };
 
-                    <div className="relative bg-black rounded-lg overflow-hidden w-[320px] h-[440px] shadow-xl">
-                        {!capturedImage ? (
-                            <>
-                                {/* 相機預覽 */}
+            const capturePhoto = () => {
+                const video = videoRef.current;
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = video.videoWidth;
+                tempCanvas.height = video.videoHeight;
+                tempCanvas.getContext('2d').drawImage(video, 0, 0);
+                
+                const img = new Image();
+                img.onload = () => {
+                    setImage(img);
+                    setIsCameraActive(false);
+                    // 停止相機串流
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                };
+                img.src = tempCanvas.toDataURL('image/png');
+            };
+
+            const downloadPrint = () => {
+                const link = document.createElement('a');
+                link.download = 'EzID_Result.png';
+                link.href = canvasRef.current.toDataURL();
+                link.click();
+            };
+
+            return (
+                <div className="flex flex-col lg:flex-row h-screen overflow-hidden p-4 gap-4">
+                    {/* 左側：預覽區 */}
+                    <div className="w-full lg:w-[400px] flex flex-col gap-4 bg-white p-4 rounded-3xl shadow-xl shrink-0">
+                        <h1 className="font-black text-blue-800 text-xl italic px-2 border-l-4 border-blue-600">EzID Taiwan Pro</h1>
+                        
+                        <div className="relative">
+                            <canvas ref={canvasRef} width={350} height={450} className="w-full h-auto rounded-xl shadow-inner mx-auto" />
+                            {isRemoving && (
+                                <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center rounded-xl">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent mb-2"></div>
+                                    <p className="text-indigo-600 font-bold">AI 去背中...</p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={runRemoveBg} className="bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 active:scale-95 transition">一鍵去背</button>
+                            <button onClick={() => setPhotoList([...photoList, canvasRef.current.toDataURL()])} className="bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-emerald-700 active:scale-95 transition">加入排版</button>
+                        </div>
+                        
+                        <div className="flex gap-2 overflow-x-auto pb-2 border-t pt-2 h-24">
+                            {photoList.map((p, i) => <img key={i} src={p} className="h-full border rounded shadow-sm" />)}
+                        </div>
+                    </div>
+
+                    {/* 右側：控制面板 */}
+                    <div className="flex-1 bg-white p-6 rounded-3xl shadow-xl control-panel border border-slate-300">
+                        {!image && !isCameraActive ? (
+                            <div className="h-full flex flex-col items-center justify-center border-4 border-dashed border-slate-100 rounded-3xl gap-6">
+                                <input type="file" id="fileInput" className="hidden" onChange={(e) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (f) => { const img = new Image(); img.onload = () => setImage(img); img.src = f.target.result; };
+                                    reader.readAsDataURL(e.target.files[0]);
+                                }} />
+                                <label htmlFor="fileInput" className="bg-slate-800 text-white px-8 py-4 rounded-2xl cursor-pointer hover:bg-slate-700 transition">從電腦上傳照片</label>
+                                <span className="text-slate-400 font-bold">或</span>
+                                <button onClick={startCamera} className="bg-blue-600 text-white px-8 py-4 rounded-2xl hover:bg-blue-500 transition">開啟相機拍照</button>
+                            </div>
+                        ) : isCameraActive ? (
+                            <div className="relative h-full bg-black rounded-3xl overflow-hidden flex flex-col items-center">
                                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                                
-                                {/* 定位橢圓框 */}
-                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <div className="head-guide"></div>
+                                <div className="camera-guide"></div>
+                                <div className="absolute bottom-6 flex gap-4">
+                                    <button onClick={capturePhoto} className="bg-red-600 text-white w-16 h-16 rounded-full border-4 border-white shadow-lg"></button>
+                                    <button onClick={() => setIsCameraActive(false)} className="bg-white/20 text-white px-4 py-2 rounded-xl backdrop-blur-md">取消</button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-8 pb-10">
+                                {/* 規格 */}
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-bold text-slate-500">當前尺寸</span>
+                                    <div className="flex gap-1">
+                                        {Object.values(SPECS).map(s => (
+                                            <button key={s.id} onClick={() => setCurrentSpec(s)} className={`px-2 py-1 text-[10px] rounded-full border ${currentSpec.id === s.id ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>{s.label}</button>
+                                        ))}
+                                    </div>
                                 </div>
 
-                                <button 
-                                    onClick={takePhoto}
-                                    className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-2 rounded-full font-bold"
-                                >
-                                    {isRemovingBg ? "處理中..." : "拍照去背"}
-                                </button>
-                            </>
-                        ) : (
-                            <div className="relative w-full h-full bg-blue-500">
-                                {/* 去背後的照片 */}
-                                <img src={capturedImage} className="absolute inset-0 w-full h-full object-contain z-10" />
-                                
-                                {/* 疊加的衣服 */}
-                                {selectedSuit && (
-                                    <img 
-                                        src={selectedSuit} 
-                                        className="absolute bottom-0 left-0 w-full z-20 pointer-events-none"
-                                        style={{ transform: 'scale(1.1) translateY(10%)' }}
-                                    />
-                                )}
-                                
-                                <button 
-                                    onClick={() => {setCapturedImage(null); setSelectedSuit(null);}}
-                                    className="absolute top-2 right-2 bg-gray-800/50 text-white p-2 rounded z-30"
-                                >
-                                    重新拍照
-                                </button>
+                                {/* 人像控制 */}
+                                <section className="p-4 bg-slate-50 rounded-2xl">
+                                    <h3 className="text-xs font-black text-indigo-600 mb-4 tracking-tighter uppercase font-mono">👤 人像微調 (Slider)</h3>
+                                    <div className="space-y-4">
+                                        <div><label className="text-[10px] block mb-1">縮放: {p.s}</label><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e => setP({...p, s: parseFloat(e.target.value)})} /></div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><label className="text-[10px] block mb-1">左右: {p.x}</label><input type="range" min="-300" max="300" value={p.x} onChange={e => setP({...p, x: parseInt(e.target.value)})} /></div>
+                                            <div><label className="text-[10px] block mb-1">上下: {p.y}</label><input type="range" min="-300" max="300" value={p.y} onChange={e => setP({...p, y: parseInt(e.target.value)})} /></div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* 衣服控制 */}
+                                <section className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                    <h3 className="text-xs font-black text-blue-600 mb-4 tracking-tighter uppercase font-mono">👔 衣服位移 (已擴大範圍)</h3>
+                                    <div className="space-y-4">
+                                        <div><label className="text-[10px] block mb-1">衣服縮放: {suit.s}</label><input type="range" min="0.1" max="1.5" step="0.01" value={suit.s} onChange={e => setSuit({...suit, s: parseFloat(e.target.value)})} /></div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div><label className="text-[10px] block mb-1">衣服左右: {suit.x}</label><input type="range" min="0" max="350" value={suit.x} onChange={e => setSuit({...suit, x: parseInt(e.target.value)})} /></div>
+                                            <div><label className="text-[10px] block mb-1">衣服上下: {suit.y}</label><input type="range" min="0" max="800" value={suit.y} onChange={e => setSuit({...suit, y: parseInt(e.target.value)})} /></div>
+                                        </div>
+                                        <div className="flex gap-2 overflow-x-auto py-2">
+                                            <button onClick={() => setSuit({...suit, id: null})} className="w-12 h-12 border border-dashed rounded-lg bg-white text-[8px] flex-shrink-0">移除</button>
+                                            {[1,2,3,4,5].map(i => (
+                                                <img key={i} src={`./suit-m${i}.png`} 
+                                                     onClick={() => setSuit({...suit, id: `m${i}`})} 
+                                                     onError={(e) => e.target.style.display = 'none'}
+                                                     className={`w-12 h-12 border-2 rounded-lg bg-white cursor-pointer ${suit.id === `m${i}` ? 'border-blue-600 shadow-md' : 'border-transparent'}`} 
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <div className="flex gap-2">
+                                    <button onClick={() => {setImage(null); setBgRemoved(null);}} className="flex-1 bg-slate-200 text-slate-700 py-4 rounded-2xl font-bold">重新上傳/拍照</button>
+                                    {photoList.length > 0 && (
+                                        <button onClick={downloadPrint} className="flex-[2] bg-slate-900 text-white py-4 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition">💾 下載排版</button>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
-
-                    {/* 衣服選擇區 */}
-                    <div className="mt-6 w-full max-w-md">
-                        <p className="font-bold mb-2 text-center">選擇衣服類型：</p>
-                        <div className="flex gap-2 overflow-x-auto p-2 bg-white rounded-lg shadow">
-                            {suits.map(suit => (
-                                <div key={suit.id} className="flex-shrink-0 flex flex-col items-center">
-                                    <img 
-                                        src={suit.url}
-                                        alt={suit.label}
-                                        className={`w-16 h-16 object-contain border-2 rounded p-1 cursor-pointer ${selectedSuit === suit.url ? 'border-blue-500 bg-blue-50' : 'border-transparent'}`}
-                                        onClick={() => setSelectedSuit(suit.url)}
-                                        onError={(e) => { e.target.src = "https://via.placeholder.com/60?text=無圖"; }}
-                                    />
-                                    <span className="text-xs mt-1">{suit.label}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <canvas ref={canvasRef} className="hidden"></canvas>
-                    
-                    {isRemovingBg && (
-                        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-                            <div className="bg-white p-6 rounded-lg text-center">
-                                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                                <p>正在進行 AI 去背，請稍候...</p>
-                            </div>
-                        </div>
-                    )}
                 </div>
             );
-        }
+        };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<EzIDApp />);
     </script>
 </body>
 </html>
