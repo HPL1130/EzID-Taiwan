@@ -101,17 +101,27 @@ const EzIDApp = () => {
     if (!uploadedFileRef.current) return;
     setIsRemovingBg(true);
     try {
-      // 調用最初成功的函數名
-      const blob = await imglyConfigurableBackgroundRemoval.removeBackground(uploadedFileRef.current, {
+      // 自動偵測去背套件的名字，解決 ReferenceError
+      const remover = window.imglyConfigurableBackgroundRemoval || window.imglyBackgroundRemoval;
+      
+      if (!remover) {
+        throw new Error("找不到去背組件，請檢查 index.html 是否正確載入 bundle.js");
+      }
+
+      const blob = await remover.removeBackground(uploadedFileRef.current, {
         publicPath: "https://staticimgly.com/@imgly/background-removal-data/1.5.3/dist/"
       });
+      
       const url = URL.createObjectURL(blob);
       const img = new Image();
-      img.onload = () => { setBgRemovedImage(img); setIsRemovingBg(false); };
+      img.onload = () => { 
+        setBgRemovedImage(img); 
+        setIsRemovingBg(false); 
+      };
       img.src = url;
     } catch (e) {
-      console.error(e);
-      alert("去背失敗，請確保 coi-serviceworker.js 已載入。");
+      console.error("去背報錯詳情:", e);
+      alert("去背失敗: " + e.message);
       setIsRemovingBg(false);
     }
   };
