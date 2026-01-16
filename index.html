@@ -3,23 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EzID Taiwan Pro - Final Fix</title>
-    <script src="coi-serviceworker.js"></script>
+    <title>EzID Taiwan Pro - 穩定修復版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/@imgly/background-removal@1.5.3/dist/bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.3/dist/bundle.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        input[type="range"] { height: 6px; -webkit-appearance: none; background: #e2e8f0; border-radius: 5px; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: #4f46e5; border-radius: 50%; cursor: pointer; }
+        .control-panel { max-height: 85vh; overflow-y: auto; }
+        input[type="range"] { accent-color: #4f46e5; height: 8px; width: 100%; }
+        canvas { background-color: white; border: 1px solid #e2e8f0; }
     </style>
 </head>
-<body class="bg-slate-50 min-h-screen">
+<body class="bg-slate-200">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef, useEffect, useMemo } = React;
+        const { useState, useRef, useEffect } = React;
 
         const SPECS = {
             TWO_INCH: { id: 'TWO_INCH', label: '2吋(8張)', mmW: 35, mmH: 45, max: 8, cols: 4, rows: 2 },
@@ -34,161 +34,159 @@
             const [currentSpec, setCurrentSpec] = useState(SPECS.TWO_INCH);
             const [photoList, setPhotoList] = useState([]);
             
-            // Slider 狀態
-            const [pX, setPX] = useState(0);
-            const [pY, setPY] = useState(0);
-            const [pS, setPS] = useState(0.5);
-            const [suitId, setSuitId] = useState(null);
-            const [sX, setSX] = useState(175);
-            const [sY, setSY] = useState(250);
-            const [sS, setSS] = useState(0.6);
-
+            // 座標狀態
+            const [p, setP] = useState({ x: 0, y: 0, s: 0.55 });
+            const [suit, setSuit] = useState({ id: null, x: 175, y: 350, s: 0.7 });
+            
             const canvasRef = useRef(null);
-            const suitImgRef = useRef(new Image()); // 預載入衣服圖片用
+            const suitImg = useRef(new Image());
 
-            // 【衣服動起來的關鍵】當 suitId 改變時，先預載入圖片
+            // 繪圖核心
             useEffect(() => {
-                if (suitId) {
-                    suitImgRef.current.src = `./suit-${suitId}.png`;
-                    suitImgRef.current.onload = () => draw(); // 載入完畫一次
-                } else {
-                    draw();
-                }
-            }, [suitId]);
+                const draw = () => {
+                    const canvas = canvasRef.current;
+                    if (!canvas) return;
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, 350, 450);
+                    
+                    // 1. 底色
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, 0, 350, 450);
 
-            // 繪圖函數
-            const draw = () => {
-                const canvas = canvasRef.current;
-                if (!canvas || (!image && !bgRemoved)) return;
-                const ctx = canvas.getContext('2d');
-                
-                ctx.fillStyle = "#FFFFFF";
-                ctx.fillRect(0, 0, 350, 450);
+                    // 2. 人像
+                    const activeImg = bgRemoved || image;
+                    if (activeImg) {
+                        ctx.save();
+                        ctx.translate(175 + parseInt(p.x), 225 + parseInt(p.y));
+                        ctx.scale(p.s, p.s);
+                        ctx.drawImage(activeImg, -activeImg.width/2, -activeImg.height/2);
+                        ctx.restore();
+                    }
 
-                const activeImg = bgRemoved || image;
-                if (activeImg) {
-                    ctx.save();
-                    ctx.translate(175 + parseInt(pX), 225 + parseInt(pY));
-                    ctx.scale(pS, pS);
-                    ctx.drawImage(activeImg, -activeImg.width/2, -activeImg.height/2);
-                    ctx.restore();
-                }
+                    // 3. 衣服 (確保預載入後畫出)
+                    if (suit.id) {
+                        suitImg.current.src = `./suit-${suit.id}.png`;
+                        if (suitImg.current.complete) {
+                            ctx.save();
+                            ctx.translate(parseInt(suit.x), parseInt(suit.y));
+                            ctx.scale(suit.s * 2.2, suit.s * 2.2);
+                            ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2);
+                            ctx.restore();
+                        } else {
+                            suitImg.current.onload = draw;
+                        }
+                    }
 
-                if (suitId && suitImgRef.current.complete) {
-                    ctx.save();
-                    ctx.translate(parseInt(sX), parseInt(sY));
-                    ctx.scale(sS * 2.2, sS * 2.2);
-                    ctx.drawImage(suitImgRef.current, -suitImgRef.current.width/2, -suitImgRef.current.height/2);
-                    ctx.restore();
-                }
-            };
-
-            // 每當 Slider 變動就重畫
-            useEffect(() => { draw(); }, [pX, pY, pS, sX, sY, sS, image, bgRemoved]);
+                    // 4. 對齊紅框 (證件照標準)
+                    ctx.strokeStyle = "rgba(255, 0, 0, 0.4)";
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    // 頭頂線
+                    ctx.beginPath(); ctx.moveTo(0, 80); ctx.lineTo(350, 80); ctx.stroke();
+                    // 下巴線
+                    ctx.beginPath(); ctx.moveTo(0, 320); ctx.lineTo(350, 320); ctx.stroke();
+                    // 中心線
+                    ctx.beginPath(); ctx.moveTo(175, 0); ctx.lineTo(175, 450); ctx.stroke();
+                    ctx.setLineDash([]);
+                };
+                draw();
+            }, [image, bgRemoved, p, suit]);
 
             const runRemoveBg = async () => {
                 if (!image) return;
                 setIsRemoving(true);
                 try {
-                    const lib = window.imglyBackgroundRemoval;
-                    const blob = await lib.removeBackground(image.src, {
-                        publicPath: "https://unpkg.com/@imgly/background-removal-data@1.5.3/dist/"
-                    });
+                    const imgly = window.imglyBackgroundRemoval;
+                    const blob = await imgly.removeBackground(image.src);
                     const img = new Image();
                     img.onload = () => { setBgRemoved(img); setIsRemoving(false); };
                     img.src = URL.createObjectURL(blob);
                 } catch (e) {
-                    alert("去背模組載入超時。請確認 coi-serviceworker.js 檔案存在且已上傳。");
-                    setIsRemoving(false);
+                    alert("去背失敗，請確認網路環境。");
+                    setIsRemovingBg(false);
                 }
             };
 
+            const downloadPrint = () => {
+                // 簡易下載邏輯：此處可擴充為拼板
+                const link = document.createElement('a');
+                link.download = 'EzID_Result.png';
+                link.href = canvasRef.current.toDataURL();
+                link.click();
+            };
+
             return (
-                <div className="max-w-6xl mx-auto p-4 md:p-10 flex flex-col lg:flex-row gap-8">
-                    {/* 左側：預覽與拼板 */}
-                    <div className="lg:w-[380px] space-y-4">
-                        <div className="bg-white p-4 rounded-[2rem] shadow-xl border-4 border-white">
-                            <canvas ref={canvasRef} width={350} height={450} className="w-full rounded-2xl shadow-inner" />
+                <div className="flex flex-col lg:flex-row h-screen overflow-hidden p-4 gap-4">
+                    {/* 左側：固定預覽區 */}
+                    <div className="w-full lg:w-[400px] flex flex-col gap-4 bg-white p-4 rounded-3xl shadow-xl shrink-0">
+                        <h1 className="font-black text-blue-800 text-xl italic px-2">EzID Taiwan</h1>
+                        <canvas ref={canvasRef} width={350} height={450} className="w-full h-auto rounded-xl shadow-inner mx-auto" />
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                            <button onClick={runRemoveBg} className="bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 transition">一鍵去背</button>
+                            <button onClick={() => setPhotoList([...photoList, canvasRef.current.toDataURL()])} className="bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-emerald-700 transition">加入排版</button>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button onClick={runRemoveBg} className="bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition text-sm">
-                                {isRemoving ? "處理中..." : "✨ 一鍵去背"}
-                            </button>
-                            <button onClick={() => setPhotoList([...photoList, canvasRef.current.toDataURL()])} className="bg-emerald-600 text-white py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition text-sm">
-                                ✅ 加入排版
-                            </button>
-                        </div>
-                        <div className="bg-white p-4 rounded-2xl min-h-[100px] flex gap-2 overflow-x-auto shadow-inner border border-slate-100">
-                            {photoList.map((p, i) => (
-                                <div key={i} className="relative flex-shrink-0">
-                                    <img src={p} className="h-20 border rounded shadow-sm bg-white" />
-                                    <button onClick={() => setPhotoList(photoList.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-red-500 text-white w-5 h-5 rounded-full text-[10px]">✕</button>
-                                </div>
-                            ))}
+                        
+                        <div className="flex gap-2 overflow-x-auto pb-2 border-t pt-2 h-24">
+                            {photoList.map((p, i) => <img key={i} src={p} className="h-full border rounded shadow-sm" />)}
                         </div>
                     </div>
 
-                    {/* 右側：拉桿控制區 */}
-                    <div className="flex-1 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-8">
-                        <div className="flex justify-between items-center border-b pb-4">
-                            <h2 className="text-xl font-black text-slate-800">控制面板</h2>
-                            <div className="flex gap-2">
-                                {Object.values(SPECS).map(s => (
-                                    <button key={s.id} onClick={() => setCurrentSpec(s)} className={`px-3 py-1 rounded-full text-[10px] font-bold border transition ${currentSpec.id === s.id ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>{s.label}</button>
-                                ))}
-                            </div>
-                        </div>
-
+                    {/* 右側：滾動控制面板 (與照片並排) */}
+                    <div className="flex-1 bg-white p-6 rounded-3xl shadow-xl control-panel border border-slate-300">
                         {!image ? (
-                            <div className="py-20 text-center border-4 border-dashed border-slate-50 rounded-[2rem]">
+                            <div className="h-full flex items-center justify-center border-4 border-dashed border-slate-100 rounded-3xl">
                                 <input type="file" onChange={(e) => {
-                                    const file = e.target.files[0];
                                     const reader = new FileReader();
-                                    reader.onload = (f) => {
-                                        const img = new Image();
-                                        img.onload = () => setImage(img);
-                                        img.src = f.target.result;
-                                    };
-                                    reader.readAsDataURL(file);
-                                }} id="fileIn" className="hidden" />
-                                <label htmlFor="fileIn" className="cursor-pointer">
-                                    <div className="text-5xl mb-4">📸</div>
-                                    <p className="font-bold text-slate-400">請先點擊上傳原始大頭照</p>
-                                </label>
+                                    reader.onload = (f) => { const img = new Image(); img.onload = () => setImage(img); img.src = f.target.result; };
+                                    reader.readAsDataURL(e.target.files[0]);
+                                }} className="p-10" />
                             </div>
                         ) : (
-                            <div className="space-y-6">
+                            <div className="space-y-8 pb-10">
+                                {/* 規格 */}
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm font-bold text-slate-500">當前尺寸</span>
+                                    <div className="flex gap-1">
+                                        {Object.values(SPECS).map(s => (
+                                            <button key={s.id} onClick={() => setCurrentSpec(s)} className={`px-2 py-1 text-[10px] rounded-full border ${currentSpec.id === s.id ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>{s.label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 {/* 人像控制 */}
-                                <section>
-                                    <h3 className="text-xs font-black text-indigo-500 mb-4 tracking-widest uppercase">👤 人像位移與縮放</h3>
+                                <section className="p-4 bg-slate-50 rounded-2xl">
+                                    <h3 className="text-xs font-black text-indigo-600 mb-4 tracking-tighter uppercase">👤 人像微調 (Slider)</h3>
                                     <div className="space-y-4">
-                                        <div><label className="text-[10px] text-slate-400 font-bold">大小: {pS}</label><input type="range" min="0.1" max="1.5" step="0.01" value={pS} onChange={e => setPS(e.target.value)} className="w-full" /></div>
+                                        <div><label className="text-[10px] block mb-1">縮放: {p.s}</label><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e => setP({...p, s: parseFloat(e.target.value)})} /></div>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <div><label className="text-[10px] text-slate-400 font-bold">水平: {pX}</label><input type="range" min="-200" max="200" value={pX} onChange={e => setPX(e.target.value)} className="w-full" /></div>
-                                            <div><label className="text-[10px] text-slate-400 font-bold">垂直: {pY}</label><input type="range" min="-200" max="200" value={pY} onChange={e => setPY(e.target.value)} className="w-full" /></div>
+                                            <div><label className="text-[10px] block mb-1">左右: {p.x}</label><input type="range" min="-300" max="300" value={p.x} onChange={e => setP({...p, x: parseInt(e.target.value)})} /></div>
+                                            <div><label className="text-[10px] block mb-1">上下: {p.y}</label><input type="range" min="-300" max="300" value={p.y} onChange={e => setP({...p, y: parseInt(e.target.value)})} /></div>
                                         </div>
                                     </div>
                                 </section>
 
                                 {/* 衣服控制 */}
-                                <section>
-                                    <h3 className="text-xs font-black text-blue-500 mb-4 tracking-widest uppercase">👔 衣服位置調整</h3>
+                                <section className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                                    <h3 className="text-xs font-black text-blue-600 mb-4 tracking-tighter uppercase">👔 衣服位移 (已擴大範圍)</h3>
                                     <div className="space-y-4">
-                                        <div><label className="text-[10px] text-slate-400 font-bold">衣服大小: {sS}</label><input type="range" min="0.1" max="1.5" step="0.01" value={sS} onChange={e => setSS(e.target.value)} className="w-full" /></div>
+                                        <div><label className="text-[10px] block mb-1">衣服縮放: {suit.s}</label><input type="range" min="0.1" max="1.5" step="0.01" value={suit.s} onChange={e => setSuit({...suit, s: parseFloat(e.target.value)})} /></div>
                                         <div className="grid grid-cols-2 gap-4">
-                                            <div><label className="text-[10px] text-slate-400 font-bold">衣服水平: {sX}</label><input type="range" min="0" max="350" value={sX} onChange={e => setSX(e.target.value)} className="w-full" /></div>
-                                            <div><label className="text-[10px] text-slate-400 font-bold">衣服垂直: {sY}</label><input type="range" min="0" max="450" value={sY} onChange={e => setSY(e.target.value)} className="w-full" /></div>
+                                            <div><label className="text-[10px] block mb-1">衣服左右: {suit.x}</label><input type="range" min="0" max="350" value={suit.x} onChange={e => setSuit({...suit, x: parseInt(e.target.value)})} /></div>
+                                            <div><label className="text-[10px] block mb-1">衣服上下: {suit.y}</label><input type="range" min="0" max="800" value={suit.y} onChange={e => setSuit({...suit, y: parseInt(e.target.value)})} /></div>
                                         </div>
                                         <div className="flex gap-2 overflow-x-auto py-2">
-                                            <button onClick={() => setSuitId(null)} className="w-14 h-14 border-2 border-dashed rounded-xl flex-shrink-0 text-[10px] text-gray-300">無衣服</button>
+                                            <button onClick={() => setSuit({...suit, id: null})} className="w-12 h-12 border border-dashed rounded-lg bg-white text-[8px] flex-shrink-0">移除</button>
                                             {[1,2,3,4,5].map(i => (
-                                                <img key={i} src={`./suit-m${i}.png`} onClick={() => setSuitId(`m${i}`)} className={`w-14 h-14 border-2 rounded-xl p-1 bg-slate-50 cursor-pointer ${suitId === `m${i}` ? 'border-indigo-600 ring-2 ring-indigo-50' : 'border-transparent'}`} />
+                                                <img key={i} src={`./suit-m${i}.png`} onClick={() => setSuit({...suit, id: `m${i}`})} className={`w-12 h-12 border-2 rounded-lg bg-white cursor-pointer ${suit.id === `m${i}` ? 'border-blue-600' : 'border-transparent'}`} />
                                             ))}
                                         </div>
                                     </div>
                                 </section>
 
-                                <button onClick={() => {setImage(null); setBgRemoved(null); setPhotoList([]);}} className="w-full text-slate-300 text-[10px] hover:underline uppercase font-bold tracking-widest">重置所有資料</button>
+                                {photoList.length > 0 && (
+                                    <button onClick={downloadPrint} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-xl active:scale-95 transition">💾 下載目前結果</button>
+                                )}
                             </div>
                         )}
                     </div>
