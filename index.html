@@ -2,39 +2,39 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>EzID Taiwan - 響應式穩定版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EzID Taiwan - 行動 APP 版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 畫布寬度自適應手機螢幕 */
+        body { background-color: #121212; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         canvas { 
             background: white; 
-            border-radius: 12px; 
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            border-radius: 16px; 
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
             max-width: 100%;
             height: auto;
         }
         .guide-overlay {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -55%);
-            width: 54%; height: 55%; /* 使用百分比適應不同尺寸 */
-            border: 3px dashed rgba(255, 0, 0, 0.4);
+            width: 55%; height: 55%;
+            border: 2px dashed rgba(255, 68, 68, 0.6);
             border-radius: 50%;
             pointer-events: none; z-index: 10;
         }
-        /* 優化手機端捲動體驗 */
-        @media (max-width: 768px) {
-            .control-panel { max-height: none; overflow-y: visible; }
-            body { padding: 10px; }
-        }
-        @media (min-width: 769px) {
-            .control-panel { max-height: 90vh; overflow-y: auto; }
-        }
+        .app-card { background: #1e1e1e; border-radius: 24px; border: 1px solid #333; }
+        /* 隱藏捲軸但保留功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        /* 加大滑桿觸控區域 */
+        input[type=range] { height: 32px; -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track { background: #334155; height: 6px; border-radius: 3px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; margin-top: -7px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
     </style>
 </head>
-<body class="bg-slate-100 p-2 md:p-4">
+<body class="p-3 md:p-6 no-scrollbar">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -120,26 +120,27 @@
             };
 
             return (
-                <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-4 lg:gap-8">
-                    {/* 左側預覽區 - 手機端置中 */}
-                    <div className="w-full lg:w-[350px] flex flex-col items-center shrink-0">
-                        <div className="relative mb-4 w-full max-w-[350px]">
+                <div className="max-w-md mx-auto lg:max-w-6xl flex flex-col lg:flex-row gap-6">
+                    {/* 照片預覽區 */}
+                    <div className="w-full lg:w-[400px] flex flex-col items-center shrink-0">
+                        <div className="relative mb-6 w-full max-w-[350px]">
                             {isCam ? (
-                                <video ref={videoRef} autoPlay className="w-full aspect-[35/45] object-cover rounded-xl shadow-2xl scale-x-[-1]" />
+                                <video ref={videoRef} autoPlay className="w-full aspect-[35/45] object-cover rounded-2xl shadow-2xl scale-x-[-1]" />
                             ) : (
                                 <canvas ref={canvasRef} width={350} height={450} className="w-full" />
                             )}
                             <div className="guide-overlay"></div>
                         </div>
-                        <div className="w-full max-w-[350px] space-y-2">
+                        
+                        <div className="w-full space-y-3">
                             {isCam ? (
-                                <button onClick={snap} className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-lg">按下拍照</button>
+                                <button onClick={snap} className="w-full bg-red-500 hover:bg-red-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">按下拍照</button>
                             ) : (
                                 <React.Fragment>
-                                    <button onClick={download} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-lg shadow-lg">下載 4x6 橫式圖</button>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button onClick={startCam} className="bg-blue-600 text-white py-2 rounded-lg font-bold">啟動相機</button>
-                                        <label className="bg-slate-300 py-2 rounded-lg font-bold text-center cursor-pointer">
+                                    <button onClick={download} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-4 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition">下載 4x6 橫式排版</button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button onClick={startCam} className="bg-blue-600 text-white py-3 rounded-xl font-bold active:scale-95 transition">啟動相機</button>
+                                        <label className="bg-zinc-700 text-zinc-200 py-3 rounded-xl font-bold text-center cursor-pointer active:scale-95 transition">
                                             上傳照片 <input type="file" className="hidden" onChange={e => {
                                                 const r = new FileReader(); r.onload=f=>{const i=new Image(); i.onload=()=>setImage(i); i.src=f.target.result;};
                                                 r.readAsDataURL(e.target.files[0]);
@@ -151,41 +152,41 @@
                         </div>
                     </div>
 
-                    {/* 右側控制面板 - 手機端自動展開 */}
-                    <div className="flex-1 bg-white p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl control-panel space-y-6 md:space-y-8 border border-slate-200">
+                    {/* 控制面板區 */}
+                    <div className="flex-1 app-card p-5 md:p-8 space-y-8">
                         <div>
-                            <p className="text-xs font-black text-slate-400 uppercase mb-3">排版模式</p>
+                            <p className="text-xs font-black text-zinc-500 uppercase mb-4 tracking-widest">排版規格</p>
                             <div className="flex flex-wrap gap-2">
                                 {[['MIXED','混合(4大5小)'],['TWO','全2吋'],['ONE','全1吋']].map(([k,v]) => (
-                                    <button key={k} onClick={()=>setMode(k)} className={`flex-1 min-w-[100px] py-2 md:py-3 rounded-xl font-bold text-sm transition ${mode===k?'bg-slate-800 text-white':'bg-slate-100 text-slate-500'}`}>{v}</button>
+                                    <button key={k} onClick={()=>setMode(k)} className={`flex-1 min-w-[100px] py-3 rounded-xl font-bold text-sm transition ${mode===k?'bg-blue-600 text-white shadow-lg shadow-blue-900/20':'bg-zinc-800 text-zinc-400'}`}>{v}</button>
                                 ))}
                             </div>
                         </div>
 
-                        <div className="space-y-4 border-t pt-4 md:pt-6">
-                            <p className="text-xs font-black text-blue-600 uppercase">人像微調</p>
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-3 text-sm font-bold"><span>縮放</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:e.target.value})} className="flex-1 h-6" /></div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-bold">
-                                    <div className="flex items-center gap-3"><span>左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e=>setP({...p, x:e.target.value})} className="flex-1 h-6" /></div>
-                                    <div className="flex items-center gap-3"><span>上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e=>setP({...p, y:e.target.value})} className="flex-1 h-6" /></div>
+                        <div className="space-y-6">
+                            <p className="text-xs font-black text-blue-500 uppercase tracking-widest">人像微調</p>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>縮放</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:e.target.value})} className="flex-1" /></div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e=>setP({...p, x:e.target.value})} className="flex-1" /></div>
+                                    <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>上下</span><input type="range" min="-200" max="200" value={p.y} onChange={e=>setP({...p, y:e.target.value})} className="flex-1" /></div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="space-y-4 border-t pt-4 md:pt-6">
-                            <p className="text-xs font-black text-indigo-600 uppercase">衣服控制</p>
-                            <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2">
+                        <div className="space-y-6 border-t border-zinc-800 pt-6">
+                            <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">衣服控制</p>
+                            <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
                                 {['m1','m2','m3','m4','m5'].map(n => (
-                                    <img key={n} src={`./suit-${n}.png`} onClick={()=>setSuit({...suit, id:n})} className={`w-14 h-14 md:w-16 md:h-16 border-2 shrink-0 rounded-xl p-1 cursor-pointer ${suit.id===n?'border-indigo-600 bg-indigo-50':'border-slate-100'}`} />
+                                    <img key={n} src={`./suit-${n}.png`} onClick={()=>setSuit({...suit, id:n})} className={`w-16 h-16 border-2 shrink-0 rounded-2xl p-1 cursor-pointer transition ${suit.id===n?'border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/20':'border-zinc-800 bg-zinc-900'}`} />
                                 ))}
-                                <button onClick={()=>setSuit({...suit, id:null})} className="px-3 border-2 border-dashed shrink-0 rounded-xl text-xs font-bold text-slate-400">清除</button>
+                                <button onClick={()=>setSuit({...suit, id:null})} className="px-5 border-2 border-dashed border-zinc-700 shrink-0 rounded-2xl text-xs font-bold text-zinc-500">清除</button>
                             </div>
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-3 text-sm font-bold"><span>大小</span><input type="range" min="0.1" max="1.0" step="0.01" value={suit.s} onChange={e=>setSuit({...suit, s:e.target.value})} className="flex-1 h-6" /></div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-bold">
-                                    <div className="flex items-center gap-3"><span>左右</span><input type="range" min="0" max="350" value={suit.x} onChange={e=>setSuit({...suit, x:e.target.value})} className="flex-1 h-6" /></div>
-                                    <div className="flex items-center gap-3"><span>上下</span><input type="range" min="100" max="500" value={suit.y} onChange={e=>setSuit({...suit, y:e.target.value})} className="flex-1 h-6" /></div>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>大小</span><input type="range" min="0.1" max="1.0" step="0.01" value={suit.s} onChange={e=>setSuit({...suit, s:e.target.value})} className="flex-1" /></div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>左右</span><input type="range" min="0" max="350" value={suit.x} onChange={e=>setSuit({...suit, x:e.target.value})} className="flex-1" /></div>
+                                    <div className="flex items-center gap-4 text-sm font-bold text-zinc-400"><span>上下</span><input type="range" min="100" max="500" value={suit.y} onChange={e=>setSuit({...suit, y:e.target.value})} className="flex-1" /></div>
                                 </div>
                             </div>
                         </div>
