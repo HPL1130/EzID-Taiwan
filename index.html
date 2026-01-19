@@ -3,19 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EzID Taiwan v1.5.1</title>
+<title>EzID Taiwan v1.5.3</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body { background-color: #f8fafc; color: #1e293b; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
-canvas { background: white; border-radius: 12px; max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #cbd5e1; }
+canvas { border-radius: 12px; max-width: 100%; height: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #cbd5e1; }
 .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 55%; height: 55%; border: 2px dashed rgba(239, 68, 68, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
 .app-card { background: #ffffff; border-radius: 20px; border: 1px solid #cbd5e1; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .gray-line { border-top: 1.5px solid #94a3b8; margin: 24px 0; width: 100%; }
 input[type=range] { accent-color: #0f172a; }
+/* 背景色預覽球 */
+.bg-dot { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 0 1px #cbd5e1; }
+.bg-dot.active { box-shadow: 0 0 0 2px #0f172a; }
 </style>
 </head>
 <body class="p-3 md:p-6 no-scrollbar">
@@ -24,35 +27,12 @@ input[type=range] { accent-color: #0f172a; }
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
-// 前端去背函數 (使用 bgremover 方式)
-const removeBackground = async (image) => {
-    // 使用 bgremover-js：https://github.com/gmlewis/bgremover
-    // 這裡直接用 Canvas 操作前端去背
-    return new Promise((resolve) => {
-        const c = document.createElement('canvas');
-        c.width = image.width;
-        c.height = image.height;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(image,0,0);
-        const imgData = ctx.getImageData(0,0,c.width,c.height);
-        const data = imgData.data;
-        for(let i=0;i<data.length;i+=4){
-            const r=data[i],g=data[i+1],b=data[i+2];
-            // 簡單去白底或淺色背景
-            if(r>200 && g>200 && b>200){ data[i+3]=0; }
-        }
-        ctx.putImageData(imgData,0,0);
-        const newImg = new Image();
-        newImg.onload = () => resolve(newImg);
-        newImg.src = c.toDataURL();
-    });
-};
-
 const EzIDApp = () => {
     const [image, setImage] = useState(null);
     const [uploadedBlob, setUploadedBlob] = useState(null);
     const [isCam, setIsCam] = useState(false);
     const [mode, setMode] = useState('MIXED');
+    const [bgColor, setBgColor] = useState('white'); // 背景顏色狀態
     const [p, setP] = useState({ x: 0, y: 0, s: 0.6 });
     const [suit, setSuit] = useState({ id: null, x: 175, y: 340, s: 0.3 });
     const [isProcessing, setIsProcessing] = useState(false);
@@ -67,114 +47,169 @@ const EzIDApp = () => {
         return `${baseUrl}clothes/suit-${id}.png`;
     };
 
+    // 前端像素去背優化版
+    const removeBackground = async (imgObj) => {
+        return new Promise((resolve) => {
+            const c = document.createElement('canvas');
+            c.width = imgObj.width; c.height = imgObj.height;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(imgObj, 0, 0);
+            const imgData = ctx.getImageData(0, 0, c.width, c.height);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i], g = data[i+1], b = data[i+2];
+                // 擴大淺色偵測範圍，增加去背效果
+                if (r > 180 && g > 180 && b > 180) { data[i+3] = 0; }
+            }
+            ctx.putImageData(imgData, 0, 0);
+            const resultImg = new Image();
+            resultImg.onload = () => resolve(resultImg);
+            resultImg.src = c.toDataURL();
+        });
+    };
+
     const draw = useCallback(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        ctx.clearRect(0,0,350,450);
-        ctx.fillStyle="white"; ctx.fillRect(0,0,350,450);
-        if(image){
-            ctx.save(); ctx.translate(175+p.x,225+p.y); ctx.scale(p.s,p.s);
-            ctx.drawImage(image,-image.width/2,-image.height/2); ctx.restore();
+        
+        // 1. 根據選擇的顏色填充背景
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, 350, 450);
+
+        // 2. 繪製去背後的人像
+        if (image) {
+            ctx.save();
+            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2);
+            ctx.restore();
         }
-        if(suit.id){
-            const src=getClothesPath(suit.id);
-            if(suitImg.current.src!==src){ suitImg.current.src=src; suitImg.current.onload=draw; }
-            if(suitImg.current.complete){
-                ctx.save(); ctx.translate(suit.x,suit.y); ctx.scale(suit.s*1.5,suit.s*1.5);
-                ctx.drawImage(suitImg.current,-suitImg.current.width/2,-suitImg.current.height/2); ctx.restore();
+
+        // 3. 繪製西裝
+        if (suit.id) {
+            const src = getClothesPath(suit.id);
+            if (suitImg.current.src !== src) { suitImg.current.src = src; suitImg.current.onload = draw; }
+            if (suitImg.current.complete) {
+                ctx.save();
+                ctx.translate(suit.x, suit.y);
+                ctx.scale(suit.s * 1.5, suit.s * 1.5);
+                ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2);
+                ctx.restore();
             }
         }
-    },[image,p,suit]);
+    }, [image, p, suit, bgColor]);
 
-    useEffect(()=>{ draw(); },[draw]);
+    useEffect(() => { draw(); }, [draw]);
 
-    const removeBG = async () => {
-        if(!uploadedBlob) return alert("請先選取或拍照");
+    const handleRemoveBG = async () => {
+        if (!uploadedBlob) return alert("請先選取或拍照");
         setIsProcessing(true);
         const img = new Image();
-        img.onload = async ()=>{
+        img.onload = async () => {
             const result = await removeBackground(img);
-            setImage(result); setIsProcessing(false);
+            setImage(result);
+            setIsProcessing(false);
         };
-        img.src=URL.createObjectURL(uploadedBlob);
+        img.src = URL.createObjectURL(uploadedBlob);
     };
 
     const snap = () => {
-        const tc=document.createElement('canvas');
-        tc.width=videoRef.current.videoWidth;
-        tc.height=videoRef.current.videoHeight;
-        const tctx=tc.getContext('2d');
-        tctx.translate(tc.width,0); tctx.scale(-1,1);
-        tctx.drawImage(videoRef.current,0,0);
-        tc.toBlob((blob)=>{
+        const tc = document.createElement('canvas');
+        tc.width = videoRef.current.videoWidth; tc.height = videoRef.current.videoHeight;
+        const tctx = tc.getContext('2d');
+        tctx.translate(tc.width, 0); tctx.scale(-1, 1);
+        tctx.drawImage(videoRef.current, 0, 0);
+        tc.toBlob((blob) => {
             setUploadedBlob(blob);
-            const img=new Image();
-            img.onload=()=>{ setImage(img); setIsCam(false); };
-            img.src=URL.createObjectURL(blob);
-        },'image/jpeg',0.85);
+            const img = new Image();
+            img.onload = () => { setImage(img); setIsCam(false); };
+            img.src = URL.createObjectURL(blob);
+        }, 'image/jpeg', 0.85);
     };
 
     const download = () => {
-        const pc=document.createElement('canvas'); const ctx=pc.getContext('2d');
-        pc.width=1800; pc.height=1200; ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
-        if(mode==='MIXED'){
-            for(let i=0;i<4;i++) ctx.drawImage(canvasRef.current,0,0,350,450,80+i*425,80,413,531);
-            for(let i=0;i<5;i++) ctx.drawImage(canvasRef.current,0,0,350,450,80+i*340,650,331,449);
-        } else if(mode==='TWO'){
-            for(let i=0;i<8;i++) ctx.drawImage(canvasRef.current,0,0,350,450,100+(i%4)*410,80+Math.floor(i/4)*540,413,531);
+        const pc = document.createElement('canvas'); const ctx = pc.getContext('2d');
+        pc.width = 1800; pc.height = 1200; ctx.fillStyle = "white"; ctx.fillRect(0, 0, 1800, 1200);
+        // 排版時保留目前的 canvas 畫面（含背景色）
+        if (mode === 'MIXED') {
+            for(let i=0; i<4; i++) ctx.drawImage(canvasRef.current, 0, 0, 350, 450, 80+i*425, 80, 413, 531);
+            for(let i=0; i<5; i++) ctx.drawImage(canvasRef.current, 0, 0, 350, 450, 80+i*340, 650, 331, 449);
+        } else if (mode === 'TWO') {
+            for(let i=0; i<8; i++) ctx.drawImage(canvasRef.current, 0, 0, 350, 450, 100+(i%4)*410, 80+Math.floor(i/4)*540, 413, 531);
         } else {
-            for(let i=0;i<10;i++) ctx.drawImage(canvasRef.current,0,0,350,450,80+(i%5)*340,100+Math.floor(i/5)*460,331,449);
+            for(let i=0; i<10; i++) ctx.drawImage(canvasRef.current, 0, 0, 350, 450, 80+(i%5)*340, 100+Math.floor(i/5)*460, 331, 449);
         }
-        const a=document.createElement('a'); a.download=`ezid_${mode}.png`; a.href=pc.toDataURL(); a.click();
+        const a = document.createElement('a'); a.download = `ezid_${mode}_${bgColor}.png`; a.href = pc.toDataURL(); a.click();
     };
 
     return (
         <div className="max-w-md mx-auto lg:max-w-6xl flex flex-col lg:flex-row gap-6">
             <div className="w-full lg:w-[400px] flex flex-col items-center">
                 <div className="relative mb-6 w-full max-w-[350px]">
-                    {isCam?<video ref={videoRef} autoPlay className="w-full rounded-2xl scale-x-[-1]"/>:<canvas ref={canvasRef} width={350} height={450} className="w-full shadow-lg"/>}
+                    {isCam ? <video ref={videoRef} autoPlay className="w-full rounded-2xl scale-x-[-1]"/> : <canvas ref={canvasRef} width={350} height={450} className="w-full" />}
                     <div className="guide-overlay"></div>
+                    
+                    {/* 背景色切換控制按鈕 */}
+                    {!isCam && image && (
+                        <div className="absolute top-4 right-4 flex flex-col gap-3 bg-white/50 p-2 rounded-full backdrop-blur-sm border border-white/50">
+                            <div onClick={() => setBgColor('white')} className={`bg-dot bg-white ${bgColor === 'white' ? 'active' : ''}`}></div>
+                            <div onClick={() => setBgColor('#007bff')} className={`bg-dot bg-blue-600 ${bgColor === '#007bff' ? 'active' : ''}`}></div>
+                            <div onClick={() => setBgColor('#ff0000')} className={`bg-dot bg-red-600 ${bgColor === '#ff0000' ? 'active' : ''}`}></div>
+                        </div>
+                    )}
+
                     {isProcessing && (
                         <div className="absolute inset-0 bg-white/80 rounded-2xl flex flex-col items-center justify-center z-50">
                             <div className="w-10 h-10 border-4 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
-                            <p className="mt-4 font-bold">AI 去背中...</p>
+                            <p className="mt-4 font-bold text-slate-900">去背處理中...</p>
                         </div>
                     )}
                 </div>
+                
                 <div className="w-full space-y-3 px-2">
-                    {isCam?<button onClick={snap} className="w-full bg-red-600 text-white py-4 rounded-xl font-bold">📸 拍照</button>:<>
-                        <button onClick={download} className="w-full bg-blue-700 text-white py-4 rounded-xl font-black text-lg">💾 下載排版</button>
-                        <button onClick={removeBG} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition">✨ AI 自動去背</button>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button onClick={()=>{
-                                setIsCam(true);
-                                navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}}).then(s=>videoRef.current.srcObject=s);
-                            }} className="bg-slate-700 text-white py-3 rounded-xl font-bold">📷 相機</button>
-                            <label className="bg-white text-slate-900 border-2 border-slate-900 py-3 rounded-xl font-bold text-center cursor-pointer shadow-sm">
-                                📁 相簿 <input type="file" className="hidden" onChange={e=>{
-                                    const file=e.target.files[0]; if(!file) return;
-                                    setUploadedBlob(file);
-                                    const r=new FileReader(); r.onload=f=>{ const i=new Image(); i.onload=()=>setImage(i); i.src=f.target.result; }; r.readAsDataURL(file);
-                                }}/>
-                            </label>
-                        </div>
-                    </>}
+                    {isCam ? <button onClick={snap} className="w-full bg-red-600 text-white py-4 rounded-xl font-bold">📸 拍照</button> : (
+                        <>
+                            <button onClick={download} className="w-full bg-blue-700 text-white py-4 rounded-xl font-black text-lg">💾 下載排版</button>
+                            <button onClick={handleRemoveBG} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold">✨ 一鍵去背</button>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button onClick={() => {
+                                    setIsCam(true);
+                                    navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}}).then(s=>videoRef.current.srcObject=s);
+                                }} className="bg-slate-700 text-white py-3 rounded-xl font-bold">📷 相機</button>
+                                <label className="bg-white text-slate-900 border-2 border-slate-900 py-3 rounded-xl font-bold text-center cursor-pointer">
+                                    📁 相簿 <input type="file" className="hidden" onChange={e => {
+                                        const file = e.target.files[0]; if(!file) return;
+                                        setUploadedBlob(file);
+                                        const r = new FileReader(); r.onload = f => { const i = new Image(); i.onload = () => setImage(i); i.src = f.target.result; }; r.readAsDataURL(file);
+                                    }}/>
+                                </label>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
 
             <div className="flex-1 app-card p-6 md:p-8">
+                <p className="text-xs font-bold text-slate-400 mb-4 tracking-widest uppercase">設定面板 (v1.5.3)</p>
                 <section>
-                    <p className="text-xs font-bold text-slate-400 mb-4 tracking-widest uppercase">1. 排版模式</p>
                     <div className="flex gap-2">
                         {[['MIXED','混合'],['TWO','全2吋'],['ONE','全1吋']].map(([k,v])=>(
-                            <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-bold transition ${mode===k?'bg-slate-900 text-white':'bg-slate-100 text-slate-400'}`}>{v}</button>
+                            <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-bold transition ${mode===k?'bg-slate-900 text-white shadow-md':'bg-slate-100 text-slate-400'}`}>{v}</button>
                         ))}
                     </div>
                 </section>
                 <div className="gray-line"></div>
                 <section className="space-y-6 text-xs font-bold text-slate-500">
-                    <p className="text-xs font-bold text-slate-400 tracking-widest uppercase">2. 調整照片</p>
+                    <p className="text-xs font-bold text-slate-400 tracking-widest uppercase">背景顏色</p>
+                    <div className="flex gap-4 items-center">
+                        <button onClick={() => setBgColor('white')} className={`flex-1 py-2 rounded-lg border ${bgColor==='white'?'bg-white border-slate-900':'bg-slate-50 border-transparent'}`}>白色</button>
+                        <button onClick={() => setBgColor('#007bff')} className={`flex-1 py-2 rounded-lg border text-white ${bgColor==='#007bff'?'bg-blue-600 border-slate-900':'bg-blue-400 border-transparent'}`}>藍色</button>
+                        <button onClick={() => setBgColor('#ff0000')} className={`flex-1 py-2 rounded-lg border text-white ${bgColor==='#ff0000'?'bg-red-600 border-slate-900':'bg-red-400 border-transparent'}`}>紅色</button>
+                    </div>
+                </section>
+                <div className="gray-line"></div>
+                <section className="space-y-6 text-xs font-bold text-slate-500">
                     <div className="flex items-center gap-4"><span>大小</span><input type="range" min="0.1" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p,s:parseFloat(e.target.value)})} className="flex-1"/></div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="flex items-center gap-2"><span>左右</span><input type="range" min="-200" max="200" value={p.x} onChange={e=>setP({...p,x:parseInt(e.target.value)})} className="flex-1"/></div>
@@ -183,7 +218,7 @@ const EzIDApp = () => {
                 </section>
                 <div className="gray-line"></div>
                 <section>
-                    <p className="text-xs font-bold text-slate-400 mb-4 tracking-widest uppercase">3. 西裝更換</p>
+                    <p className="text-xs font-bold text-slate-400 mb-4 tracking-widest uppercase">更換衣服</p>
                     <div className="flex gap-4 overflow-x-auto py-4 no-scrollbar">
                         {['m1','m2','m3','m4','m5'].map(n=>(
                             <div key={n} onClick={()=>setSuit({...suit,id:n})} 
