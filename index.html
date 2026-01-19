@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EzID Taiwan v1.6.8 - 全平台 AI 證件照</title>
+<title>EzID Taiwan v1.6.9 - 專業建議版</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,33 +12,30 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0/dist/body-pix.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js"></script>
 <style>
-    body { background-color: #f8fafc; color: #1e293b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
-    canvas { border-radius: 24px; max-width: 100%; height: auto; background: white; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); border: 1px solid #e2e8f0; touch-action: none; cursor: move; }
+    body { background-color: #f8fafc; color: #1e293b; font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+    canvas { border-radius: 24px; max-width: 100%; height: auto; background: white; box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; touch-action: none; cursor: move; }
     .guide-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 55%; height: 55%; border: 2px dashed rgba(239, 68, 68, 0.3); border-radius: 50%; pointer-events: none; }
-    .bg-dot { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 3px solid white; box-shadow: 0 0 0 1px #cbd5e1; transition: all 0.2s; }
-    .bg-dot.active { transform: scale(1.2); box-shadow: 0 0 0 2px #0f172a; }
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .control-panel { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+    .bg-dot { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 3px solid white; box-shadow: 0 0 0 1px #cbd5e1; }
+    .bg-dot.active { transform: scale(1.15); box-shadow: 0 0 0 2px #0f172a; }
+    .pro-tip { background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left: 4px solid #3b82f6; }
 </style>
 </head>
-<body class="p-3 md:p-8 no-scrollbar">
+<body class="p-3 md:p-8">
 <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
 const EzIDApp = () => {
-    // 狀態設定
     const [image, setImage] = useState(null);
     const [isCam, setIsCam] = useState(false);
     const [mode, setMode] = useState('MIXED');
     const [bgColor, setBgColor] = useState('white');
-    const [p, setP] = useState({ x: 0, y: 0, s: 0.7 }); // 人像
-    const [suit, setSuit] = useState({ id: null, x: 175, y: 340, s: 0.35 }); // 衣服
+    const [p, setP] = useState({ x: 0, y: 0, s: 0.7 });
+    const [suit, setSuit] = useState({ id: null, x: 175, y: 340, s: 0.35 });
     const [autoAlign, setAutoAlign] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
     
-    // Refs
     const bodyPixModel = useRef(null);
     const faceModel = useRef(null);
     const canvasRef = useRef(null);
@@ -53,7 +50,6 @@ const EzIDApp = () => {
         return `${baseUrl}clothes/suit-${id}.png`;
     };
 
-    // 拖曳處理邏輯 (相容滑鼠與觸控)
     const handleDown = (e) => {
         if (!suit.id) return;
         isDragging.current = true;
@@ -64,64 +60,43 @@ const EzIDApp = () => {
 
     const handleMove = (e) => {
         if (!isDragging.current || !suit.id) return;
-        // 阻止螢幕捲動防止干擾
         if (e.cancelable) e.preventDefault();
-        
         const x = e.touches ? e.touches[0].clientX : e.clientX;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
-        
         const dx = x - lastPos.current.x;
         const dy = y - lastPos.current.y;
-
         const rect = canvasRef.current.getBoundingClientRect();
-        const factorX = 350 / rect.width;
-        const factorY = 450 / rect.height;
-
-        setSuit(prev => ({
-            ...prev,
-            x: prev.x + dx * factorX,
-            y: prev.y + dy * factorY
-        }));
-
+        setSuit(prev => ({ ...prev, x: prev.x + dx * (350/rect.width), y: prev.y + dy * (450/rect.height) }));
         lastPos.current = { x, y };
     };
 
-    const handleUp = () => { isDragging.current = false; };
-
-    // 初始化模型
     useEffect(() => {
         const init = async () => {
             setIsProcessing(true);
-            try {
-                bodyPixModel.current = await bodyPix.load({ architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.75 });
-                faceModel.current = await blazeface.load();
-            } catch (e) { console.error("模型載入失敗", e); }
+            bodyPixModel.current = await bodyPix.load({ architecture: 'MobileNetV1', outputStride: 16, multiplier: 0.75 });
+            faceModel.current = await blazeface.load();
             setIsProcessing(false);
         };
         init();
     }, []);
 
-    // 自動對齊核心
     const performAutoAlign = (predictions, vw, vh) => {
         if (!predictions.length || isDragging.current) return;
         const face = predictions[0];
         const fW = face.bottomRight[0] - face.topLeft[0];
-        const fCX = face.topLeft[0] + fW / 2;
-        const fCY = face.topLeft[1] + (face.bottomRight[1] - face.topLeft[1]) / 2;
         const scale = (350 * 0.38) / fW;
         setP({
-            x: (vw / 2 - fCX) * scale,
-            y: (vh * 0.42 - fCY) * scale,
+            x: (vw/2 - (face.topLeft[0] + fW/2)) * scale,
+            y: (vh*0.42 - (face.topLeft[1] + (face.bottomRight[1]-face.topLeft[1])/2)) * scale,
             s: Math.min(Math.max(scale, 0.4), 1.2)
         });
     };
 
-    // 每一幀的去背與運算
     const processFrame = async (source, isVideo) => {
         if (!bodyPixModel.current) return null;
         if (autoAlign && faceModel.current) {
             const pred = await faceModel.current.estimateFaces(source, false);
-            if (pred.length) performAutoAlign(pred, isVideo ? source.videoWidth : source.width, isVideo ? source.videoHeight : source.height);
+            if (pred.length) performAutoAlign(pred, isVideo?source.videoWidth:source.width, isVideo?source.videoHeight:source.height);
         }
         const seg = await bodyPixModel.current.segmentPerson(source, { internalResolution: 'medium', segmentationThreshold: 0.7 });
         const tc = document.createElement('canvas');
@@ -130,13 +105,11 @@ const EzIDApp = () => {
         const ctx = tc.getContext('2d');
         if (isVideo) { ctx.save(); ctx.translate(tc.width, 0); ctx.scale(-1, 1); ctx.drawImage(source, 0, 0); ctx.restore(); }
         else ctx.drawImage(source, 0, 0);
-        
         const imgData = ctx.getImageData(0, 0, tc.width, tc.height);
         for (let i = 0; i < imgData.data.length; i += 4) {
             const px = i / 4; const x = px % tc.width; const y = Math.floor(px / tc.width);
             const mX = isVideo ? (tc.width - 1 - x) : x;
             if (!seg.data[y * tc.width + mX]) imgData.data[i + 3] = 0;
-            else if ([1, -1, tc.width, -tc.width].some(n => !seg.data[y * tc.width + mX + n])) imgData.data[i+3] = 180;
         }
         ctx.putImageData(imgData, 0, 0);
         return tc;
@@ -186,29 +159,21 @@ const EzIDApp = () => {
     };
 
     return (
-        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8">
-            {/* 預覽與畫布區 */}
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 pb-20">
             <div className="w-full lg:w-[450px] flex flex-col items-center">
                 <div 
                     className="relative w-full aspect-[35/45] bg-white rounded-[40px] overflow-hidden shadow-2xl border-[12px] border-white select-none"
-                    onTouchStart={handleDown}
-                    onTouchMove={handleMove}
-                    onTouchEnd={handleUp}
-                    onMouseDown={handleDown}
-                    onMouseMove={handleMove}
-                    onMouseUp={handleUp}
-                    onMouseLeave={handleUp}
+                    onTouchStart={handleDown} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}
+                    onMouseDown={handleDown} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false}
                 >
                     {isCam && <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover opacity-0" />}
                     <canvas ref={canvasRef} width={350} height={450} className="w-full h-full" />
                     <div className="guide-overlay"></div>
-                    
-                    <div className="absolute top-5 right-5 flex flex-col gap-4 bg-white/50 p-2 rounded-full backdrop-blur-md">
+                    <div className="absolute top-5 right-5 flex flex-col gap-4 bg-white/40 p-2 rounded-full backdrop-blur-md">
                         {['white','#007bff','#ff0000'].map(c => (
                             <div key={c} onClick={()=>setBgColor(c)} className={`bg-dot ${bgColor===c?'active':''}`} style={{backgroundColor:c}}></div>
                         ))}
                     </div>
-                    {isProcessing && <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center text-white font-black">AI LOADING...</div>}
                 </div>
 
                 <div className="w-full mt-6 grid grid-cols-2 gap-4 px-2">
@@ -218,7 +183,7 @@ const EzIDApp = () => {
                             tc.getContext('2d').drawImage(canvasRef.current, 0, 0);
                             const img = new Image(); img.onload = () => { setImage(img); setIsCam(false); };
                             img.src = tc.toDataURL();
-                        }} className="col-span-2 bg-red-500 text-white py-4 rounded-3xl font-black shadow-xl active:scale-95 transition">📸 拍攝存檔</button>
+                        }} className="col-span-2 bg-red-500 text-white py-4 rounded-3xl font-black shadow-lg active:scale-95 transition">📸 拍攝存檔</button>
                     ) : (
                         <>
                             <button onClick={() => { setIsCam(true); navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }).then(s => videoRef.current.srcObject = s); }} className="bg-slate-900 text-white py-4 rounded-3xl font-black active:scale-95 transition">📷 開啟相機</button>
@@ -236,58 +201,62 @@ const EzIDApp = () => {
                 </div>
             </div>
 
-            {/* 控制面板區 */}
             <div className="flex-1 space-y-6">
+                <section className="pro-tip p-5 rounded-3xl space-y-2">
+                    <div className="flex items-center gap-2 text-blue-700 font-black text-sm">
+                        <span className="text-xl">💡</span> 專業去背建議
+                    </div>
+                    <p className="text-blue-600/80 text-xs leading-relaxed font-medium">
+                        雖然系統內建 AI 去背，但若髮絲細節要求較高，強烈建議先使用 <span className="underline font-bold">iOS 內建長按去背</span>、<span className="underline font-bold">Remove.bg</span> 或 <span className="underline font-bold">Pixelcut</span> 處理後再上傳透明 PNG 檔案，效果最佳！
+                    </p>
+                </section>
+
                 <div className="bg-white p-6 md:p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
                     <div className="flex justify-between items-center">
-                        <h1 className="text-2xl font-black text-slate-800">EzID <span className="text-blue-600">Pro</span></h1>
-                        <label className="flex items-center gap-3 cursor-pointer bg-slate-100 px-4 py-2 rounded-full">
-                            <span className="text-xs font-bold text-slate-500 uppercase">AI 自動對齊</span>
-                            <input type="checkbox" checked={autoAlign} onChange={e=>setAutoAlign(e.target.checked)} className="accent-blue-600 w-5 h-5" />
+                        <h1 className="text-2xl font-black text-slate-800 tracking-tighter">EzID <span className="text-blue-600 italic">PRO</span></h1>
+                        <label className="flex items-center gap-3 cursor-pointer bg-green-50 px-4 py-2 rounded-full border border-green-100">
+                            <span className="text-[10px] font-black text-green-600">AI 自動對齊</span>
+                            <input type="checkbox" checked={autoAlign} onChange={e=>setAutoAlign(e.target.checked)} className="accent-green-500 w-5 h-5" />
                         </label>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* 人像調整 */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                         <section className={`space-y-4 ${autoAlign ? 'opacity-30 pointer-events-none' : ''}`}>
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">1. 人像手動微調</h3>
-                            <div className="space-y-4">
+                            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">人像手動微調</h3>
+                            <div className="space-y-5">
                                 <div className="flex items-center gap-4 text-xs font-bold"><span>縮放</span><input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p,s:parseFloat(e.target.value)})} className="flex-1 accent-slate-900"/></div>
-                                <div className="flex items-center gap-4 text-xs font-bold"><span>水平</span><input type="range" min="-150" max="150" value={p.x} onChange={e=>setP({...p,x:parseInt(e.target.value)})} className="flex-1 accent-slate-900"/></div>
-                                <div className="flex items-center gap-4 text-xs font-bold"><span>垂直</span><input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p,y:parseInt(e.target.value)})} className="flex-1 accent-slate-900"/></div>
+                                <div className="flex items-center gap-4 text-xs font-bold"><span>左右</span><input type="range" min="-150" max="150" value={p.x} onChange={e=>setP({...p,x:parseInt(e.target.value)})} className="flex-1 accent-slate-900"/></div>
+                                <div className="flex items-center gap-4 text-xs font-bold"><span>上下</span><input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p,y:parseInt(e.target.value)})} className="flex-1 accent-slate-900"/></div>
                             </div>
                         </section>
 
-                        {/* 衣服調整 */}
                         <section className="space-y-4">
-                            <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">2. 衣服大小與樣式</h3>
-                            <div className="space-y-4">
+                            <h3 className="text-[11px] font-black text-blue-500 uppercase tracking-widest">西裝樣式與縮放</h3>
+                            <div className="space-y-5">
                                 <div className="flex items-center gap-4 text-xs font-bold text-blue-600"><span>大小</span><input type="range" min="0.1" max="0.8" step="0.01" value={suit.s} onChange={e=>setSuit({...suit,s:parseFloat(e.target.value)})} className="flex-1 accent-blue-600"/></div>
-                                <p className="text-[10px] text-slate-400">※ 提示：請直接在左側照片上按住拖曳來移動衣服位置</p>
                                 <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
                                     {['m1','m2','m3','m4','m5'].map(n=>(
-                                        <div key={n} onClick={()=>setSuit({...suit,id:n})} className={`p-1 rounded-2xl border-2 shrink-0 cursor-pointer transition-all ${suit.id===n?'border-blue-600 bg-blue-50 scale-105':'border-transparent opacity-40 hover:opacity-100'}`}>
+                                        <div key={n} onClick={()=>setSuit({...suit,id:n})} className={`p-1 rounded-2xl border-2 shrink-0 cursor-pointer transition-all ${suit.id===n?'border-blue-600 bg-blue-50 scale-105 shadow-md':'border-slate-100 opacity-40 hover:opacity-100'}`}>
                                             <img src={getClothesPath(n)} className="w-16 h-16 object-contain" />
                                         </div>
                                     ))}
-                                    <button onClick={()=>setSuit({...suit,id:null})} className="px-5 border-2 border-dashed rounded-2xl text-slate-300 hover:text-red-400 hover:border-red-400 transition">清空</button>
+                                    <button onClick={()=>setSuit({...suit,id:null})} className="px-5 border-2 border-dashed rounded-2xl text-slate-300 font-bold text-[10px] hover:text-red-400 transition shrink-0">清除</button>
                                 </div>
+                                <p className="text-[10px] text-slate-400 font-medium">※ 手動移動：直接在照片上「按住拖曳」即可</p>
                             </div>
                         </section>
                     </div>
                     
-                    <hr className="border-slate-100" />
-
-                    <div className="flex flex-col md:flex-row gap-6 items-center">
+                    <div className="pt-6 border-t border-slate-50 flex flex-col md:flex-row gap-6 items-center">
                         <div className="flex-1 w-full space-y-4">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">3. 列印規格</h3>
+                            <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">列印排版選擇</h3>
                             <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
-                                {[['MIXED','1+2吋混合'],['TWO','純 2 吋'],['ONE','純 1 吋']].map(([k,v])=>(
-                                    <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-bold text-xs transition ${mode===k?'bg-white text-slate-900 shadow-sm':'text-slate-500'}`}>{v}</button>
+                                {[['MIXED','1+2 吋混合'],['TWO','純 2 吋'],['ONE','純 1 吋']].map(([k,v])=>(
+                                    <button key={k} onClick={()=>setMode(k)} className={`flex-1 py-3 rounded-xl font-black text-xs transition ${mode===k?'bg-white text-slate-900 shadow-sm':'text-slate-500'}`}>{v}</button>
                                 ))}
                             </div>
                         </div>
-                        <button onClick={download} className="w-full md:w-auto px-12 bg-slate-900 text-white py-6 rounded-[32px] font-black text-lg shadow-2xl hover:bg-blue-600 transition active:scale-95">💾 儲存 4x6 吋檔案</button>
+                        <button onClick={download} className="w-full md:w-auto px-12 bg-slate-900 text-white py-6 rounded-[32px] font-black text-lg shadow-2xl hover:bg-blue-600 transition active:scale-95">💾 下載排版照片</button>
                     </div>
                 </div>
             </div>
