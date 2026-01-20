@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.2.2 - 裁切線強化鎖定版</title>
+    <title>EzID Taiwan v2.2.4 - 拼版裁切線回歸</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,19 +12,9 @@
         body { background-color: #f1f5f9; touch-action: pan-y; scroll-behavior: smooth; overflow-x: hidden; }
         .sticky-canvas { position: sticky; top: 10px; z-index: 50; transition: transform 0.4s ease; transform-origin: top center; }
         @media (max-width: 768px) { .is-scrolled .sticky-canvas { transform: scale(0.6) translateY(-10px); } }
-        
-        /* 畫布容器 */
         .canvas-container { position: relative; touch-action: none !important; background: #e2e8f0; border-radius: 36px; overflow: hidden; border: 8px solid #fff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); cursor: move; }
         canvas { width: 100%; height: auto; display: block; pointer-events: none; }
-        
-        /* 裁切輔助線：改用 SVG 確保最上層與解析度 */
-        .id-guide-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            z-index: 100; /* 確保在相機和衣服之上 */
-        }
-
+        .id-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 62%; height: 62%; border: 2px dashed rgba(239, 68, 68, 0.4); border-radius: 50%; pointer-events: none; z-index: 100; }
         .slot-scroll { display: flex; gap: 12px; overflow-x: auto; padding: 15px 4px; scrollbar-width: none; align-items: flex-start; }
         .preview-slot { width: 75px; height: 95px; border-radius: 12px; border: 2px dashed #cbd5e1; position: relative; background: #f8fafc; flex-shrink: 0; }
         .slot-thumb { width: 75px; height: 95px; border-radius: 12px; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: hidden; flex-shrink: 0; position: relative; }
@@ -121,8 +111,8 @@
                 <div className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 ${scrolled ? 'is-scrolled' : ''}`}>
                     <div className="w-full lg:w-[400px] sticky-canvas">
                         <div className="flex justify-between mb-2 px-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Ver 2.2.2 Stable</span>
-                            <span className="text-[10px] font-bold text-red-500">已強化裁切輔助線圖層</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Ver 2.2.4 Stable</span>
+                            <span className="text-[10px] font-bold text-blue-500">已啟用輸出裁切線</span>
                         </div>
                         <div 
                             ref={containerRef} 
@@ -132,11 +122,7 @@
                         >
                             {isCam && <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />}
                             <canvas ref={canvasRef} width={350} height={450} />
-                            
-                            {/* 強化版裁切輔助線 SVG */}
-                            <svg className="id-guide-overlay" viewBox="0 0 350 450">
-                                <circle cx="175" cy="205" r="110" fill="none" stroke="rgba(239, 68, 68, 0.6)" strokeWidth="2" strokeDasharray="8 4" />
-                            </svg>
+                            <div className="id-guide"></div>
                         </div>
                     </div>
 
@@ -187,9 +173,9 @@
                                     })}
                                 </div>
                                 <div className="space-y-4 pt-4">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400"><span>人像縮放</span><span>{(p.s*100).toFixed(0)}%</span></div>
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像縮放</span><span>{(p.s*100).toFixed(0)}%</span></div>
                                     <input type="range" min="0.2" max="2.0" step="0.01" value={p.s} onChange={e => setP({ ...p, s: parseFloat(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400"><span>人像高低</span><span>{p.y} px</span></div>
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像高低</span><span>{p.y} px</span></div>
                                     <input type="range" min="-200" max="200" value={p.y} onChange={e => setP({ ...p, y: parseInt(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
                                 </div>
                                 <button onClick={() => setSlots([...slots, canvasRef.current.toDataURL()])} className="w-full bg-blue-600 text-white py-4 rounded-[24px] font-black shadow-xl">📥 存入排版槽</button>
@@ -206,8 +192,19 @@
                                 const ctx = pc.getContext('2d'); ctx.fillStyle = "white"; ctx.fillRect(0,0,1800,1200);
                                 const drawRow = async () => {
                                     const imgs = await Promise.all(slots.map(src => new Promise(res => {const img = new Image(); img.onload=()=>res(img); img.src=src;})));
-                                    for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80 + i*428, 80, 413, 531);
-                                    for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80 + i*341, 650, 331, 449);
+                                    const w=413, h=531, w2=331, h2=449; // 尺寸
+                                    ctx.strokeStyle = "#dddddd"; ctx.lineWidth = 1; // 裁切細線顏色
+
+                                    for(let i=0; i<4; i++) {
+                                        const x = 80 + i*428, y = 80;
+                                        ctx.drawImage(imgs[i%imgs.length], x, y, w, h);
+                                        ctx.strokeRect(x, y, w, h); // 畫出裁切線
+                                    }
+                                    for(let i=0; i<5; i++) {
+                                        const x = 80 + i*341, y = 650;
+                                        ctx.drawImage(imgs[i%imgs.length], x, y, w2, h2);
+                                        ctx.strokeRect(x, y, w2, h2); // 畫出裁切線
+                                    }
                                     const a = document.createElement('a'); a.download = `EzID_${dateStr}_${timeStr}.png`; a.href = pc.toDataURL(); a.click();
                                 };
                                 drawRow();
