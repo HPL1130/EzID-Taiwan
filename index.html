@@ -3,24 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.1.9 - 穩定全功能版</title>
+    <title>EzID Taiwan v2.2.0 - 捲動修復穩定版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #f1f5f9; touch-action: none; scroll-behavior: smooth; }
+        /* 移除 body 的 none，改為 pan-y 允許垂直捲動 */
+        body { background-color: #f1f5f9; touch-action: pan-y; scroll-behavior: smooth; overflow-x: hidden; }
+        
         .sticky-canvas { position: sticky; top: 10px; z-index: 50; transition: transform 0.4s ease; transform-origin: top center; }
-        @media (max-width: 768px) { .is-scrolled .sticky-canvas { transform: scale(0.65) translateY(-10px); } }
+        @media (max-width: 768px) { .is-scrolled .sticky-canvas { transform: scale(0.6) translateY(-10px); } }
         
-        /* 畫布容器 */
-        .canvas-container { position: relative; touch-action: none !important; background: #e2e8f0; border-radius: 36px; overflow: hidden; border: 8px solid #fff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); cursor: move; }
+        /* 只有畫布區域鎖死觸控，避免拖曳衣服時網頁跳動 */
+        .canvas-container { 
+            position: relative; 
+            touch-action: none !important; 
+            background: #e2e8f0; 
+            border-radius: 36px; 
+            overflow: hidden; 
+            border: 8px solid #fff; 
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); 
+            cursor: move; 
+        }
         canvas { width: 100%; height: auto; display: block; pointer-events: none; }
-        
-        /* 裁切輔助線 - 已加回 */
         .id-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -55%); width: 62%; height: 62%; border: 2px dashed rgba(239, 68, 68, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         
-        /* Slot 樣式 */
         .slot-scroll { display: flex; gap: 12px; overflow-x: auto; padding: 15px 4px; scrollbar-width: none; align-items: flex-start; }
         .preview-slot { width: 75px; height: 95px; border-radius: 12px; border: 2px dashed #cbd5e1; position: relative; background: #f8fafc; flex-shrink: 0; }
         .slot-thumb { width: 75px; height: 95px; border-radius: 12px; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: hidden; flex-shrink: 0; position: relative; }
@@ -52,14 +60,19 @@
             const suitImg = useRef(new Image());
             const interaction = useRef({ dragging: false, lastX: 0, lastY: 0, lastDist: 0 });
 
-            // 監聽滾動以觸發置頂效果
             useEffect(() => {
-                const handleScroll = () => setScrolled(window.scrollY > 80);
+                const handleScroll = () => {
+                    // 只有在手機寬度下觸發置頂
+                    if (window.innerWidth < 1024) {
+                        setScrolled(window.scrollY > 60);
+                    } else {
+                        setScrolled(false);
+                    }
+                };
                 window.addEventListener('scroll', handleScroll);
                 return () => window.removeEventListener('scroll', handleScroll);
             }, []);
 
-            // 繪製主邏輯
             const draw = useCallback(() => {
                 const ctx = canvasRef.current?.getContext('2d'); if (!ctx) return;
                 ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 350, 450);
@@ -74,10 +87,9 @@
                         ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2); ctx.restore();
                     }
                 }
-                // 每當畫面更新，延遲 100ms 更新 Live 縮圖以維持效能
                 const timeout = setTimeout(() => {
                     if(canvasRef.current) setLivePreview(canvasRef.current.toDataURL('image/jpeg', 0.5));
-                }, 100);
+                }, 150);
                 return () => clearTimeout(timeout);
             }, [image, p, suit, bgColor]);
 
@@ -86,7 +98,6 @@
                 return () => cancelAnimationFrame(raf);
             }, [draw]);
 
-            // --- 核心交互處理 (相容滑鼠與觸控) ---
             const handleZoom = (factor) => {
                 if (!suit.id) return;
                 setSuit(v => ({ ...v, s: Math.min(Math.max(v.s * factor, 0.05), 2.0) }));
@@ -98,7 +109,7 @@
                 setSuit(v => ({ ...v, x: v.x + dx * (350/rect.width), y: v.y + dy * (450/rect.height) }));
             };
 
-            // 電腦版滑鼠事件
+            // 電腦滑鼠
             const onMouseDown = (e) => { interaction.current.dragging = true; interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY; };
             const onMouseMove = (e) => {
                 if (!interaction.current.dragging) return;
@@ -106,7 +117,7 @@
                 interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY;
             };
 
-            // 手機版觸控事件 (原生監聽)
+            // 手機觸控修復：僅在畫布內攔截捲動
             useEffect(() => {
                 const el = containerRef.current; if (!el) return;
                 const onTS = (e) => {
@@ -118,6 +129,8 @@
                     }
                 };
                 const onTM = (e) => {
+                    if (!suit.id) return; 
+                    // 重要：如果是雙指或正在拖曳衣服，阻止網頁捲動
                     if (e.cancelable) e.preventDefault();
                     if (e.touches.length === 2) {
                         const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
@@ -136,11 +149,10 @@
 
             return (
                 <div className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 ${scrolled ? 'is-scrolled' : ''}`}>
-                    {/* 左側：畫布區（含版次與輔助線） */}
                     <div className="w-full lg:w-[400px] sticky-canvas">
                         <div className="flex justify-between mb-2 px-2">
-                            <span className="text-[10px] font-black text-slate-400">VER 2.1.9 STABLE</span>
-                            <span className="text-[10px] font-bold text-blue-500">{suit.id ? '📍 支援滑鼠/觸控縮放' : '請上傳照片'}</span>
+                            <span className="text-[10px] font-black text-slate-400">VER 2.2.0穩定版</span>
+                            <span className="text-[10px] font-bold text-blue-500">建議往下捲動後調整</span>
                         </div>
                         <div 
                             ref={containerRef} 
@@ -150,19 +162,15 @@
                         >
                             {isCam && <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />}
                             <canvas ref={canvasRef} width={350} height={450} />
-                            <div className="id-guide"></div> {/* 裁切輔助線加回 */}
+                            <div className="id-guide"></div>
                         </div>
                     </div>
 
-                    {/* 右側：操作區 */}
                     <div className="flex-1 space-y-6">
-                        <div className="bg-white p-6 rounded-[32px] shadow-sm border">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-3">排版管理 (◀✕▶ 調整順序)</h3>
+                        <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-3">排版管理 (◀✕▶)</h3>
                             <div className="slot-scroll">
-                                <div className="preview-slot">
-                                    <span className="live-label">LIVE</span>
-                                    {livePreview && <img src={livePreview} className="w-full h-full object-cover opacity-50" />}
-                                </div>
+                                <div className="preview-slot"><span className="live-label">LIVE</span>{livePreview && <img src={livePreview} className="w-full h-full object-cover opacity-50" />}</div>
                                 {slots.map((s, i) => (
                                     <div key={i} className="slot-thumb group">
                                         <img src={s} className="w-full h-full object-cover" />
@@ -185,8 +193,8 @@
                                         const s = new Image(); s.onload = () => setImage(s); s.src = c.toDataURL();
                                         setIsCam(false); videoRef.current.srcObject.getTracks().forEach(t => t.stop());
                                     } else { setIsCam(true); const m = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }); videoRef.current.srcObject = m; }
-                                }} className="bg-slate-900 text-white py-3 rounded-2xl font-bold active:scale-95 transition-all">📸 相機</button>
-                                <label className="bg-white border-2 border-slate-900 py-3 rounded-2xl font-bold text-center cursor-pointer active:scale-95 transition-all">📁 上傳<input type="file" className="hidden" onChange={e => { const f = e.target.files[0]; if (f) { const t = new Image(); t.onload = () => setImage(t); t.src = URL.createObjectURL(f); } }} /></label>
+                                }} className="bg-slate-900 text-white py-3 rounded-2xl font-bold">📸 相機</button>
+                                <label className="bg-white border-2 border-slate-900 py-3 rounded-2xl font-bold text-center cursor-pointer">📁 上傳<input type="file" className="hidden" onChange={e => { const f = e.target.files[0]; if (f) { const t = new Image(); t.onload = () => setImage(t); t.src = URL.createObjectURL(f); } }} /></label>
                             </div>
 
                             <div className="space-y-6 pt-6 border-t">
@@ -198,7 +206,7 @@
                                     {['m1','m2','m3','m4','m5'].map(n => {
                                         const id = suit.gender === 'male' ? n : n.replace('m', 'f');
                                         return (
-                                            <div key={id} onClick={() => setSuit({ ...suit, id })} className={`p-1 rounded-lg border-2 cursor-pointer transition-all ${suit.id === id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-slate-50'}`}>
+                                            <div key={id} onClick={() => setSuit({ ...suit, id })} className={`p-1 rounded-lg border-2 cursor-pointer transition-all ${suit.id === id ? 'border-blue-500 bg-blue-50' : 'border-slate-50'}`}>
                                                 <img src={`clothes/${suit.gender}/${id}.png`} className="w-full h-8 object-contain" />
                                             </div>
                                         );
@@ -210,7 +218,7 @@
                                     <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像高低</span><span>{p.y} px</span></div>
                                     <input type="range" min="-200" max="200" value={p.y} onChange={e => setP({ ...p, y: parseInt(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
                                 </div>
-                                <button onClick={() => setSlots([...slots, canvasRef.current.toDataURL()])} className="w-full bg-blue-600 text-white py-4 rounded-[24px] font-black shadow-xl active:scale-95 transition-all">📥 存入排版槽</button>
+                                <button onClick={() => setSlots([...slots, canvasRef.current.toDataURL()])} className="w-full bg-blue-600 text-white py-4 rounded-[24px] font-black shadow-xl">📥 存入排版槽</button>
                             </div>
                         </div>
 
@@ -223,10 +231,10 @@
                                     const imgs = await Promise.all(slots.map(src => new Promise(res => {const img = new Image(); img.onload=()=>res(img); img.src=src;})));
                                     for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80 + i*428, 80, 413, 531);
                                     for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80 + i*341, 650, 331, 449);
-                                    const a = document.createElement('a'); a.download = `EzID_Final_v2.png`; a.href = pc.toDataURL(); a.click();
+                                    const a = document.createElement('a'); a.download = `EzID_Layout.png`; a.href = pc.toDataURL(); a.click();
                                 };
                                 drawRow();
-                            }} className="w-full bg-white text-slate-900 py-4 rounded-[20px] font-black active:scale-95 transition-all">💾 下載 4x6 拼版照片</button>
+                            }} className="w-full bg-white text-slate-900 py-4 rounded-[20px] font-black">💾 下載 4x6 拼版照片</button>
                         </div>
                     </div>
                 </div>
