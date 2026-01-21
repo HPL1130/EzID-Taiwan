@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.2.5 - 實體裁切線明確版</title>
+    <title>EzID Taiwan v2.2.6 - 效能與UX優化版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,7 +20,9 @@
         .slot-thumb { width: 75px; height: 95px; border-radius: 12px; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: hidden; flex-shrink: 0; position: relative; }
         .slot-controls { display: flex; width: 100%; justify-content: space-between; padding: 4px; background: rgba(15, 23, 42, 0.9); position: absolute; bottom: 0; left: 0; transition: 0.2s; opacity: 0; }
         .slot-thumb:hover .slot-controls { opacity: 1; }
+        @media (hover: none) { .slot-controls { opacity: 1; } } /* 行動裝置永遠顯示控制鈕 */
         .live-label { position: absolute; top: 4px; left: 4px; background: #ef4444; color: white; font-size: 8px; padding: 1px 4px; border-radius: 4px; font-weight: bold; z-index: 20; animation: pulse 2s infinite; }
+        .ux-toast { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; pointer-events: none; z-index: 110; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -38,12 +40,26 @@
             const [slots, setSlots] = useState([]);
             const [scrolled, setScrolled] = useState(false);
             const [livePreview, setLivePreview] = useState(null);
+            const [toast, setToast] = useState('');
 
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
             const videoRef = useRef(null);
             const suitImg = useRef(new Image());
             const interaction = useRef({ dragging: false, lastX: 0, lastY: 0, lastDist: 0 });
+
+            // 1. 效能優化：衣服路徑監聽載入
+            useEffect(() => {
+                if (suit.id) suitImg.current.src = `clothes/${suit.gender}/${suit.id}.png`;
+            }, [suit.id, suit.gender]);
+
+            // 2. 效能優化：降頻更新 LivePreview
+            useEffect(() => {
+                const tid = setTimeout(() => {
+                    if(canvasRef.current) setLivePreview(canvasRef.current.toDataURL('image/jpeg', 0.6));
+                }, 300);
+                return () => clearTimeout(tid);
+            }, [image, p, suit, bgColor]);
 
             useEffect(() => {
                 const handleScroll = () => { if (window.innerWidth < 1024) setScrolled(window.scrollY > 60); };
@@ -58,17 +74,10 @@
                     ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
                     ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
                 }
-                if (suit.id) {
-                    suitImg.current.src = `clothes/${suit.gender}/${suit.id}.png`;
-                    if (suitImg.current.complete) {
-                        ctx.save(); ctx.translate(suit.x, suit.y); ctx.scale(suit.s * 1.5, suit.s * 1.5);
-                        ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2); ctx.restore();
-                    }
+                if (suit.id && suitImg.current.complete) {
+                    ctx.save(); ctx.translate(suit.x, suit.y); ctx.scale(suit.s * 1.5, suit.s * 1.5);
+                    ctx.drawImage(suitImg.current, -suitImg.current.width/2, -suitImg.current.height/2); ctx.restore();
                 }
-                const timeout = setTimeout(() => {
-                    if(canvasRef.current) setLivePreview(canvasRef.current.toDataURL('image/jpeg', 0.5));
-                }, 150);
-                return () => clearTimeout(timeout);
             }, [image, p, suit, bgColor]);
 
             useEffect(() => {
@@ -76,8 +85,9 @@
                 return () => cancelAnimationFrame(raf);
             }, [draw]);
 
-            const handleZoom = (factor) => { if (!suit.id) return; setSuit(v => ({ ...v, s: Math.min(Math.max(v.s * factor, 0.05), 2.0) })); };
-            const handleMove = (dx, dy) => { if (!suit.id) return; const rect = containerRef.current.getBoundingClientRect(); setSuit(v => ({ ...v, x: v.x + dx * (350/rect.width), y: v.y + dy * (450/rect.height) })); };
+            const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 1500); };
+            const handleZoom = (factor) => { if (!suit.id) return; setSuit(v => ({ ...v, s: Math.min(Math.max(v.s * factor, 0.05), 2.0) })); showToast('調整服裝尺寸'); };
+            const handleMove = (dx, dy) => { if (!suit.id) return; const rect = containerRef.current.getBoundingClientRect(); setSuit(v => ({ ...v, x: v.x + dx * (350/rect.width), y: v.y + dy * (450/rect.height) })); showToast('調整服裝位置'); };
 
             const onMouseDown = (e) => { interaction.current.dragging = true; interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY; };
             const onMouseMove = (e) => { if (!interaction.current.dragging) return; handleMove(e.clientX - interaction.current.lastX, e.clientY - interaction.current.lastY); interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY; };
@@ -110,8 +120,8 @@
                 <div className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 ${scrolled ? 'is-scrolled' : ''}`}>
                     <div className="w-full lg:w-[400px] sticky-canvas">
                         <div className="flex justify-between mb-2 px-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Ver 2.2.5 Final</span>
-                            <span className="text-[10px] font-bold text-red-600">拼版黑色裁切線已強化</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Ver 2.2.6 Optimized</span>
+                            <span className="text-[10px] font-bold text-green-600">效能與 UX 已優化</span>
                         </div>
                         <div 
                             ref={containerRef} 
@@ -122,12 +132,13 @@
                             {isCam && <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover z-20 scale-x-[-1]" />}
                             <canvas ref={canvasRef} width={350} height={450} />
                             <div className="id-guide"></div>
+                            {toast && <div className="ux-toast">{toast}</div>}
                         </div>
                     </div>
 
                     <div className="flex-1 space-y-6">
                         <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-3">排版管理 (◀✕▶)</h3>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-3">排版管理 (手機版已優化顯示鈕)</h3>
                             <div className="slot-scroll">
                                 <div className="preview-slot"><span className="live-label">LIVE</span>{livePreview && <img src={livePreview} className="w-full h-full object-cover opacity-50" />}</div>
                                 {slots.map((s, i) => (
@@ -146,12 +157,14 @@
                         <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-sm border">
                             <div className="grid grid-cols-2 gap-3 mb-6">
                                 <button onClick={async () => {
-                                    if (isCam) {
-                                        const c = document.createElement('canvas'); c.width = videoRef.current.videoWidth; c.height = videoRef.current.videoHeight;
-                                        const ctx = c.getContext('2d'); ctx.translate(c.width,0); ctx.scale(-1,1); ctx.drawImage(videoRef.current,0,0);
-                                        const s = new Image(); s.onload = () => setImage(s); s.src = c.toDataURL();
-                                        setIsCam(false); videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-                                    } else { setIsCam(true); const m = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }); videoRef.current.srcObject = m; }
+                                    try {
+                                        if (isCam) {
+                                            const c = document.createElement('canvas'); c.width = videoRef.current.videoWidth; c.height = videoRef.current.videoHeight;
+                                            const ctx = c.getContext('2d'); ctx.translate(c.width,0); ctx.scale(-1,1); ctx.drawImage(videoRef.current,0,0);
+                                            const s = new Image(); s.onload = () => setImage(s); s.src = c.toDataURL();
+                                            setIsCam(false); videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+                                        } else { setIsCam(true); const m = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }); videoRef.current.srcObject = m; }
+                                    } catch(e) { alert('相機未啟用，請改用「上傳照片」'); setIsCam(false); }
                                 }} className="bg-slate-900 text-white py-3 rounded-2xl font-bold">📸 相機</button>
                                 <label className="bg-white border-2 border-slate-900 py-3 rounded-2xl font-bold text-center cursor-pointer">📁 上傳<input type="file" className="hidden" onChange={e => { const f = e.target.files[0]; if (f) { const t = new Image(); t.onload = () => setImage(t); t.src = URL.createObjectURL(f); } }} /></label>
                             </div>
@@ -172,12 +185,12 @@
                                     })}
                                 </div>
                                 <div className="space-y-4 pt-4">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像縮放</span><span>{(p.s*100).toFixed(0)}%</span></div>
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像縮放 (滑桿)</span><span>{(p.s*100).toFixed(0)}%</span></div>
                                     <input type="range" min="0.2" max="2.0" step="0.01" value={p.s} onChange={e => setP({ ...p, s: parseFloat(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像高低</span><span>{p.y} px</span></div>
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像高低 (滑桿)</span><span>{p.y} px</span></div>
                                     <input type="range" min="-200" max="200" value={p.y} onChange={e => setP({ ...p, y: parseInt(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
                                 </div>
-                                <button onClick={() => setSlots([...slots, canvasRef.current.toDataURL()])} className="w-full bg-blue-600 text-white py-4 rounded-[24px] font-black shadow-xl">📥 存入排版槽</button>
+                                <button onClick={() => setSlots([...slots, canvasRef.current.toDataURL('image/jpeg', 0.9)])} className="w-full bg-blue-600 text-white py-4 rounded-[24px] font-black shadow-xl">📥 存入排版槽</button>
                             </div>
                         </div>
 
@@ -187,41 +200,26 @@
                                 const now = new Date();
                                 const dateStr = now.getFullYear() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0');
                                 const timeStr = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
-                                
-                                const pc = document.createElement('canvas'); 
-                                pc.width = 1800; pc.height = 1200;
-                                const ctx = pc.getContext('2d');
-                                ctx.fillStyle = "white";
-                                ctx.fillRect(0, 0, 1800, 1200);
-
+                                const pc = document.createElement('canvas'); pc.width = 1800; pc.height = 1200;
+                                const ctx = pc.getContext('2d'); ctx.fillStyle = "white"; ctx.fillRect(0,0,1800,1200);
                                 const drawFinal = async () => {
                                     const imgs = await Promise.all(slots.map(src => new Promise(res => {const img = new Image(); img.onload=()=>res(img); img.src=src;})));
                                     const w=413, h=531, w2=331, h2=449;
-                                    
-                                    // 強化：明確黑色裁切細實線
-                                    ctx.strokeStyle = "#000000"; 
-                                    ctx.lineWidth = 2;
-
-                                    // 第一排 4 張 (2吋)
+                                    ctx.strokeStyle = "#000000"; ctx.lineWidth = 2;
                                     for(let i=0; i<4; i++) {
                                         const x = 80 + i*428, y = 80;
                                         ctx.drawImage(imgs[i%imgs.length], x, y, w, h);
-                                        ctx.strokeRect(x, y, w, h); // 明確黑色框線
+                                        ctx.strokeRect(x, y, w, h);
                                     }
-                                    // 第二排 5 張 (1吋)
                                     for(let i=0; i<5; i++) {
                                         const x = 80 + i*341, y = 650;
                                         ctx.drawImage(imgs[i%imgs.length], x, y, w2, h2);
-                                        ctx.strokeRect(x, y, w2, h2); // 明確黑色框線
+                                        ctx.strokeRect(x, y, w2, h2);
                                     }
-                                    
-                                    const a = document.createElement('a'); 
-                                    a.download = `EzID_${dateStr}_${timeStr}.png`; 
-                                    a.href = pc.toDataURL('image/png'); 
-                                    a.click();
+                                    const a = document.createElement('a'); a.download = `EzID_${dateStr}_${timeStr}.png`; a.href = pc.toDataURL(); a.click();
                                 };
                                 drawFinal();
-                            }} className="w-full bg-white text-slate-900 py-4 rounded-[20px] font-black hover:bg-slate-100 transition-colors">💾 下載 4x6 拼版照片</button>
+                            }} className="w-full bg-white text-slate-900 py-4 rounded-[20px] font-black">💾 下載 4x6 拼版照片</button>
                         </div>
                     </div>
                 </div>
