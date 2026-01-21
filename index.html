@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.6.6</title>
+    <title>EzID Taiwan v2.6.7</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,9 +11,9 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
         .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
-        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index:100; }
-        .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index:99; }
-        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; z-index:90; }
+        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; }
+        .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; }
+        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; z-index: 90; }
         .suit-btn { width:56px; height:56px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:14px; background:#fff; display:flex; align-items:center; justify-content:center; }
         .suit-btn.active { border-color:#2563eb; background:#eff6ff; }
         input[type=range] { width:100%; accent-color:#2563eb; }
@@ -31,6 +31,8 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [activeSuit, setActiveSuit] = useState(null);
     const [slots, setSlots] = useState([]);
+    
+    // 核心狀態
     const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
@@ -39,16 +41,24 @@ function App() {
         female: Array.from({length:5}, (_,i)=> `clothes/female/f${i+1}.png`)
     };
 
+    // 繪製畫布
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
-        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 350, 450);
+
         if(image){
-            ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
-            ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
+            ctx.save();
+            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2);
+            ctx.restore();
         }
+
         if(suitImg){
             ctx.save();
-            const w = 350 * sp.s; const h = (suitImg.height / suitImg.width) * w;
+            const w = 350 * sp.s;
+            const h = (suitImg.height / suitImg.width) * w;
             ctx.drawImage(suitImg, (350 - w)/2 + sp.x, 450 - h + 15 + sp.y, w, h);
             ctx.restore();
         }
@@ -61,6 +71,7 @@ function App() {
         setSlots([canvasRef.current.toDataURL("image/jpeg", 0.95), ...slots].slice(0, 8));
     };
 
+    // --- 修改後的下載邏輯 (最大化輸出且預留裁切位) ---
     const downloadSheet = async (type) => {
         if(!slots.length) return alert("槽位為空");
         const pc = document.createElement("canvas");
@@ -71,33 +82,31 @@ function App() {
             pc.width = 2480; pc.height = 3508; 
             ctx.fillStyle = "white"; ctx.fillRect(0, 0, 2480, 3508);
             
-            // --- 區塊 1: 2吋照片 (4欄 x 5列 = 20張) ---
-            // 預留更多間距 (Gap: 80px) 方便裁切
+            // 區塊 1: 2 吋照片 (4 欄 x 6 列 = 24 張)
             const card2W = 413, card2H = 531;
-            const gapX2 = 130, gapY2 = 80;
+            const gapX2 = 140, gapY2 = 60; 
             const startX2 = (2480 - (card2W * 4 + gapX2 * 3)) / 2;
+            const startY2 = 120;
 
-            for(let r=0; r<5; r++) {
+            for(let r=0; r<6; r++) {
                 for(let c=0; c<4; c++) {
                     const idx = (r*4+c) % imgs.length;
-                    ctx.drawImage(imgs[idx], startX2 + c*(card2W + gapX2), 150 + r*(card2H + gapY2), card2W, card2H);
+                    ctx.drawImage(imgs[idx], startX2 + c*(card2W + gapX2), startY2 + r*(card2H + gapY2), card2W, card2H);
                 }
             }
 
-            // --- 區塊 2: 1吋照片 (7欄 x 2列 = 14張) ---
+            // 區塊 2: 1 吋照片 (8 欄 x 1 列 = 8 張)
             const card1W = 295, card1H = 413;
-            const gapX1 = 55;
-            const startY1 = 3508 - (card1H * 2 + 250); // 底部預留 250px 邊界
-            const startX1 = (2480 - (card1W * 7 + gapX1 * 6)) / 2;
+            const gapX1 = 15;
+            const startY1 = 3508 - card1H - 120; 
+            const startX1 = (2480 - (card1W * 8 + gapX1 * 7)) / 2;
 
-            for(let r=0; r<2; r++) {
-                for(let c=0; c<7; c++) {
-                    const idx = (r*7+c) % imgs.length;
-                    ctx.drawImage(imgs[idx], startX1 + c*(card1W + gapX1), startY1 + r*(card1H + 60), card1W, card1H);
-                }
+            for(let c=0; c<8; c++) {
+                const idx = (c) % imgs.length;
+                ctx.drawImage(imgs[idx], startX1 + c*(card1W + gapX1), startY1, card1W, card1H);
             }
         } else {
-            // 4x6 吋維持手動裁切友善間距
+            // 4x6 吋拼版保持原規劃
             pc.width=1800; pc.height=1200; ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
             for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*428, 80, 413, 531);
             for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*341, 650, 331, 449);
@@ -105,7 +114,7 @@ function App() {
 
         const timestamp = new Date().getTime();
         const link = document.createElement("a");
-        link.download = `EzID_${type}_CutterReady_${timestamp}.png`;
+        link.download = `EzID_${type}_MAX_${timestamp}.png`;
         link.href = pc.toDataURL("image/png");
         link.click();
     };
@@ -113,8 +122,8 @@ function App() {
     return (
         <div className="max-w-md mx-auto p-4">
             <header className="flex justify-between items-center mb-4 px-2">
-                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.6.6</span></h1>
-                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">預留裁切間距版</div>
+                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.6.7</span></h1>
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">超商 A4 裁切優化版</div>
             </header>
 
             <div className="canvas-container mb-6">
@@ -174,7 +183,7 @@ function App() {
 
             <div className="mt-6 flex flex-col gap-2">
                 <button onClick={()=>downloadSheet('4x6')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm">🖼️ 下載 4x6 吋沖印版</button>
-                <button onClick={()=>downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm">🏪 下載 ibon A4 混排 (34張)</button>
+                <button onClick={()=>downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm">🏪 下載 ibon A4 混排 (32張)</button>
             </div>
         </div>
     );
