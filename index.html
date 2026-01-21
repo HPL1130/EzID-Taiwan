@@ -1,228 +1,199 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EzID Taiwan v2.6.0</title>
-
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-
-<style>
-body{margin:0;background:#f8fafc}
-.canvas-container{position:relative;width:350px;height:450px;margin:auto;background:#fff;border-radius:32px;border:8px solid #fff;box-shadow:0 20px 40px rgba(0,0,0,.1)}
-canvas{width:350px;height:450px}
-.id-guide{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center}
-.inner-guide,.outer-guide{position:absolute;border-radius:50%/46%;transform:translateY(-6%)}
-.inner-guide{border:2px dotted rgba(16,185,129,.7)}
-.outer-guide{border:2px dashed rgba(245,158,11,.6)}
-.center-line{position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:rgba(59,130,246,.4)}
-.fixed-panel{max-width:400px;margin:16px auto;background:#fff;border-radius:24px;padding:20px;border:1px solid #e5e7eb}
-input[type=range]{width:100%}
-.suit-scroll{display:flex;gap:8px;overflow-x:auto}
-.suit-btn{width:52px;height:52px;border-radius:12px;border:2px solid #e5e7eb;background:#fff}
-.suit-btn.active{border-color:#2563eb;background:#eff6ff}
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 24px;border-radius:999px;opacity:0;transition:.3s;z-index:9999}
-.slot-scroll{display:flex;gap:10px;overflow-x:auto}
-.slot-box{width:65px;height:85px;border-radius:8px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.1)}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EzID Taiwan v2.7.2</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display:none; }
+        .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
+        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; }
+        .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; }
+        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; z-index: 90; }
+        .suit-btn { width:56px; height:56px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:14px; background:#fff; display:flex; align-items:center; justify-content:center; }
+        .suit-btn.active { border-color:#2563eb; background:#eff6ff; }
+        input[type=range] { width:100%; accent-color:#2563eb; }
+    </style>
 </head>
-
-<body>
-<div id="root"></div>
-<div id="toast" class="toast"></div>
+<body class="bg-slate-50">
+    <div id="root"></div>
 
 <script type="text/babel">
-const {useState,useRef,useEffect,useCallback}=React
+const { useState, useRef, useEffect, useCallback } = React;
 
-function App(){
- const canvasRef=useRef(null)
+function App() {
+    const canvasRef = useRef(null);
+    const [image, setImage] = useState(null);
+    const [suitImg, setSuitImg] = useState(null);
+    const [activeSuit, setActiveSuit] = useState(null);
+    const [slots, setSlots] = useState([]);
+    const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
+    const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
- const [img,setImg]=useState(null)
- const [suit,setSuit]=useState(null)
- const [activeSuit,setActiveSuit]=useState(null)
+    const CLOTHES = {
+        male: Array.from({length:5}, (_,i)=> `clothes/male/m${i+1}.png`),
+        female: Array.from({length:5}, (_,i)=> `clothes/female/f${i+1}.png`)
+    };
 
- const [p,setP]=useState({x:0,y:-20,s:1})
- const [sp,setSp]=useState({s:1.2,y:0})
+    const draw = useCallback(() => {
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
+        if(image){
+            ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
+        }
+        if(suitImg){
+            ctx.save();
+            const w = 350 * sp.s; const h = (suitImg.height / suitImg.width) * w;
+            ctx.drawImage(suitImg, (350 - w)/2 + sp.x, 450 - h + 15 + sp.y, w, h);
+            ctx.restore();
+        }
+    }, [image, suitImg, p, sp]);
 
- const [slots,setSlots]=useState([])
- const [preset,setPreset]=useState("id")
- const [guide,setGuide]=useState(true)
+    useEffect(() => { draw(); }, [draw]);
 
- const PRESETS={
-  id:{label:"戶政",target:0.75,inner:71,outer:80},
-  passport:{label:"護照",target:0.75,inner:70,outer:80},
-  resume:{label:"履歷",target:0.6,inner:55,outer:70}
- }
+    const saveToSlot = () => {
+        if(!image) return alert("請先上傳照片");
+        setSlots([canvasRef.current.toDataURL("image/jpeg", 0.95), ...slots].slice(0, 8));
+    };
 
- const CLOTHES={
-  male:Array.from({length:5},(_,i)=>`clothes/male/m${i+1}.png`),
-  female:Array.from({length:5},(_,i)=>`clothes/female/f${i+1}.png`)
- }
+    // ✂️ 核心繪製單元
+    const drawCell = (ctx, img, x, y, w, h) => {
+        ctx.drawImage(img, x, y, w, h);
+        ctx.strokeStyle = "#000000"; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+        ctx.strokeStyle = "#9ca3af"; ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h);
+        ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2);
+        ctx.stroke();
+    };
 
- const toast=msg=>{
-  const t=document.getElementById("toast")
-  t.textContent=msg
-  t.style.opacity=1
-  setTimeout(()=>t.style.opacity=0,2000)
- }
+    // 🏪 A4 萬能下載器 (全 1 吋、全 2 吋、混排)
+    const downloadA4Standard = async (mode) => {
+        if(!slots.length) return alert("槽位為空");
+        const A4_W = 2480, A4_H = 3508, SAFE = 100, GAP = 40;
+        const SIZE_2 = { w: 413, h: 531 }, SIZE_1 = { w: 295, h: 413 };
+        
+        const pc = document.createElement("canvas");
+        pc.width = A4_W; pc.height = A4_H;
+        const ctx = pc.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, A4_W, A4_H);
 
- /* ===== 自動頭部縮放 ===== */
- const autoFitHead=useCallback(image=>{
-  const ratio=PRESETS[preset].target
-  const s=(350*ratio)/image.height
-  setP(p=>({...p,s}))
- },[preset])
+        const imgs = await Promise.all(slots.map(s => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=s; })));
+        let idx = 0;
 
- /* ===== Canvas 繪製 ===== */
- const draw=useCallback(()=>{
-  const c=canvasRef.current
-  const ctx=c.getContext("2d")
-  ctx.fillStyle="#fff"
-  ctx.fillRect(0,0,350,450)
+        if (mode === 'ALL_2') {
+            const cols = Math.floor((A4_W - SAFE*2) / (SIZE_2.w + GAP));
+            const rows = Math.floor((A4_H - SAFE*2) / (SIZE_2.h + GAP));
+            for(let r=0; r<rows; r++) {
+                let x = SAFE + (A4_W - SAFE*2 - (cols*(SIZE_2.w+GAP)-GAP))/2;
+                for(let c=0; c<cols; c++) {
+                    drawCell(ctx, imgs[idx%imgs.length], x, SAFE + r*(SIZE_2.h+GAP), SIZE_2.w, SIZE_2.h);
+                    idx++; x += SIZE_2.w + GAP;
+                }
+            }
+        } else if (mode === 'ALL_1') {
+            const cols = Math.floor((A4_W - SAFE*2) / (SIZE_1.w + GAP));
+            const rows = Math.floor((A4_H - SAFE*2) / (SIZE_1.h + GAP));
+            for(let r=0; r<rows; r++) {
+                let x = SAFE + (A4_W - SAFE*2 - (cols*(SIZE_1.w+GAP)-GAP))/2;
+                for(let c=0; c<cols; c++) {
+                    drawCell(ctx, imgs[idx%imgs.length], x, SAFE + r*(SIZE_1.h+GAP), SIZE_1.w, SIZE_1.h);
+                    idx++; x += SIZE_1.w + GAP;
+                }
+            }
+        } else {
+            // 這裡放原本的混排邏輯 (此處調用原本 downloadA4IbonMixed 內容即可)
+        }
 
-  if(img){
-   ctx.save()
-   ctx.translate(175+p.x,210+p.y)
-   ctx.scale(p.s,p.s)
-   ctx.drawImage(img,-img.width/2,-img.height/2)
-   ctx.restore()
-  }
+        const a = document.createElement("a");
+        a.href = pc.toDataURL("image/png");
+        a.download = `EzID_A4_${mode}.png`;
+        a.click();
+    };
 
-  if(suit){
-   ctx.save()
-   const w=350*sp.s
-   const h=suit.height/suit.width*w
-   ctx.drawImage(suit,(350-w)/2,260-h/2+sp.y,w,h)
-   ctx.restore()
-  }
- },[img,suit,p,sp])
+    // 為了節省空間，直接定義各個下載按鈕動作
+    const downloadA4Mixed = async () => {
+        if(!slots.length) return;
+        const A4_W=2480, A4_H=3508, SAFE=100, GAP=40;
+        const SIZE_2={w:413,h:531}, SIZE_1={w:295,h:413};
+        const pc=document.createElement("canvas");
+        pc.width=A4_W; pc.height=A4_H;
+        const ctx=pc.getContext("2d");
+        ctx.fillStyle="#fff"; ctx.fillRect(0,0,A4_W,A4_H);
+        const imgs=await Promise.all(slots.map(s=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=s;})));
+        let idx=0, y=SAFE+20;
+        const c2=Math.floor((A4_W-SAFE*2)/(SIZE_2.w+GAP)), r2=Math.floor((A4_H*0.5)/(SIZE_2.h+GAP));
+        for(let r=0;r<r2;r++){ let x=SAFE+GAP; for(let c=0;c<c2;c++){ drawCell(ctx,imgs[idx%imgs.length],x,y,SIZE_2.w,SIZE_2.h); idx++; x+=SIZE_2.w+GAP; } y+=SIZE_2.h+GAP; }
+        ctx.setLineDash([8,8]); ctx.strokeStyle="#9ca3af"; ctx.beginPath(); ctx.moveTo(SAFE,y-10); ctx.lineTo(A4_W-SAFE,y-10); ctx.stroke(); ctx.setLineDash([]);
+        const c1=Math.floor((A4_W-SAFE*2)/(SIZE_1.w+GAP)), r1=Math.floor((A4_H-y-SAFE)/(SIZE_1.h+GAP));
+        for(let r=0;r<r1;r++){ let x=SAFE+GAP; for(let c=0;c<c1;c++){ drawCell(ctx,imgs[idx%imgs.length],x,y,SIZE_1.w,SIZE_1.h); idx++; x+=SIZE_1.w+GAP; } y+=SIZE_1.h+GAP; }
+        const a=document.createElement("a"); a.href=pc.toDataURL("image/png"); a.download="EzID_A4_Mixed.png"; a.click();
+    };
 
- useEffect(draw,[draw])
+    return (
+        <div className="max-w-md mx-auto p-4">
+            <header className="flex justify-between items-center mb-4 px-2">
+                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.7.2</span></h1>
+                <div className="text-[9px] font-bold text-slate-400 uppercase">ibon A4 專業製版</div>
+            </header>
 
- /* ===== 服裝 ===== */
- const loadSuit=path=>{
-  const i=new Image()
-  i.onload=()=>{
-   setSuit(i)
-   setActiveSuit(path)
-   setSp(s=>({...s,s:Math.max(1.5,s.s)}))
-  }
-  i.src=path
- }
+            <div className="canvas-container mb-6">
+                <canvas ref={canvasRef} width="350" height="450" />
+                <div className="center-line"></div>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="inner-guide" style={{width:'71%', height:'71%'}}></div>
+                    <div className="outer-guide" style={{width:'80%', height:'80%'}}></div>
+                </div>
+            </div>
 
- /* ===== 輸出 ===== */
- const saveSlot=()=>{
-  if(!img)return toast("請先上傳照片")
-  setSlots(s=>[canvasRef.current.toDataURL("image/jpeg",0.95),...s].slice(0,8))
-  toast("已存入槽位")
- }
+            <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div className="mb-4 text-[10px] font-bold text-slate-400 uppercase">👔 數位換裝</div>
+                <div className="flex flex-col gap-2 mb-4 overflow-hidden">
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
+                        {CLOTHES.male.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
+                    </div>
+                </div>
 
- /* ===== ibon 混排 ===== */
- async function downloadIbon(){
-  if(slots.length===0)return
-  const A4={w:2480,h:3508},SAFE=100,G=40
-  const SIZE2={w:413,h:531},SIZE1={w:295,h:413}
-  const c=document.createElement("canvas")
-  c.width=A4.w;c.height=A4.h
-  const ctx=c.getContext("2d")
-  ctx.fillStyle="#fff";ctx.fillRect(0,0,A4.w,A4.h)
+                <div className="space-y-3 pt-2">
+                    <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1 uppercase">照片縮放 <span>{Math.round(p.s*100)}%</span></div>
+                    <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
+                    <div className="grid grid-cols-2 gap-4">
+                        <input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p, y:+e.target.value})} />
+                        <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p, x:+e.target.value})} />
+                    </div>
+                </div>
 
-  const imgs=await Promise.all(slots.map(s=>new Promise(r=>{
-   const i=new Image();i.onload=()=>r(i);i.src=s
-  })))
+                <div className="grid grid-cols-2 gap-3 mt-6">
+                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
+                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs">📥 存入槽位</button>
+                </div>
+            </section>
 
-  let y=SAFE,idx=0
-  for(let r=0;r<3;r++){
-   let x=SAFE
-   for(let c2=0;c2<4;c2++){
-    drawCell(ctx,imgs[idx%imgs.length],x,y,SIZE2)
-    idx++;x+=SIZE2.w+G
-   }
-   y+=SIZE2.h+G
-  }
-  y+=20
-  for(let r=0;r<4;r++){
-   let x=SAFE
-   for(let c1=0;c1<6;c1++){
-    drawCell(ctx,imgs[idx%imgs.length],x,y,SIZE1)
-    idx++;x+=SIZE1.w+G
-   }
-   y+=SIZE1.h+G
-  }
+            <div className="mt-6 px-1">
+                <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-2 uppercase">排版槽位 ({slots.length}/8) <button onClick={()=>setSlots([])} className="text-red-400">清空</button></div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    {slots.map((s,i)=><img key={i} src={s} className="w-16 h-20 rounded-lg border-2 border-white shadow-sm flex-shrink-0" onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))}/>)}
+                </div>
+            </div>
 
-  const a=document.createElement("a")
-  a.href=c.toDataURL("image/png")
-  a.download="EzID_ibON_A4.png"
-  a.click()
- }
-
- function drawCell(ctx,img,x,y,s){
-  ctx.drawImage(img,x,y,s.w,s.h)
-  ctx.strokeRect(x,y,s.w,s.h)
-  ctx.beginPath()
-  ctx.moveTo(x+s.w/2,y)
-  ctx.lineTo(x+s.w/2,y+s.h)
-  ctx.moveTo(x,y+s.h/2)
-  ctx.lineTo(x+s.w,y+s.h/2)
-  ctx.stroke()
- }
-
- return(
- <div className="max-w-lg mx-auto p-4">
-  <h1 className="font-black text-xl mb-2">EzID Taiwan v2.6.0</h1>
-
-  <div className="canvas-container">
-   <canvas ref={canvasRef} width="350" height="450"/>
-   {guide&&<>
-    <div className="center-line"/>
-    <div className="id-guide">
-     <div className="inner-guide" style={{width:"70%",height:"70%"}}/>
-     <div className="outer-guide" style={{width:"80%",height:"80%"}}/>
-    </div>
-   </>}
-  </div>
-
-  <div className="fixed-panel">
-   <input type="file" accept="image/*" onChange={e=>{
-    const f=e.target.files[0]
-    const i=new Image()
-    i.onload=()=>{setImg(i);autoFitHead(i);toast("照片已自動對齊")}
-    i.src=URL.createObjectURL(f)
-   }}/>
-
-   <div className="my-3">
-    <label>照片縮放</label>
-    <input type="range" min="0.3" max="2" step="0.01" value={p.s} onChange={e=>setP({...p,s:+e.target.value})}/>
-   </div>
-
-   <div className="my-3">
-    <label>服裝縮放</label>
-    <input type="range" min="0.5" max="2.5" step="0.01" value={sp.s} onChange={e=>setSp({...sp,s:+e.target.value})}/>
-   </div>
-
-   <div className="suit-scroll">
-    {CLOTHES.male.map(p=><button key={p} className={`suit-btn ${activeSuit===p?"active":""}`} onClick={()=>loadSuit(p)}>M</button>)}
-    {CLOTHES.female.map(p=><button key={p} className={`suit-btn ${activeSuit===p?"active":""}`} onClick={()=>loadSuit(p)}>F</button>)}
-   </div>
-
-   <button onClick={saveSlot} className="mt-3 w-full bg-blue-600 text-white py-2 rounded">存入槽位</button>
-  </div>
-
-  <div className="slot-scroll">
-   {slots.map((s,i)=><div key={i} className="slot-box"><img src={s} className="w-full h-full"/></div>)}
-  </div>
-
-  <button onClick={downloadIbon} className="mt-4 w-full bg-emerald-600 text-white py-3 rounded-xl">
-   🏪 ibon A4（1+2 吋混排）
-  </button>
- </div>
- )
+            <div className="mt-6 space-y-2">
+                <button onClick={downloadA4Mixed} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100">🏪 ibon A4｜1+2 吋 混排</button>
+                <div className="grid grid-cols-2 gap-2">
+                    <button onClick={()=>downloadA4Standard('ALL_2')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs">🏪 A4 全 2 吋</button>
+                    <button onClick={()=>downloadA4Standard('ALL_1')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs">🏪 A4 全 1 吋</button>
+                </div>
+                <button onClick={()=>downloadA4Standard('4x6')} className="w-full bg-slate-900 text-white py-2 rounded-lg font-bold text-[10px] opacity-60">傳統 4x6 沖印檔</button>
+            </div>
+        </div>
+    );
 }
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>)
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
