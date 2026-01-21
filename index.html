@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.5.14</title>
+    <title>EzID Taiwan v2.5.15</title>
 
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -13,40 +13,28 @@
     <style>
         body { margin:0; font-family:sans-serif; background:#f8fafc; overflow-x:hidden; }
         .canvas-container {
-            position: relative;
-            width: 350px; height: 450px;
-            margin: 0 auto; background: #fff;
-            border-radius: 32px; border: 8px solid #fff;
-            box-shadow: 0 20px 40px rgba(0,0,0,.1);
-            overflow: hidden;
+            position: relative; width: 350px; height: 450px;
+            margin: 0 auto; background: #fff; border-radius: 32px; border: 8px solid #fff;
+            box-shadow: 0 20px 40px rgba(0,0,0,.1); overflow: hidden;
         }
         canvas { display:block; width:350px; height:450px; }
-        
-        /* 輔助線層 */
         .id-guide { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:100; }
         .inner-guide, .outer-guide { position:absolute; border-radius:50% / 46%; transform:translateY(-6%); transition: all 0.3s ease; }
         .inner-guide { border:2px dotted rgba(16,185,129,0.7); }
         .outer-guide { border:2px dashed rgba(245,158,11,0.6); }
-        
-        /* 垂直中心線樣式 */
-        .center-line {
-            position: absolute;
-            left: 50%; top: 0; bottom: 0;
-            width: 1.5px;
-            background: rgba(59, 130, 246, 0.4); /* 柔和藍色 */
-            z-index: 90;
-            pointer-events: none;
-        }
+        .center-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 1.5px; background: rgba(59, 130, 246, 0.4); z-index: 90; pointer-events: none; }
 
-        .fixed-panel {
-            width: 100%; max-width:400px; margin:16px auto;
-            background:white; border-radius:24px; padding:20px;
-            box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #f1f5f9;
-        }
+        .fixed-panel { width: 100%; max-width:400px; margin:16px auto; background:white; border-radius:24px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #f1f5f9; }
         .control-group { margin-bottom:12px; }
         .control-group label { display:flex; justify-content: space-between; font-size:10px; font-weight:800; color:#94a3b8; margin-bottom:4px; text-transform:uppercase; }
         input[type=range] { width:100%; height:6px; background:#f1f5f9; border-radius:10px; appearance:none; accent-color:#2563eb; }
         
+        /* 服裝按鈕樣式 */
+        .suit-scroll { display:flex; gap:8px; overflow-x:auto; padding:4px 0; }
+        .suit-btn { width:52px; height:52px; border-radius:12px; border:2px solid #f1f5f9; flex-shrink:0; background:#fff; transition:0.2s; overflow:hidden; }
+        .suit-btn.active { border-color:#2563eb; transform:scale(1.05); box-shadow:0 4px 12px rgba(37,99,235,0.15); }
+        .suit-btn img { width:100%; height:100%; object-fit:contain; }
+
         .slot-scroll { display:flex; gap:10px; overflow-x:auto; padding-bottom:8px; }
         .slot-box { width:65px; height:85px; border-radius:8px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex-shrink:0; position:relative; overflow:hidden; }
         .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:10px 24px; background:#0f172a; color:white; border-radius:50px; font-size:13px; font-weight:bold; opacity:0; transition:0.3s; z-index:2000; }
@@ -62,16 +50,24 @@ const { useState, useRef, useEffect, useCallback } = React;
 
 function App() {
     const canvasRef = useRef(null);
-    const [image,setImage] = useState(null);
-    const [p,setP] = useState({x:0,y:-20,s:0.75});
-    const [slots,setSlots] = useState([]);
-    const [preset,setPreset] = useState("id");
-    const [mode,setMode] = useState("guided");
+    const [image, setImage] = useState(null);
+    const [suitImg, setSuitImg] = useState(null);
+    const [activeSuit, setActiveSuit] = useState(null);
+    const [p, setP] = useState({x:0, y:-20, s:0.75});
+    const [slots, setSlots] = useState([]);
+    const [preset, setPreset] = useState("id");
+    const [mode, setMode] = useState("guided");
 
     const PRESETS = {
         id: { label:"戶政證件 (3.2-3.6cm)", min:71, max:80, inner:71, outer:80 },
         passport: { label:"外交部護照 (70-80%)", min:70, max:80, inner:70, outer:80 },
         resume: { label:"履歷/商務 (無規範)", min:55, max:70, inner:55, outer:70 }
+    };
+
+    const CLOTHES = {
+        male: Array.from({length:5}, (_,i)=> `clothes/male/m${i+1}.png`),
+        female: Array.from({length:5}, (_,i)=> `clothes/female/f1.png`.replace('f1', `f${i+1}`)) 
+        // 修正路徑邏輯：f1~f5
     };
 
     const showToast=(msg)=>{
@@ -85,52 +81,72 @@ function App() {
     const status = ratio < currentMode.min - 5 || ratio > currentMode.max + 5 ? "bad" :
                    ratio < currentMode.min || ratio > currentMode.max ? "warn" : "ok";
 
-    const draw=useCallback(()=>{
-        const ctx=canvasRef.current.getContext("2d");
-        ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,350,450);
+    const draw = useCallback(() => {
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 350, 450);
+
         if(image){
             ctx.save();
-            ctx.translate(175+p.x,225+p.y);
-            ctx.scale(p.s,p.s);
-            ctx.drawImage(image,-image.width/2,-image.height/2);
+            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2);
             ctx.restore();
         }
-    },[image,p]);
 
-    useEffect(()=>{draw();},[draw]);
+        if(suitImg){
+            ctx.save();
+            // 服裝固定於底部中央，微調位置確保覆蓋肩部
+            const sw = 350;
+            const sh = (suitImg.height / suitImg.width) * sw;
+            ctx.drawImage(suitImg, 0, 450 - sh + 15, sw, sh);
+            ctx.restore();
+        }
+    }, [image, suitImg, p]);
+
+    useEffect(() => { draw(); }, [draw]);
+
+    const handleSuitClick = (path) => {
+        if(activeSuit === path) {
+            setSuitImg(null); setActiveSuit(null); return;
+        }
+        const img = new Image();
+        img.onload = () => { setSuitImg(img); setActiveSuit(path); };
+        img.src = path;
+    };
 
     const saveToSlot=()=>{
         if(!image){ showToast("請先上傳照片"); return; }
-        const url=canvasRef.current.toDataURL("image/jpeg",0.95);
-        setSlots([url,...slots].slice(0,8));
+        const url=canvasRef.current.toDataURL("image/jpeg", 0.95);
+        setSlots([url, ...slots].slice(0, 8));
         showToast("已存入排版槽位");
     };
 
     const downloadSheet = async (type) => {
         if (slots.length === 0) { alert("槽位為空！"); return; }
-        showToast(`正在產生 ${type === 'A4' ? 'ibon A4' : '4x6'} 拼版...`);
+        showToast(`產生 ${type} 拼版...`);
         const pc = document.createElement("canvas");
         const ctx = pc.getContext("2d");
 
         if (type === '4x6') {
             pc.width = 1800; pc.height = 1200;
-            ctx.fillStyle = "white"; ctx.fillRect(0, 0, 1800, 1200);
+            ctx.fillStyle = "white"; ctx.fillRect(0,0,1800,1200);
             const imgs = await Promise.all(slots.map(src => new Promise(res => {
                 const img = new Image(); img.onload = () => res(img); img.src = src;
             })));
-            for(let i=0;i<4;i++) ctx.drawImage(imgs[i % imgs.length], 80 + i * 428, 80, 413, 531);
-            for(let i=0;i<5;i++) ctx.drawImage(imgs[i % imgs.length], 80 + i * 341, 650, 331, 449);
+            for(let i=0;i<4;i++) ctx.drawImage(imgs[i%imgs.length], 80+i*428, 80, 413, 531);
+            for(let i=0;i<5;i++) ctx.drawImage(imgs[i%imgs.length], 80+i*341, 650, 331, 449);
         } else {
             pc.width = 2480; pc.height = 3508;
-            ctx.fillStyle = "white"; ctx.fillRect(0, 0, 2480, 3508);
+            ctx.fillStyle = "white"; ctx.fillRect(0,0,2480,3508);
             const imgs = await Promise.all(slots.map(src => new Promise(res => {
                 const img = new Image(); img.onload = () => res(img); img.src = src;
             })));
             const startX = 120, startY = 120, gapX = 450, gapY = 560;
             for(let row=0; row<6; row++) {
                 for(let col=0; col<5; col++) {
-                    const idx = (row * 5 + col) % imgs.length;
-                    ctx.drawImage(imgs[idx], startX + col * gapX, startY + row * gapY, 413, 531);
+                    const idx = (row*5+col)%imgs.length;
+                    ctx.drawImage(imgs[idx], startX+col*gapX, startY+row*gapY, 413, 531);
                 }
             }
         }
@@ -145,7 +161,7 @@ function App() {
             <div className="flex justify-between items-center mb-4 px-2">
                 <div>
                     <h1 className="text-xl font-black text-slate-800 tracking-tight">EzID Taiwan</h1>
-                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">v2.5.14 Flagship</p>
+                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">v2.5.15 Flagship</p>
                 </div>
                 <select value={preset} onChange={e=>setPreset(e.target.value)} className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none shadow-sm">
                     {Object.entries(PRESETS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
@@ -154,7 +170,6 @@ function App() {
 
             <div className="canvas-container">
                 <canvas ref={canvasRef} width="350" height="450"></canvas>
-                {/* 垂直中心線與雙圈輔助 */}
                 {mode === "guided" && (
                     <React.Fragment>
                         <div className="center-line"></div>
@@ -167,46 +182,61 @@ function App() {
             </div>
 
             <div className="fixed-panel">
-                <div className="flex justify-between items-start mb-6">
-                    <div className="space-y-2">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">符合性檢查</p>
-                        <div className={`px-4 py-1.5 rounded-full font-black text-[11px] inline-block shadow-sm transition-all ${
+                <div className="mb-4">
+                    <label className="text-[10px] font-black text-slate-400 mb-2 block tracking-widest">👔 數位換裝 (M1-M5 / F1-F5)</label>
+                    <div className="suit-scroll no-scrollbar">
+                        {CLOTHES.male.map((path, i) => (
+                            <button key={`m-${i}`} onClick={()=>handleSuitClick(path)} className={`suit-btn ${activeSuit===path?'active':''}`}>
+                                <img src={path} alt={`M${i+1}`} title={`男裝 ${i+1}`} />
+                            </button>
+                        ))}
+                        <div className="w-[1px] bg-slate-100 mx-1"></div>
+                        {CLOTHES.female.map((path, i) => (
+                            <button key={`f-${i}`} onClick={()=>handleSuitClick(path)} className={`suit-btn ${activeSuit===path?'active':''}`}>
+                                <img src={path} alt={`F${i+1}`} title={`女裝 ${i+1}`} />
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-end mb-6">
+                    <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">符合性判定</p>
+                        <div className={`px-4 py-1.5 rounded-full font-black text-[11px] mt-1 inline-block ${
                             status === "ok" ? "bg-emerald-500 text-white" : 
                             status === "warn" ? "bg-amber-400 text-slate-900" : "bg-red-500 text-white"
                         }`}>
-                            {status === "ok" ? "✓ 比例符合" : status === "warn" ? "⚠ 比例邊緣" : "✕ 比例錯誤"}
+                            {status === "ok" ? "✓ 符合" : status === "warn" ? "⚠ 邊緣" : "✕ 錯誤"}
                         </div>
                     </div>
                     <div className="text-right">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">頭部百分比</span>
-                        <p className="text-3xl font-black text-slate-800">{ratio}%</p>
+                        <span className="text-[10px] font-bold text-slate-400">比例 {ratio}%</span>
                     </div>
                 </div>
 
                 <div className="control-group">
-                    <label><span>🔍 縮放控制</span> <span>{ratio}%</span></label>
+                    <label><span>🔍 縮放</span></label>
                     <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p,s:+e.target.value})} />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                     <div className="control-group">
-                        <label><span>↕ 垂直 (Y)</span> <span>{p.y}px</span></label>
+                        <label><span>↕ 垂直 (Y)</span></label>
                         <input type="range" min="-180" max="180" value={p.y} onChange={e=>setP({...p,y:+e.target.value})} />
                     </div>
                     <div className="control-group">
-                        <label><span>↔ 水平 (X)</span> <span>{p.x}px</span></label>
+                        <label><span>↔ 水平 (X)</span></label>
                         <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p,x:+e.target.value})} />
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mt-4">
-                    <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-transform shadow-lg">
+                    <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-transform">
                         📸 上傳照片
                         <input type="file" hidden accept="image/*" onChange={e=>{
-                            const f=e.target.files[0]; if(f){ const img=new Image(); img.onload=()=>{ setImage(img); showToast("照片載入成功！"); }; img.src=URL.createObjectURL(f); }
+                            const f=e.target.files[0]; if(f){ const img=new Image(); img.onload=()=>{ setImage(img); showToast("載入成功"); }; img.src=URL.createObjectURL(f); }
                         }} />
                     </label>
-                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-xs shadow-lg shadow-blue-100 active:scale-95 transition-transform">
+                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-xs active:scale-95 transition-transform">
                         📥 存入槽位
                     </button>
                 </div>
@@ -214,43 +244,31 @@ function App() {
 
             <div className="px-2 mb-6">
                 <div className="flex justify-between items-center mb-3">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">排版槽位 ({slots.length}/8)</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">槽位 ({slots.length}/8)</span>
                     <div className="flex gap-4">
                         <button onClick={() => setMode(mode === "guided" ? "studio" : "guided")} className="text-[10px] font-bold text-blue-500">
                             {mode === "guided" ? "關閉對齊線" : "開啟對齊線"}
                         </button>
-                        {slots.length>0 && <button onClick={()=>setSlots([])} className="text-[10px] font-bold text-red-400">清空</button>}
+                        <button onClick={()=>setSlots([])} className="text-[10px] font-bold text-red-400">清空</button>
                     </div>
                 </div>
                 <div className="slot-scroll no-scrollbar">
                     {slots.map((s,i)=>(
-                        <div key={i} className="slot-box group" onClick={()=>setSlots(slots.filter((_,idx)=>idx !== i))}>
+                        <div key={i} className="slot-box" onClick={()=>setSlots(slots.filter((_,idx)=>idx !== i))}>
                             <img src={s} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-red-500/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold cursor-pointer transition-opacity">移除</div>
                         </div>
                     ))}
-                    {slots.length===0 && <div className="w-full py-8 text-center text-[10px] text-slate-300 border-2 border-dashed border-slate-100 rounded-2xl">調整完畢後請點擊「存入槽位」</div>}
+                    {slots.length===0 && <div className="w-full py-8 text-center text-[10px] text-slate-300 border-2 border-dashed border-slate-100 rounded-2xl">尚無拼版照片</div>}
                 </div>
             </div>
 
-            <div className="flex flex-col gap-3 mb-8">
-                <button onClick={() => downloadSheet('4x6')} className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black shadow-2xl active:scale-95 transition-all">
-                    🖼️ 下載 4x6 吋沖印版
-                </button>
-                <button onClick={() => downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-4 rounded-3xl font-black shadow-lg active:scale-95 transition-all">
-                    🏪 下載 ibon A4 列印版 (30張)
-                </button>
-            </div>
-            
-            <div className="bg-white/60 p-5 rounded-3xl border border-slate-100 text-[11px] text-slate-500 leading-relaxed mb-10">
-                <b className="text-slate-800 block mb-2 font-black uppercase tracking-wider">💡 垂直對齊提示</b>
-                • 使用<b>藍色中心線</b>對準鼻樑或人臉中軸，確保照片不歪斜。<br/>
-                • 拼版時，中心線僅供參考，不會被印出來。
+            <div className="flex flex-col gap-3 mb-10">
+                <button onClick={() => downloadSheet('4x6')} className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black active:scale-95 transition-all">🖼️ 4x6 吋沖印版</button>
+                <button onClick={() => downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-4 rounded-3xl font-black active:scale-95 transition-all">🏪 ibon A4 列印版 (30張)</button>
             </div>
         </div>
     );
 }
-
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
