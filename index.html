@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.7.2</title>
+    <title>EzID Taiwan v2.7.3</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -61,22 +61,19 @@ function App() {
         setSlots([canvasRef.current.toDataURL("image/jpeg", 0.95), ...slots].slice(0, 8));
     };
 
-    // ✂️ 核心繪製單元
-    const drawCell = (ctx, img, x, y, w, h) => {
+    // ✂️ 只繪製照片與黑色裁切外框
+    const drawCellOnly = (ctx, img, x, y, w, h) => {
         ctx.drawImage(img, x, y, w, h);
-        ctx.strokeStyle = "#000000"; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
-        ctx.strokeStyle = "#9ca3af"; ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h);
-        ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2);
-        ctx.stroke();
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
     };
 
-    // 🏪 A4 萬能下載器 (全 1 吋、全 2 吋、混排)
-    const downloadA4Standard = async (mode) => {
+    // 🏪 A4 核心下載邏輯
+    const downloadA4 = async (mode) => {
         if(!slots.length) return alert("槽位為空");
-        const A4_W = 2480, A4_H = 3508, SAFE = 100, GAP = 40;
-        const SIZE_2 = { w: 413, h: 531 }, SIZE_1 = { w: 295, h: 413 };
+        const A4_W = 2480, A4_H = 3508, SAFE = 120, GAP = 45;
+        const S2 = { w: 413, h: 531 }, S1 = { w: 295, h: 413 };
         
         const pc = document.createElement("canvas");
         pc.width = A4_W; pc.height = A4_H;
@@ -87,59 +84,63 @@ function App() {
         let idx = 0;
 
         if (mode === 'ALL_2') {
-            const cols = Math.floor((A4_W - SAFE*2) / (SIZE_2.w + GAP));
-            const rows = Math.floor((A4_H - SAFE*2) / (SIZE_2.h + GAP));
+            const cols = Math.floor((A4_W - SAFE*2) / (S2.w + GAP));
+            const rows = Math.floor((A4_H - SAFE*2) / (S2.h + GAP));
             for(let r=0; r<rows; r++) {
-                let x = SAFE + (A4_W - SAFE*2 - (cols*(SIZE_2.w+GAP)-GAP))/2;
+                let x = SAFE + (A4_W - SAFE*2 - (cols*(S2.w+GAP)-GAP))/2;
                 for(let c=0; c<cols; c++) {
-                    drawCell(ctx, imgs[idx%imgs.length], x, SAFE + r*(SIZE_2.h+GAP), SIZE_2.w, SIZE_2.h);
-                    idx++; x += SIZE_2.w + GAP;
+                    drawCellOnly(ctx, imgs[idx%imgs.length], x, SAFE + r*(S2.h+GAP), S2.w, S2.h);
+                    idx++; x += S2.w + GAP;
                 }
             }
         } else if (mode === 'ALL_1') {
-            const cols = Math.floor((A4_W - SAFE*2) / (SIZE_1.w + GAP));
-            const rows = Math.floor((A4_H - SAFE*2) / (SIZE_1.h + GAP));
+            const cols = Math.floor((A4_W - SAFE*2) / (S1.w + GAP));
+            const rows = Math.floor((A4_H - SAFE*2) / (S1.h + GAP));
             for(let r=0; r<rows; r++) {
-                let x = SAFE + (A4_W - SAFE*2 - (cols*(SIZE_1.w+GAP)-GAP))/2;
+                let x = SAFE + (A4_W - SAFE*2 - (cols*(S1.w+GAP)-GAP))/2;
                 for(let c=0; c<cols; c++) {
-                    drawCell(ctx, imgs[idx%imgs.length], x, SAFE + r*(SIZE_1.h+GAP), SIZE_1.w, SIZE_1.h);
-                    idx++; x += SIZE_1.w + GAP;
+                    drawCellOnly(ctx, imgs[idx%imgs.length], x, SAFE + r*(S1.h+GAP), S1.w, S1.h);
+                    idx++; x += S1.w + GAP;
                 }
             }
-        } else {
-            // 這裡放原本的混排邏輯 (此處調用原本 downloadA4IbonMixed 內容即可)
+        } else if (mode === 'MIX') {
+            let y = SAFE;
+            const c2 = Math.floor((A4_W - SAFE*2) / (S2.w + GAP));
+            const r2 = 3; // 混排時固定 2 吋排 3 列
+            for(let r=0; r<r2; r++) {
+                let x = SAFE + (A4_W - SAFE*2 - (c2*(S2.w+GAP)-GAP))/2;
+                for(let c=0; c<c2; c++) {
+                    drawCellOnly(ctx, imgs[idx%imgs.length], x, y, S2.w, S2.h);
+                    idx++; x += S2.w + GAP;
+                }
+                y += S2.h + GAP;
+            }
+            // 分隔提示線
+            ctx.setLineDash([10, 10]); ctx.strokeStyle = "#e5e7eb"; ctx.beginPath();
+            ctx.moveTo(SAFE, y - GAP/2); ctx.lineTo(A4_W - SAFE, y - GAP/2); ctx.stroke(); ctx.setLineDash([]);
+            const c1 = Math.floor((A4_W - SAFE*2) / (S1.w + GAP));
+            const r1 = Math.floor((A4_H - y - SAFE) / (S1.h + GAP));
+            for(let r=0; r<r1; r++) {
+                let x = SAFE + (A4_W - SAFE*2 - (c1*(S1.w+GAP)-GAP))/2;
+                for(let c=0; c<c1; c++) {
+                    drawCellOnly(ctx, imgs[idx%imgs.length], x, y, S1.w, S1.h);
+                    idx++; x += S1.w + GAP;
+                }
+                y += S1.h + GAP;
+            }
         }
 
         const a = document.createElement("a");
         a.href = pc.toDataURL("image/png");
-        a.download = `EzID_A4_${mode}.png`;
+        a.download = `EzID_A4_${mode}_${new Date().getTime()}.png`;
         a.click();
-    };
-
-    // 為了節省空間，直接定義各個下載按鈕動作
-    const downloadA4Mixed = async () => {
-        if(!slots.length) return;
-        const A4_W=2480, A4_H=3508, SAFE=100, GAP=40;
-        const SIZE_2={w:413,h:531}, SIZE_1={w:295,h:413};
-        const pc=document.createElement("canvas");
-        pc.width=A4_W; pc.height=A4_H;
-        const ctx=pc.getContext("2d");
-        ctx.fillStyle="#fff"; ctx.fillRect(0,0,A4_W,A4_H);
-        const imgs=await Promise.all(slots.map(s=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=s;})));
-        let idx=0, y=SAFE+20;
-        const c2=Math.floor((A4_W-SAFE*2)/(SIZE_2.w+GAP)), r2=Math.floor((A4_H*0.5)/(SIZE_2.h+GAP));
-        for(let r=0;r<r2;r++){ let x=SAFE+GAP; for(let c=0;c<c2;c++){ drawCell(ctx,imgs[idx%imgs.length],x,y,SIZE_2.w,SIZE_2.h); idx++; x+=SIZE_2.w+GAP; } y+=SIZE_2.h+GAP; }
-        ctx.setLineDash([8,8]); ctx.strokeStyle="#9ca3af"; ctx.beginPath(); ctx.moveTo(SAFE,y-10); ctx.lineTo(A4_W-SAFE,y-10); ctx.stroke(); ctx.setLineDash([]);
-        const c1=Math.floor((A4_W-SAFE*2)/(SIZE_1.w+GAP)), r1=Math.floor((A4_H-y-SAFE)/(SIZE_1.h+GAP));
-        for(let r=0;r<r1;r++){ let x=SAFE+GAP; for(let c=0;c<c1;c++){ drawCell(ctx,imgs[idx%imgs.length],x,y,SIZE_1.w,SIZE_1.h); idx++; x+=SIZE_1.w+GAP; } y+=SIZE_1.h+GAP; }
-        const a=document.createElement("a"); a.href=pc.toDataURL("image/png"); a.download="EzID_A4_Mixed.png"; a.click();
     };
 
     return (
         <div className="max-w-md mx-auto p-4">
             <header className="flex justify-between items-center mb-4 px-2">
-                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.7.2</span></h1>
-                <div className="text-[9px] font-bold text-slate-400 uppercase">ibon A4 專業製版</div>
+                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.7.3</span></h1>
+                <div className="text-[9px] font-bold text-slate-400 uppercase">純淨裁切線佈局</div>
             </header>
 
             <div className="canvas-container mb-6">
@@ -153,11 +154,9 @@ function App() {
 
             <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="mb-4 text-[10px] font-bold text-slate-400 uppercase">👔 數位換裝</div>
-                <div className="flex flex-col gap-2 mb-4 overflow-hidden">
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                        <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
-                        {CLOTHES.male.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
-                    </div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
+                    <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
+                    {CLOTHES.male.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
                 </div>
 
                 <div className="space-y-3 pt-2">
@@ -170,8 +169,8 @@ function App() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mt-6">
-                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
-                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs">📥 存入槽位</button>
+                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer shadow-sm">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
+                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-sm">📥 存入槽位</button>
                 </div>
             </section>
 
@@ -183,12 +182,12 @@ function App() {
             </div>
 
             <div className="mt-6 space-y-2">
-                <button onClick={downloadA4Mixed} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100">🏪 ibon A4｜1+2 吋 混排</button>
+                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-transform shadow-lg shadow-emerald-100">🏪 ibon A4｜1+2 吋 混排</button>
                 <div className="grid grid-cols-2 gap-2">
-                    <button onClick={()=>downloadA4Standard('ALL_2')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs">🏪 A4 全 2 吋</button>
-                    <button onClick={()=>downloadA4Standard('ALL_1')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs">🏪 A4 全 1 吋</button>
+                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-sm">🏪 A4 全 2 吋</button>
+                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-sm">🏪 A4 全 1 吋</button>
                 </div>
-                <button onClick={()=>downloadA4Standard('4x6')} className="w-full bg-slate-900 text-white py-2 rounded-lg font-bold text-[10px] opacity-60">傳統 4x6 沖印檔</button>
+                <div className="pt-2 text-center text-[10px] text-slate-400 font-medium tracking-widest uppercase">已套用 10mm 安全邊界 & 裁切實線</div>
             </div>
         </div>
     );
