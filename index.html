@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.5.4</title>
+    <title>EzID Taiwan v2.5.6</title>
 
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -17,7 +17,7 @@
     <style>
         body { margin:0; font-family:sans-serif; background:#f1f5f9; overflow-x:hidden; touch-action: manipulation; }
         
-        /* 畫布容器：修正手機版定位消失的問題 */
+        /* 畫布容器 */
         .canvas-container { 
             position: relative; 
             width: 350px; 
@@ -32,7 +32,7 @@
         
         canvas { display: block; width: 350px; height: 450px; }
 
-        /* 強化引導線：確保 z-index 最高且強制居中 */
+        /* 修正：人臉橢圓形引導線 */
         .id-guide { 
             position: absolute; 
             top: 0; left: 0; width: 100%; height: 100%;
@@ -42,34 +42,36 @@
         }
         .id-guide::after { 
             content: ""; 
-            width: 220px; height: 220px; 
+            /* 橢圓比例設定：寬度 60%，高度 75% */
+            width: 60%; 
+            height: 75%; 
             border: 3px dashed; 
-            border-radius: 50%; 
-            transform: translateY(-5%); 
+            border-radius: 50% / 45%; /* 這裡控制橢圓的曲率 */
+            transform: translateY(-5%); /* 稍微往上偏移對準頭部 */
             transition: border-color .3s; 
         }
 
-        .status-ok .id-guide::after { border-color: rgba(16,185,129,.8); }
-        .status-warn .id-guide::after { border-color: rgba(245,158,11,.9); }
+        /* 狀態顏色 */
+        .status-ok .id-guide::after { border-color: rgba(16,185,129,0.85); }
+        .status-warn .id-guide::after { border-color: rgba(245,158,11,0.95); }
         .status-bad .id-guide::after { border-color: rgba(239,68,68,1); }
 
-        /* 浮動工具列：優化手機觸控 */
+        /* 浮動工具列 */
         .toolbar { 
             position: absolute; 
             top: 10px; right: 10px; 
             z-index: 110; 
-            background: rgba(255,255,255,.85); 
+            background: rgba(255,255,255,0.85); 
             backdrop-filter: blur(8px); 
             border-radius: 20px; 
             padding: 12px; 
             display: flex; flex-direction: column; gap: 8px; 
-            box-shadow: 0 4px 15px rgba(0,0,0,.15); 
-            border: 1px solid rgba(255,255,255,0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15); 
         }
         .toolbar input[type=range] { width: 100px; accent-color: #2563eb; }
 
-        .slot-item { width: 60px; height: 80px; border-radius: 8px; overflow: hidden; border: 2px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,.1); flex-shrink: 0; position: relative; }
-        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 8px 20px; background: rgba(15,23,42,.9); color: white; border-radius: 50px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 2000; }
+        .slot-item { width: 60px; height: 80px; border-radius: 8px; overflow: hidden; border: 2px solid #fff; flex-shrink: 0; position: relative; }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 8px 20px; background: rgba(15,23,42,0.9); color: white; border-radius: 50px; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 2000; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -125,47 +127,39 @@ function App() {
         const imgs = await Promise.all(slots.map(src => new Promise(res => {
             const img = new Image(); img.onload = () => res(img); img.src = src;
         })));
-        ctx.strokeStyle = "#eee"; ctx.lineWidth = 1;
-        for (let i = 0; i < 4; i++) { ctx.drawImage(imgs[i % imgs.length], 80 + i * 428, 80, 413, 531); ctx.strokeRect(80 + i * 428, 80, 413, 531); }
-        for (let i = 0; i < 5; i++) { ctx.drawImage(imgs[i % imgs.length], 80 + i * 341, 650, 331, 449); ctx.strokeRect(80 + i * 341, 650, 331, 449); }
-        const link = document.createElement("a"); link.download = "EzID_PrintSheet.png"; link.href = pc.toDataURL("image/png"); link.click();
+        for (let i = 0; i < 4; i++) { ctx.drawImage(imgs[i % imgs.length], 80 + i * 428, 80, 413, 531); }
+        for (let i = 0; i < 5; i++) { ctx.drawImage(imgs[i % imgs.length], 80 + i * 341, 650, 331, 449); }
+        const link = document.createElement("a"); link.download = "EzID_Print.png"; link.href = pc.toDataURL("image/png"); link.click();
     };
 
     return (
         <div className={`max-w-5xl mx-auto grid md:grid-cols-2 gap-8 status-${status}`}>
             <div className="relative">
                 <div className="flex justify-between items-center mb-2 px-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">EzID Taiwan v2.5.4</span>
-                    <div className="flex gap-2">
-                        <select value={preset} onChange={e => setPreset(e.target.value)} className="text-[10px] border rounded px-1 py-0.5 bg-white">
-                            {Object.entries(PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-                        </select>
-                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">EZID TAIWAN v2.5.6</span>
+                    <select value={preset} onChange={e => setPreset(e.target.value)} className="text-[10px] border rounded px-1 py-0.5 bg-white">
+                        {Object.entries(PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                    </select>
                 </div>
 
                 <div className="canvas-container">
                     <canvas ref={canvasRef} width="350" height="450"></canvas>
                     {mode === "guided" && <div className="id-guide"></div>}
                     
-                    {/* Floating Toolbar */}
                     <div className="toolbar">
-                        <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-slate-400 uppercase">Size</span>
-                            <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e => setP({ ...p, s: +e.target.value })} />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-slate-400 uppercase">Pos Y</span>
-                            <input type="range" min="-150" max="150" value={p.y} onChange={e => setP({ ...p, y: +e.target.value })} />
-                        </div>
-                        <button onClick={() => { setSlots([canvasRef.current.toDataURL("image/jpeg", 0.9), ...slots].slice(0, 8)); showToast("已存入排版槽"); }} className="bg-blue-600 text-white rounded-lg text-[10px] font-bold py-1.5 active:scale-95 transition-transform">📥 存入</button>
-                        <button onClick={() => setMode(mode === "guided" ? "studio" : "guided")} className="bg-slate-900 text-white rounded-lg text-[10px] font-bold py-1.5 active:scale-95 transition-transform">
+                        <span className="text-[9px] font-black text-slate-400">ZOOM {ratio}%</span>
+                        <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e => setP({ ...p, s: +e.target.value })} />
+                        <span className="text-[9px] font-black text-slate-400">Y-AXIS</span>
+                        <input type="range" min="-150" max="150" value={p.y} onChange={e => setP({ ...p, y: +e.target.value })} />
+                        <button onClick={() => { setSlots([canvasRef.current.toDataURL("image/jpeg", 0.9), ...slots].slice(0, 8)); showToast("已存入"); }} className="bg-blue-600 text-white rounded-lg text-[10px] font-bold py-1.5 shadow-md">📥 存入</button>
+                        <button onClick={() => setMode(mode === "guided" ? "studio" : "guided")} className="bg-slate-900 text-white rounded-lg text-[10px] font-bold py-1.5 shadow-md">
                             {mode === "guided" ? "🎨 專業" : "🧭 建議"}
                         </button>
                     </div>
                 </div>
 
                 <div className="mt-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-500 uppercase">頭部比例 <b className="text-lg text-slate-900 ml-1">{ratio}%</b></span>
+                    <span className="text-xs font-bold">頭部比例: {ratio}%</span>
                     <span className={`text-[10px] font-bold px-3 py-1 rounded-full ${status === "ok" ? "bg-emerald-100 text-emerald-700" : status === "warn" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
                         {status === "ok" ? "🟢 符合規範" : status === "warn" ? "🟡 接近邊界" : "🔴 明顯偏離"}
                     </span>
@@ -174,50 +168,36 @@ function App() {
 
             <div className="flex flex-col gap-6">
                 <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 hover:bg-slate-50 cursor-pointer text-sm font-bold transition-colors">
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 hover:bg-slate-50 cursor-pointer text-sm font-bold transition-colors mb-4">
                         📁 上傳照片
                         <input type="file" hidden onChange={e => {
                             const f = e.target.files[0]; if (f) { const img = new Image(); img.onload = () => setImage(img); img.src = URL.createObjectURL(f); }
                         }} />
                     </label>
 
-                    <div className="mt-6">
-                        <div className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-widest">排版暫存槽 ({slots.length}/8)</div>
-                        <div className="flex gap-2 overflow-x-auto pb-2 min-h-[90px] items-center">
-                            {slots.map((src, i) => (
-                                <div key={i} className="slot-item group">
-                                    <img src={src} className="w-full h-full object-cover" />
-                                    <button onClick={() => { setSlots(slots.filter((_, idx) => idx !== i)); showToast("已移除"); }} className="absolute inset-0 bg-red-500/80 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">移除</button>
-                                </div>
-                            ))}
-                            {slots.length === 0 && <div className="text-[10px] text-slate-300 italic ml-1 text-center w-full">尚未存入任何照片</div>}
-                        </div>
+                    <div className="flex gap-2 overflow-x-auto pb-2 min-h-[90px] items-center">
+                        {slots.map((src, i) => (
+                            <div key={i} className="slot-item group">
+                                <img src={src} className="w-full h-full object-cover" />
+                                <button onClick={() => { setSlots(slots.filter((_, idx) => idx !== i)); showToast("已移除"); }} className="absolute inset-0 bg-red-500/80 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">移除</button>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
-                <button onClick={downloadSheet} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all active:scale-[0.98]">
-                    💾 下載 4x6 吋拼版照片
+                <button onClick={downloadSheet} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl active:scale-95 transition-transform">
+                    💾 下載 4x6 拼版
                 </button>
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                    <p className="text-[10px] text-slate-400 leading-relaxed text-center italic">
-                        ※ 本工具僅提供編輯輔助，不保證審核通過。<br/>
-                        所有影像處理皆在瀏覽器端完成，不會上傳至伺服器。
-                    </p>
-                </div>
             </div>
         </div>
     );
 }
-
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 
 <script>
-// PWA Service Worker 註冊
 if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js");
-    });
+    window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js"); });
 }
 </script>
 </body>
