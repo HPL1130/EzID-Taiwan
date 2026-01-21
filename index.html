@@ -2,26 +2,28 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>EzID Taiwan v2.5.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EzID Taiwan v2.5.0 - PWA Ready</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <style>
         body{background:#f1f5f9;overflow-x:hidden;font-family:sans-serif}
         .canvas-box{background:#e5e7eb;border-radius:32px;border:8px solid #fff;box-shadow:0 20px 40px rgba(0,0,0,.1)}
         .id-guide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
-        /* 輔助線會隨狀態變色 */
-        .id-guide::after{
-            content:"";width:62%;height:62%;border:2px dashed;border-radius:50%;
-            transition: border-color 0.3s;
-        }
-        .status-ok .id-guide::after{border-color: rgba(16, 185, 129, 0.5)}
-        .status-warn .id-guide::after{border-color: rgba(245, 158, 11, 0.6)}
-        .status-bad .id-guide::after{border-color: rgba(239, 68, 68, 0.8)}
-        
+        .id-guide::after{content:"";width:62%;height:62%;border:2px dashed;border-radius:50%;transition:0.3s}
+        .status-ok .id-guide::after{border-color:rgba(16,185,129,0.5)}
+        .status-warn .id-guide::after{border-color:rgba(245,158,11,0.6)}
+        .status-bad .id-guide::after{border-color:rgba(239,68,68,0.8)}
         .slot-item{width:60px;height:80px;border-radius:8px;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.1);flex-shrink:0;position:relative}
+        .disclaimer{font-size:9px;color:#94a3b8;line-height:1.4;text-align:center}
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -39,17 +41,15 @@ function App(){
     const [slots, setSlots] = useState([]);
 
     const PRESETS = {
-        id: {label:"戶政證件", min:65, max:85},
-        passport: {label:"護照規範", min:70, max:80},
-        resume: {label:"履歷 / 商務", min:60, max:75}
+        id: {label:"戶政證件", min:65, max:85, tip:"建議 65-85%"},
+        passport: {label:"護照規範", min:70, max:80, tip:"建議 70-80%"},
+        resume: {label:"履歷 / 商務", min:60, max:75, tip:"建議 60-75%"}
     };
 
     const ratio = Math.round(p.s * 100);
-    const status = 
-        ratio < PRESETS[preset].min - 5 || ratio > PRESETS[preset].max + 5 ? "bad" :
-        ratio < PRESETS[preset].min || ratio > PRESETS[preset].max ? "warn" : "ok";
+    const status = ratio < PRESETS[preset].min - 5 || ratio > PRESETS[preset].max + 5 ? "bad" :
+                   ratio < PRESETS[preset].min || ratio > PRESETS[preset].max ? "warn" : "ok";
 
-    // 繪製畫布
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#fff";
@@ -63,64 +63,52 @@ function App(){
         }
     }, [image, p]);
 
-    useEffect(() => {
-        draw();
-    }, [draw]);
+    useEffect(() => { draw(); }, [draw]);
 
-    // 拼版下載邏輯
     const downloadSheet = async () => {
-        if(slots.length === 0) return alert("請先存入至少一張照片");
+        if(slots.length === 0) return alert("請先將照片存入排版槽");
         const pc = document.createElement("canvas");
         pc.width = 1800; pc.height = 1200;
         const pctx = pc.getContext("2d");
-        pctx.fillStyle = "white";
-        pctx.fillRect(0, 0, 1800, 1200);
+        pctx.fillStyle = "white"; pctx.fillRect(0, 0, 1800, 1200);
 
         const imgs = await Promise.all(slots.map(src => new Promise(res => {
             const img = new Image(); img.onload = () => res(img); img.src = src;
         })));
 
-        pctx.strokeStyle = "#ccc"; pctx.lineWidth = 1;
-        // 4張 2吋
+        pctx.strokeStyle = "#eee"; pctx.lineWidth = 1;
         for(let i=0; i<4; i++) {
             pctx.drawImage(imgs[i % imgs.length], 80 + i*428, 80, 413, 531);
             pctx.strokeRect(80 + i*428, 80, 413, 531);
         }
-        // 5張 1吋
         for(let i=0; i<5; i++) {
             pctx.drawImage(imgs[i % imgs.length], 80 + i*341, 650, 331, 449);
             pctx.strokeRect(80 + i*341, 650, 331, 449);
         }
-
         const link = document.createElement("a");
-        link.download = `EzID_PrintSheet.png`;
+        link.download = `EzID_Sheet.png`;
         link.href = pc.toDataURL("image/png");
         link.click();
     };
 
     return(
     <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-10">
-        {/* 左側預覽與診斷 */}
         <div className={`status-${status}`}>
-            <div className="flex justify-between items-center mb-4">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">EzID Taiwan v2.5.0</span>
-                <button
-                    onClick={() => setMode(mode === "guided" ? "studio" : "guided")}
+            <div className="flex justify-between items-center mb-4 px-2">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">v2.5.0 GUIDED</span>
+                <button onClick={() => setMode(mode === "guided" ? "studio" : "guided")}
                     className="px-4 py-1.5 rounded-full text-[10px] font-black text-white transition-all shadow-md"
-                    style={{background: mode === "guided" ? "#10b981" : "#0f172a"}}
-                >
+                    style={{background: mode === "guided" ? "#10b981" : "#0f172a"}}>
                     {mode === "guided" ? "🧭 建議模式" : "🎨 專業編輯"}
                 </button>
             </div>
-
             <div className="relative canvas-box w-full max-w-[350px] mx-auto aspect-[35/45]">
                 <canvas ref={canvasRef} width="350" height="450" className="w-full h-full rounded-[24px]"></canvas>
                 {mode === "guided" && <div className="id-guide"></div>}
             </div>
-
             <div className="mt-6 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-500">頭部比例：<b className="text-lg text-slate-900">{ratio}%</b></span>
+                    <span className="text-xs font-bold">頭部比例：<b className="text-lg">{ratio}%</b></span>
                     <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                         status === "ok" ? "bg-emerald-100 text-emerald-700" :
                         status === "warn" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
@@ -133,38 +121,29 @@ function App(){
                         <select value={preset} onChange={e => setPreset(e.target.value)} className="text-xs border rounded-lg px-2 py-1 bg-slate-50">
                             {Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                         </select>
-                        <span className="text-[10px] text-slate-400">建議範圍：{PRESETS[preset].min}% – {PRESETS[preset].max}%</span>
+                        <span className="text-[10px] text-slate-400">{PRESETS[preset].tip}</span>
                     </div>
                 )}
             </div>
         </div>
 
-        {/* 右側控制面板 */}
         <div className="flex flex-col gap-6">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                 <div className="grid grid-cols-2 gap-3 mb-6">
-                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-4 hover:bg-slate-50 cursor-pointer transition-all">
-                        <span className="text-sm font-bold text-slate-700">📁 上傳照片</span>
-                        <input type="file" hidden onChange={e => {
+                    <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-4 hover:bg-slate-50 cursor-pointer transition-all text-sm font-bold">
+                        📁 上傳照片 <input type="file" hidden onChange={e => {
                             const f = e.target.files[0];
-                            if(f){
-                                const img = new Image();
-                                img.onload = () => setImage(img);
-                                img.src = URL.createObjectURL(f);
-                            }
+                            if(f){ const img = new Image(); img.onload = () => setImage(img); img.src = URL.createObjectURL(f); }
                         }}/>
                     </label>
-                    <button onClick={() => {
-                        const data = canvasRef.current.toDataURL("image/jpeg", 0.9);
-                        setSlots([data, ...slots].slice(0, 8));
-                    }} className="bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-100 active:scale-95 transition-all">
+                    <button onClick={() => setSlots([canvasRef.current.toDataURL("image/jpeg", 0.9), ...slots].slice(0, 8))}
+                        className="bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-lg active:scale-95 transition-all">
                         📥 存入排版槽
                     </button>
                 </div>
-
-                <div className="space-y-5">
+                <div className="space-y-6">
                     <div>
-                        <div className="flex justify-between text-[10px] font-black text-slate-400 mb-2 uppercase"><span>人像縮放</span><span>{ratio}%</span></div>
+                        <div className="flex justify-between text-[10px] font-black text-slate-400 mb-2 uppercase"><span>縮放比例</span><span>{ratio}%</span></div>
                         <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e => setP({...p, s: +e.target.value})} className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none accent-blue-600 cursor-pointer"/>
                     </div>
                     <div>
@@ -174,7 +153,6 @@ function App(){
                 </div>
             </div>
 
-            {/* 排版槽預覽 */}
             <div className="bg-white p-4 rounded-3xl border border-slate-100">
                 <div className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-wider">排版暫存槽 ({slots.length}/8)</div>
                 <div className="flex gap-2 overflow-x-auto pb-2">
@@ -184,23 +162,26 @@ function App(){
                             <button onClick={() => setSlots(slots.filter((_, idx) => idx !== i))} className="absolute inset-0 bg-red-500/80 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">移除</button>
                         </div>
                     ))}
-                    {slots.length === 0 && <div className="h-20 flex-1 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-lg text-[10px] text-slate-300 italic">尚未存入照片</div>}
                 </div>
             </div>
 
             <button onClick={downloadSheet} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-slate-800 transition-all active:scale-[0.98]">
                 💾 下載 4x6 吋拼版照片
             </button>
-
-            <div className="text-[9px] text-slate-400 leading-relaxed text-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                ※ 本工具僅提供排版與建議功能。照片比例與色彩是否符合各機關最新規範，請使用者下載前自行確認。 EzID Taiwan 不承擔因照片不合規導致之損失。
-            </div>
+            <p className="disclaimer">※ 本工具僅提供建議參考，不保證審核通過。使用者需自行確認是否符合各機關規範。<br/>PWA 離線版：斷網亦可安全使用。</p>
         </div>
     </div>
     );
 }
-
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js");
+  });
+}
 </script>
 </body>
 </html>
