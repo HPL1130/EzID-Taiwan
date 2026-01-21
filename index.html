@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.5.12</title>
+    <title>EzID Taiwan v2.5.14</title>
 
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -15,19 +15,29 @@
         .canvas-container {
             position: relative;
             width: 350px; height: 450px;
-            margin: 0 auto;
-            background: #fff;
-            border-radius: 32px;
-            border: 8px solid #fff;
+            margin: 0 auto; background: #fff;
+            border-radius: 32px; border: 8px solid #fff;
             box-shadow: 0 20px 40px rgba(0,0,0,.1);
             overflow: hidden;
         }
         canvas { display:block; width:350px; height:450px; }
+        
+        /* 輔助線層 */
         .id-guide { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:100; }
         .inner-guide, .outer-guide { position:absolute; border-radius:50% / 46%; transform:translateY(-6%); transition: all 0.3s ease; }
         .inner-guide { border:2px dotted rgba(16,185,129,0.7); }
         .outer-guide { border:2px dashed rgba(245,158,11,0.6); }
         
+        /* 垂直中心線樣式 */
+        .center-line {
+            position: absolute;
+            left: 50%; top: 0; bottom: 0;
+            width: 1.5px;
+            background: rgba(59, 130, 246, 0.4); /* 柔和藍色 */
+            z-index: 90;
+            pointer-events: none;
+        }
+
         .fixed-panel {
             width: 100%; max-width:400px; margin:16px auto;
             background:white; border-radius:24px; padding:20px;
@@ -38,10 +48,8 @@
         input[type=range] { width:100%; height:6px; background:#f1f5f9; border-radius:10px; appearance:none; accent-color:#2563eb; }
         
         .slot-scroll { display:flex; gap:10px; overflow-x:auto; padding-bottom:8px; }
-        .slot-box { width:65px; height:85px; border-radius:8px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex-shrink:0; position:relative; overflow:hidden; transition: transform 0.2s; }
-        .slot-box:active { transform: scale(0.95); }
-        
-        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:10px 24px; background:#0f172a; color:white; border-radius:50px; font-size:13px; font-weight:bold; opacity:0; transition:0.3s; z-index:2000; box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        .slot-box { width:65px; height:85px; border-radius:8px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex-shrink:0; position:relative; overflow:hidden; }
+        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:10px 24px; background:#0f172a; color:white; border-radius:50px; font-size:13px; font-weight:bold; opacity:0; transition:0.3s; z-index:2000; }
         .no-scrollbar::-webkit-scrollbar { display:none; }
     </style>
 </head>
@@ -74,8 +82,6 @@ function App() {
 
     const ratio=Math.round(p.s*100);
     const currentMode=PRESETS[preset];
-    
-    // 狀態判定顏色
     const status = ratio < currentMode.min - 5 || ratio > currentMode.max + 5 ? "bad" :
                    ratio < currentMode.min || ratio > currentMode.max ? "warn" : "ok";
 
@@ -100,17 +106,38 @@ function App() {
         showToast("已存入排版槽位");
     };
 
-    const downloadFinal=async()=>{
-        if(slots.length===0){ alert("槽位為空！"); return; }
-        showToast("正在產生 4x6 拼版...");
-        const pc=document.createElement("canvas"); pc.width=1800; pc.height=1200;
-        const ctx=pc.getContext("2d"); ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
-        const imgs=await Promise.all(slots.map(src=>new Promise(res=>{
-            const img=new Image(); img.onload=()=>res(img); img.src=src;
-        })));
-        for(let i=0;i<4;i++) ctx.drawImage(imgs[i%imgs.length],80+i*428,80,413,531);
-        for(let i=0;i<5;i++) ctx.drawImage(imgs[i%imgs.length],80+i*341,650,331,449);
-        const link=document.createElement("a"); link.download=`EzID_${Date.now()}.png`; link.href=pc.toDataURL("image/png"); link.click();
+    const downloadSheet = async (type) => {
+        if (slots.length === 0) { alert("槽位為空！"); return; }
+        showToast(`正在產生 ${type === 'A4' ? 'ibon A4' : '4x6'} 拼版...`);
+        const pc = document.createElement("canvas");
+        const ctx = pc.getContext("2d");
+
+        if (type === '4x6') {
+            pc.width = 1800; pc.height = 1200;
+            ctx.fillStyle = "white"; ctx.fillRect(0, 0, 1800, 1200);
+            const imgs = await Promise.all(slots.map(src => new Promise(res => {
+                const img = new Image(); img.onload = () => res(img); img.src = src;
+            })));
+            for(let i=0;i<4;i++) ctx.drawImage(imgs[i % imgs.length], 80 + i * 428, 80, 413, 531);
+            for(let i=0;i<5;i++) ctx.drawImage(imgs[i % imgs.length], 80 + i * 341, 650, 331, 449);
+        } else {
+            pc.width = 2480; pc.height = 3508;
+            ctx.fillStyle = "white"; ctx.fillRect(0, 0, 2480, 3508);
+            const imgs = await Promise.all(slots.map(src => new Promise(res => {
+                const img = new Image(); img.onload = () => res(img); img.src = src;
+            })));
+            const startX = 120, startY = 120, gapX = 450, gapY = 560;
+            for(let row=0; row<6; row++) {
+                for(let col=0; col<5; col++) {
+                    const idx = (row * 5 + col) % imgs.length;
+                    ctx.drawImage(imgs[idx], startX + col * gapX, startY + row * gapY, 413, 531);
+                }
+            }
+        }
+        const link = document.createElement("a");
+        link.download = `EzID_${type}_${Date.now()}.png`;
+        link.href = pc.toDataURL("image/png");
+        link.click();
     };
 
     return (
@@ -118,7 +145,7 @@ function App() {
             <div className="flex justify-between items-center mb-4 px-2">
                 <div>
                     <h1 className="text-xl font-black text-slate-800 tracking-tight">EzID Taiwan</h1>
-                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">v2.5.12 Flagship</p>
+                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">v2.5.14 Flagship</p>
                 </div>
                 <select value={preset} onChange={e=>setPreset(e.target.value)} className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none shadow-sm">
                     {Object.entries(PRESETS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
@@ -127,11 +154,15 @@ function App() {
 
             <div className="canvas-container">
                 <canvas ref={canvasRef} width="350" height="450"></canvas>
+                {/* 垂直中心線與雙圈輔助 */}
                 {mode === "guided" && (
-                    <div className="id-guide">
-                        <div className="inner-guide" style={{width:`${currentMode.inner*0.95}%`,height:`${currentMode.inner}%`}}></div>
-                        <div className="outer-guide" style={{width:`${currentMode.outer*0.95}%`,height:`${currentMode.outer}%`}}></div>
-                    </div>
+                    <React.Fragment>
+                        <div className="center-line"></div>
+                        <div className="id-guide">
+                            <div className="inner-guide" style={{width:`${currentMode.inner*0.95}%`,height:`${currentMode.inner}%`}}></div>
+                            <div className="outer-guide" style={{width:`${currentMode.outer*0.95}%`,height:`${currentMode.outer}%`}}></div>
+                        </div>
+                    </React.Fragment>
                 )}
             </div>
 
@@ -170,7 +201,7 @@ function App() {
 
                 <div className="grid grid-cols-2 gap-3 mt-4">
                     <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-transform shadow-lg">
-                        📁 上傳照片
+                        📸 上傳照片
                         <input type="file" hidden accept="image/*" onChange={e=>{
                             const f=e.target.files[0]; if(f){ const img=new Image(); img.onload=()=>{ setImage(img); showToast("照片載入成功！"); }; img.src=URL.createObjectURL(f); }
                         }} />
@@ -186,14 +217,14 @@ function App() {
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">排版槽位 ({slots.length}/8)</span>
                     <div className="flex gap-4">
                         <button onClick={() => setMode(mode === "guided" ? "studio" : "guided")} className="text-[10px] font-bold text-blue-500">
-                            {mode === "guided" ? "隱藏輔助線" : "顯示輔助線"}
+                            {mode === "guided" ? "關閉對齊線" : "開啟對齊線"}
                         </button>
                         {slots.length>0 && <button onClick={()=>setSlots([])} className="text-[10px] font-bold text-red-400">清空</button>}
                     </div>
                 </div>
                 <div className="slot-scroll no-scrollbar">
                     {slots.map((s,i)=>(
-                        <div key={i} className="slot-box group" onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))}>
+                        <div key={i} className="slot-box group" onClick={()=>setSlots(slots.filter((_,idx)=>idx !== i))}>
                             <img src={s} className="w-full h-full object-cover" />
                             <div className="absolute inset-0 bg-red-500/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold cursor-pointer transition-opacity">移除</div>
                         </div>
@@ -202,15 +233,19 @@ function App() {
                 </div>
             </div>
 
-            <button onClick={downloadFinal} className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-2 mb-8">
-                💾 下載 4x6 吋沖印拼版
-            </button>
+            <div className="flex flex-col gap-3 mb-8">
+                <button onClick={() => downloadSheet('4x6')} className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black shadow-2xl active:scale-95 transition-all">
+                    🖼️ 下載 4x6 吋沖印版
+                </button>
+                <button onClick={() => downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-4 rounded-3xl font-black shadow-lg active:scale-95 transition-all">
+                    🏪 下載 ibon A4 列印版 (30張)
+                </button>
+            </div>
             
             <div className="bg-white/60 p-5 rounded-3xl border border-slate-100 text-[11px] text-slate-500 leading-relaxed mb-10">
-                <b className="text-slate-800 block mb-2 font-black uppercase tracking-wider">💡 快速對位指南</b>
-                1. 調整人像縮放，使頭頂到下巴落在<b>雙圈虛線</b>之間。<br/>
-                2. 內圈 (綠點) 約 3.2cm，外圈 (橘虛線) 約 3.6cm。<br/>
-                3. 完成單張調整後點擊「存入槽位」，累積多張可一次拼版下載。
+                <b className="text-slate-800 block mb-2 font-black uppercase tracking-wider">💡 垂直對齊提示</b>
+                • 使用<b>藍色中心線</b>對準鼻樑或人臉中軸，確保照片不歪斜。<br/>
+                • 拼版時，中心線僅供參考，不會被印出來。
             </div>
         </div>
     );
