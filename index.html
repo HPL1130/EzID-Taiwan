@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.2.6 - 效能與UX優化版</title>
+    <title>EzID Taiwan v2.3.0 - 專業模式保護版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -20,9 +20,9 @@
         .slot-thumb { width: 75px; height: 95px; border-radius: 12px; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); overflow: hidden; flex-shrink: 0; position: relative; }
         .slot-controls { display: flex; width: 100%; justify-content: space-between; padding: 4px; background: rgba(15, 23, 42, 0.9); position: absolute; bottom: 0; left: 0; transition: 0.2s; opacity: 0; }
         .slot-thumb:hover .slot-controls { opacity: 1; }
-        @media (hover: none) { .slot-controls { opacity: 1; } } /* 行動裝置永遠顯示控制鈕 */
-        .live-label { position: absolute; top: 4px; left: 4px; background: #ef4444; color: white; font-size: 8px; padding: 1px 4px; border-radius: 4px; font-weight: bold; z-index: 20; animation: pulse 2s infinite; }
+        @media (hover: none) { .slot-controls { opacity: 1; } }
         .ux-toast { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; pointer-events: none; z-index: 110; }
+        .mode-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -32,10 +32,11 @@
         const { useState, useRef, useEffect, useCallback } = React;
 
         const EzIDApp = () => {
+            const [mode, setMode] = useState('id'); // 'id' 或 'studio'
             const [image, setImage] = useState(null);
             const [isCam, setIsCam] = useState(false);
             const [bgColor, setBgColor] = useState('#ffffff');
-            const [p, setP] = useState({ x: 0, y: 0, s: 0.75 });
+            const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
             const [suit, setSuit] = useState({ gender: 'male', id: null, x: 175, y: 340, s: 0.35 });
             const [slots, setSlots] = useState([]);
             const [scrolled, setScrolled] = useState(false);
@@ -48,12 +49,24 @@
             const suitImg = useRef(new Image());
             const interaction = useRef({ dragging: false, lastX: 0, lastY: 0, lastDist: 0 });
 
-            // 1. 效能優化：衣服路徑監聽載入
+            // 模式切換邏輯
+            const toggleMode = () => {
+                if (mode === 'id') {
+                    if (confirm('進入專業編輯模式後，需自行確認證件規範（如：白底、頭部比例），是否繼續？')) {
+                        setMode('studio');
+                    }
+                } else {
+                    setMode('id');
+                    setBgColor('#ffffff');
+                    setP({ x: 0, y: -20, s: 0.75 });
+                    setSuit(v => ({ ...v, id: null }));
+                }
+            };
+
             useEffect(() => {
                 if (suit.id) suitImg.current.src = `clothes/${suit.gender}/${suit.id}.png`;
             }, [suit.id, suit.gender]);
 
-            // 2. 效能優化：降頻更新 LivePreview
             useEffect(() => {
                 const tid = setTimeout(() => {
                     if(canvasRef.current) setLivePreview(canvasRef.current.toDataURL('image/jpeg', 0.6));
@@ -86,20 +99,30 @@
             }, [draw]);
 
             const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 1500); };
-            const handleZoom = (factor) => { if (!suit.id) return; setSuit(v => ({ ...v, s: Math.min(Math.max(v.s * factor, 0.05), 2.0) })); showToast('調整服裝尺寸'); };
-            const handleMove = (dx, dy) => { if (!suit.id) return; const rect = containerRef.current.getBoundingClientRect(); setSuit(v => ({ ...v, x: v.x + dx * (350/rect.width), y: v.y + dy * (450/rect.height) })); showToast('調整服裝位置'); };
+            const handleZoom = (factor) => { 
+                if (mode === 'id' || !suit.id) return; 
+                setSuit(v => ({ ...v, s: Math.min(Math.max(v.s * factor, 0.05), 2.0) })); 
+                showToast('調整服裝尺寸'); 
+            };
+            const handleMove = (dx, dy) => { 
+                if (mode === 'id' || !suit.id) return; 
+                const rect = containerRef.current.getBoundingClientRect(); 
+                setSuit(v => ({ ...v, x: v.x + dx * (350/rect.width), y: v.y + dy * (450/rect.height) })); 
+                showToast('調整服裝位置'); 
+            };
 
-            const onMouseDown = (e) => { interaction.current.dragging = true; interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY; };
+            const onMouseDown = (e) => { if(mode==='studio') { interaction.current.dragging = true; interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY; } };
             const onMouseMove = (e) => { if (!interaction.current.dragging) return; handleMove(e.clientX - interaction.current.lastX, e.clientY - interaction.current.lastY); interaction.current.lastX = e.clientX; interaction.current.lastY = e.clientY; };
 
             useEffect(() => {
                 const el = containerRef.current; if (!el) return;
                 const onTS = (e) => {
+                    if (mode !== 'studio') return;
                     if (e.touches.length === 2) { interaction.current.lastDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); } 
                     else { interaction.current.dragging = true; interaction.current.lastX = e.touches[0].clientX; interaction.current.lastY = e.touches[0].clientY; }
                 };
                 const onTM = (e) => {
-                    if (!suit.id) return; 
+                    if (mode !== 'studio' || !suit.id) return; 
                     if (e.cancelable) e.preventDefault();
                     if (e.touches.length === 2) {
                         const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
@@ -114,14 +137,16 @@
                 el.addEventListener('touchmove', onTM, { passive: false });
                 el.addEventListener('touchend', () => interaction.current.dragging = false);
                 return () => { el.removeEventListener('touchstart', onTS); el.removeEventListener('touchmove', onTM); };
-            }, [suit.id]);
+            }, [suit.id, mode]);
 
             return (
                 <div className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-8 ${scrolled ? 'is-scrolled' : ''}`}>
                     <div className="w-full lg:w-[400px] sticky-canvas">
-                        <div className="flex justify-between mb-2 px-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Ver 2.2.6 Optimized</span>
-                            <span className="text-[10px] font-bold text-green-600">效能與 UX 已優化</span>
+                        <div className="flex justify-between items-center mb-4 px-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">Ver 2.3.0 Protected</span>
+                            <button onClick={toggleMode} className={`mode-btn px-4 py-1.5 text-[10px] font-black rounded-full shadow-sm ${mode === 'id' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white'}`}>
+                                {mode === 'id' ? '🛡️ 證件安全模式' : '🎨 專業編輯模式'}
+                            </button>
                         </div>
                         <div 
                             ref={containerRef} 
@@ -138,7 +163,7 @@
 
                     <div className="flex-1 space-y-6">
                         <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-3">排版管理 (手機版已優化顯示鈕)</h3>
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase mb-3">排版管理</h3>
                             <div className="slot-scroll">
                                 <div className="preview-slot"><span className="live-label">LIVE</span>{livePreview && <img src={livePreview} className="w-full h-full object-cover opacity-50" />}</div>
                                 {slots.map((s, i) => (
@@ -170,25 +195,34 @@
                             </div>
 
                             <div className="space-y-6 pt-6 border-t border-slate-100">
-                                <div className="flex p-1 bg-slate-100 rounded-xl">
-                                    <button onClick={() => setSuit({ ...suit, gender: 'male' })} className={`flex-1 py-1 text-xs font-bold rounded-lg ${suit.gender === 'male' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>男仕</button>
-                                    <button onClick={() => setSuit({ ...suit, gender: 'female' })} className={`flex-1 py-1 text-xs font-bold rounded-lg ${suit.gender === 'female' ? 'bg-white shadow-sm text-pink-600' : 'text-slate-400'}`}>女仕</button>
-                                </div>
-                                <div className="grid grid-cols-5 gap-2">
-                                    {['m1','m2','m3','m4','m5'].map(n => {
-                                        const id = suit.gender === 'male' ? n : n.replace('m', 'f');
-                                        return (
-                                            <div key={id} onClick={() => setSuit({ ...suit, id })} className={`p-1 rounded-lg border-2 cursor-pointer transition-all ${suit.id === id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-slate-50'}`}>
-                                                <img src={`clothes/${suit.gender}/${id}.png`} className="w-full h-8 object-contain" />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div className="space-y-4 pt-4">
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像縮放 (滑桿)</span><span>{(p.s*100).toFixed(0)}%</span></div>
-                                    <input type="range" min="0.2" max="2.0" step="0.01" value={p.s} onChange={e => setP({ ...p, s: parseFloat(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
-                                    <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase"><span>人像高低 (滑桿)</span><span>{p.y} px</span></div>
-                                    <input type="range" min="-200" max="200" value={p.y} onChange={e => setP({ ...p, y: parseInt(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600" />
+                                {mode === 'studio' && (
+                                    <div className="animate-in fade-in duration-500">
+                                        <div className="flex p-1 bg-slate-100 rounded-xl mb-4">
+                                            <button onClick={() => setSuit({ ...suit, gender: 'male' })} className={`flex-1 py-1 text-xs font-bold rounded-lg ${suit.gender === 'male' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}>男仕</button>
+                                            <button onClick={() => setSuit({ ...suit, gender: 'female' })} className={`flex-1 py-1 text-xs font-bold rounded-lg ${suit.gender === 'female' ? 'bg-white shadow-sm text-pink-600' : 'text-slate-400'}`}>女仕</button>
+                                        </div>
+                                        <div className="grid grid-cols-5 gap-2">
+                                            {['m1','m2','m3','m4','m5'].map(n => {
+                                                const id = suit.gender === 'male' ? n : n.replace('m', 'f');
+                                                return (
+                                                    <div key={id} onClick={() => setSuit({ ...suit, id })} className={`p-1 rounded-lg border-2 cursor-pointer transition-all ${suit.id === id ? 'border-blue-500 bg-blue-50 scale-105' : 'border-slate-50'}`}>
+                                                        <img src={`clothes/${suit.gender}/${id}.png`} className="w-full h-8 object-contain" />
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="space-y-4">
+                                    <div className={`transition-opacity duration-300 ${mode === 'id' ? 'opacity-40 pointer-events-none' : ''}`}>
+                                        <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-2"><span>人像縮放</span><span>{(p.s*100).toFixed(0)}%</span></div>
+                                        <input type="range" min="0.2" max="2.0" step="0.01" value={p.s} onChange={e => setP({ ...p, s: parseFloat(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600 cursor-pointer" />
+                                    </div>
+                                    <div className={`transition-opacity duration-300 ${mode === 'id' ? 'opacity-40 pointer-events-none' : ''}`}>
+                                        <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-2"><span>人像高低</span><span>{p.y} px</span></div>
+                                        <input type="range" min="-200" max="200" value={p.y} onChange={e => setP({ ...p, y: parseInt(e.target.value) })} className="w-full h-2 bg-slate-100 rounded-lg appearance-none accent-blue-600 cursor-pointer" />
+                                    </div>
                                 </div>
                                 <button onClick={() => setSlots([...slots, canvasRef.current.toDataURL('image/jpeg', 0.9)])} className="w-full bg-blue-600 text-white py-4 rounded-[24px] font-black shadow-xl">📥 存入排版槽</button>
                             </div>
