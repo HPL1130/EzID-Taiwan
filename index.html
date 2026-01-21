@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.6.2</title>
+    <title>EzID Taiwan v2.6.3</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,8 +11,11 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
         .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
-        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); }
-        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; }
+        /* 雙圈規範樣式 */
+        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; }
+        .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; }
+        
+        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; z-index: 90; }
         .suit-btn { width:56px; height:56px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:14px; background:#fff; display:flex; align-items:center; justify-content:center; }
         .suit-btn.active { border-color:#2563eb; background:#eff6ff; }
         input[type=range] { width:100%; accent-color:#2563eb; }
@@ -31,7 +34,7 @@ function App() {
     const [activeSuit, setActiveSuit] = useState(null);
     const [slots, setSlots] = useState([]);
     
-    // 核心狀態：照片 (p) 與 服裝 (sp) 獨立控制
+    // 狀態控制
     const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
@@ -75,10 +78,10 @@ function App() {
         const ctx = pc.getContext("2d");
         const imgs = await Promise.all(slots.map(s => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=s; })));
         
-        if(type === 'A4'){ // ibon A4 拼版 (30張)
+        if(type === 'A4'){ 
             pc.width=2480; pc.height=3508; ctx.fillStyle="white"; ctx.fillRect(0,0,2480,3508);
             for(let r=0; r<6; r++) for(let c=0; c<5; c++) ctx.drawImage(imgs[(r*5+c)%imgs.length], 120+c*450, 120+r*560, 413, 531);
-        } else { // 4x6 吋拼版
+        } else {
             pc.width=1800; pc.height=1200; ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
             for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*428, 80, 413, 531);
             for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*341, 650, 331, 449);
@@ -88,16 +91,18 @@ function App() {
 
     return (
         <div className="max-w-md mx-auto p-4">
-            <header className="flex justify-between items-center mb-4">
-                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.6.2</span></h1>
-                <div className="text-[10px] font-bold text-slate-400">頭部對齊內圈 71%</div>
+            <header className="flex justify-between items-center mb-4 px-2">
+                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.6.3</span></h1>
+                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">頭頂至下巴規範: 3.2cm - 3.6cm</div>
             </header>
 
             <div className="canvas-container mb-6">
                 <canvas ref={canvasRef} width="350" height="450" />
                 <div className="center-line"></div>
+                {/* 雙圈導引層 */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="inner-guide" style={{width:'71%', height:'71%'}}></div>
+                    <div className="outer-guide" style={{width:'80%', height:'80%'}}></div>
                 </div>
             </div>
 
@@ -139,8 +144,8 @@ function App() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 mt-6">
-                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer shadow-md">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
-                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-md">📥 存入槽位</button>
+                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
+                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs">📥 存入槽位</button>
                 </div>
             </section>
 
