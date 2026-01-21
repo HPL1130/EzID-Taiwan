@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.5.10</title>
+    <title>EzID Taiwan v2.5.11</title>
 
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -13,7 +13,7 @@
     <style>
         body { margin:0; font-family:sans-serif; background:#f8fafc; overflow-x:hidden; touch-action: manipulation; }
         
-        /* 畫布容器：固定在畫面上方 */
+        /* 畫布預覽區 */
         .canvas-container { 
             position: relative; 
             width: 350px; 
@@ -26,10 +26,9 @@
             overflow: hidden;
             z-index: 10;
         }
-        
         canvas { display: block; width: 350px; height: 450px; }
 
-        /* 雙圈法規線：內圈 3.2cm (71%), 外圈 3.6cm (80%) */
+        /* 雙圈法規線：根據不同規範調整大小 */
         .id-guide { 
             position: absolute; 
             inset: 0; 
@@ -37,22 +36,18 @@
             pointer-events: none; 
             z-index: 100; 
         }
-        .inner-guide {
+        
+        /* 雙圈樣式 */
+        .inner-guide, .outer-guide {
             position: absolute;
-            width: 68%; height: 71%; /* 約 3.2cm */
-            border: 2px dotted rgba(16, 185, 129, 0.7);
             border-radius: 50% / 46%;
             transform: translateY(-6%);
+            transition: all 0.3s ease;
         }
-        .outer-guide {
-            position: absolute;
-            width: 76%; height: 80%; /* 約 3.6cm */
-            border: 2px dashed rgba(245, 158, 11, 0.6);
-            border-radius: 50% / 46%;
-            transform: translateY(-6%);
-        }
+        .inner-guide { border: 2px dotted rgba(16, 185, 129, 0.7); }
+        .outer-guide { border: 2px dashed rgba(245, 158, 11, 0.6); }
 
-        /* 固定工具列：放在畫布下方，不遮擋視線 */
+        /* 固定控制面板 */
         .fixed-panel {
             width: 100%;
             max-width: 400px;
@@ -69,9 +64,11 @@
         input[type=range] { width: 100%; height: 6px; background: #f1f5f9; border-radius: 10px; appearance: none; accent-color: #2563eb; }
 
         .slot-scroll { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
-        .slot-box { width: 60px; height: 80px; border-radius: 8px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); flex-shrink: 0; position: relative; overflow: hidden; }
+        .slot-box { width: 65px; height: 85px; border-radius: 8px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); flex-shrink: 0; position: relative; overflow: hidden; }
         
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 10px 24px; background: #0f172a; color: white; border-radius: 50px; font-size: 13px; font-weight: bold; opacity: 0; transition: 0.3s; z-index: 2000; }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body>
@@ -88,6 +85,13 @@ function App() {
     const [slots, setSlots] = useState([]);
     const [preset, setPreset] = useState("id");
 
+    // 補回機關規範數據
+    const PRESETS = {
+        id: { label: "戶政證件 (3.2-3.6cm)", min: 71, max: 80, inner: 71, outer: 80 },
+        passport: { label: "外交部護照 (70-80%)", min: 70, max: 80, inner: 70, outer: 80 },
+        resume: { label: "履歷/商務 (無規範)", min: 55, max: 70, inner: 55, outer: 70 }
+    };
+
     const showToast = (msg) => {
         const t = document.getElementById("toast");
         t.textContent = msg; t.style.opacity = 1;
@@ -95,6 +99,7 @@ function App() {
     };
 
     const ratio = Math.round(p.s * 100);
+    const currentMode = PRESETS[preset];
 
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
@@ -126,87 +131,89 @@ function App() {
         })));
         for (let i = 0; i < 4; i++) ctx.drawImage(imgs[i % imgs.length], 80 + i * 428, 80, 413, 531);
         for (let i = 0; i < 5; i++) ctx.drawImage(imgs[i % imgs.length], 80 + i * 341, 650, 331, 449);
-        const link = document.createElement("a"); link.download = "EzID_4x6.png"; link.href = pc.toDataURL("image/png"); link.click();
+        const link = document.createElement("a"); link.download = "EzID_Final_Print.png"; link.href = pc.toDataURL("image/png"); link.click();
     };
 
     return (
         <div className="max-w-lg mx-auto p-4">
+            <div className="flex justify-between items-center mb-4 px-2">
+                <h1 className="text-xl font-black text-slate-800">EzID Taiwan <span className="text-xs font-bold text-slate-300">v2.5.11</span></h1>
+                <select value={preset} onChange={e => setPreset(e.target.value)} className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none">
+                    {Object.entries(PRESETS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+            </div>
+
             {/* 1. 畫布預覽區 */}
             <div className="canvas-container">
                 <canvas ref={canvasRef} width="350" height="450"></canvas>
                 <div className="id-guide">
-                    <div className="inner-guide"></div>
-                    <div className="outer-guide"></div>
+                    {/* 雙圈根據不同機關規範連動調整寬高 */}
+                    <div className="inner-guide" style={{ width: `${currentMode.inner * 0.95}%`, height: `${currentMode.inner}%` }}></div>
+                    <div className="outer-guide" style={{ width: `${currentMode.outer * 0.95}%`, height: `${currentMode.outer}%` }}></div>
                 </div>
             </div>
 
             {/* 2. 固定控制面板 */}
             <div className="fixed-panel">
-                <div className="flex justify-between items-end mb-4">
+                <div className="flex justify-between items-end mb-6">
                     <div>
-                        <h2 className="text-xl font-black text-slate-800">EzID Taiwan</h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">v2.5.10 Pro Studio</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">目前規範判定</p>
+                        <p className="text-xs font-black text-slate-600">{currentMode.label}</p>
                     </div>
                     <div className="text-right">
-                        <span className="text-[10px] block font-bold text-slate-400">頭部比例</span>
-                        <span className={`text-xl font-black ${ratio >= 70 && ratio <= 80 ? 'text-emerald-500' : 'text-slate-800'}`}>{ratio}%</span>
+                        <span className={`text-2xl font-black ${ratio >= currentMode.min && ratio <= currentMode.max ? 'text-emerald-500' : 'text-red-400'}`}>{ratio}%</span>
                     </div>
                 </div>
 
                 <div className="control-group">
-                    <label>🔍 人像縮放 (Scale)</label>
+                    <label>🔍 人像縮放比例</label>
                     <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e => setP({...p, s: +e.target.value})} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="control-group">
-                        <label>↕ 垂直位移 (Y)</label>
+                        <label>↕ 垂直位置 (Y)</label>
                         <input type="range" min="-180" max="180" value={p.y} onChange={e => setP({...p, y: +e.target.value})} />
                     </div>
                     <div className="control-group">
-                        <label>↔ 水平位移 (X)</label>
+                        <label>↔ 水平位置 (X)</label>
                         <input type="range" min="-100" max="100" value={p.x} onChange={e => setP({...p, x: +e.target.value})} />
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-2">
-                    <label className="bg-slate-100 text-slate-700 py-3 rounded-xl text-center font-bold text-xs cursor-pointer active:bg-slate-200 transition-colors">
-                        📁 上傳原始檔
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                    <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-transform shadow-lg">
+                        📁 上傳照片
                         <input type="file" hidden accept="image/*" onChange={e => {
                             const f = e.target.files[0]; if(f){ const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f); }
                         }} />
                     </label>
-                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-lg shadow-blue-200 active:scale-95 transition-transform">
-                        📥 存入排版槽
+                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-xs shadow-lg shadow-blue-100 active:scale-95 transition-transform">
+                        📥 存入槽位
                     </button>
                 </div>
             </div>
 
-            {/* 3. 排版槽位區 */}
+            {/* 3. 排版槽位 */}
             <div className="px-2 mb-6">
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex justify-between items-center mb-3">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">排版槽位 ({slots.length}/8)</span>
-                    {slots.length > 0 && <button onClick={()=>setSlots([])} className="text-[10px] font-bold text-red-400">清空</button>}
+                    {slots.length > 0 && <button onClick={()=>setSlots([])} className="text-[10px] font-bold text-red-400">清空全部</button>}
                 </div>
                 <div className="slot-scroll no-scrollbar">
                     {slots.map((s, i) => (
                         <div key={i} className="slot-box group" onClick={() => setSlots(slots.filter((_, idx) => idx !== i))}>
                             <img src={s} className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold">移除</div>
+                            <div className="absolute inset-0 bg-red-500/90 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold">移除</div>
                         </div>
                     ))}
-                    {slots.length === 0 && <div className="w-full py-6 text-center text-[10px] text-slate-300 border-2 border-dashed border-slate-100 rounded-xl">點擊「存入」來添加照片</div>}
+                    {slots.length === 0 && <div className="w-full py-6 text-center text-[10px] text-slate-300 border-2 border-dashed border-slate-100 rounded-2xl">尚無照片</div>}
                 </div>
             </div>
 
-            <button onClick={downloadFinal} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black shadow-xl active:scale-95 transition-transform flex items-center justify-center gap-2">
+            <button onClick={downloadFinal} className="w-full bg-slate-900 text-white py-5 rounded-3xl font-black shadow-2xl active:scale-95 transition-transform flex items-center justify-center gap-2">
                 💾 下載 4x6 吋沖印拼版
             </button>
-            
-            <p className="text-[9px] text-slate-400 text-center mt-6 leading-relaxed px-4">
-                ※ 雙虛線區間為法規 3.2cm - 3.6cm 建議範圍。<br/>
-                綠色線：下限 3.2cm | 橘色線：上限 3.6cm。
-            </p>
         </div>
     );
 }
