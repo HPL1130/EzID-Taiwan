@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EzID Taiwan v2.5.18</title>
+<title>EzID Taiwan v2.6 Anchor</title>
 
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -11,209 +11,116 @@
 <script src="https://cdn.tailwindcss.com"></script>
 
 <style>
-body { margin:0; font-family:sans-serif; background:#f8fafc; overflow-x:hidden; }
-.canvas-container { position: relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
-canvas { display:block; width:350px; height:450px; }
-.id-guide { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; z-index:100; }
-.inner-guide, .outer-guide { position:absolute; border-radius:50% / 46%; transform:translateY(-6%); transition: all 0.3s ease; }
-.inner-guide { border:2px dotted rgba(16,185,129,0.7); }
-.outer-guide { border:2px dashed rgba(245,158,11,0.6); }
-.center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background: rgba(59, 130, 246, 0.4); z-index:90; pointer-events:none; }
-
-.fixed-panel { width:100%; max-width:400px; margin:16px auto; background:white; border-radius:24px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #f1f5f9; }
-.control-group { margin-bottom:12px; }
-.control-group label { display:flex; justify-content: space-between; font-size:10px; font-weight:800; color:#94a3b8; margin-bottom:4px; text-transform:uppercase; }
-input[type=range] { width:100%; height:6px; background:#f1f5f9; border-radius:10px; appearance:none; accent-color:#2563eb; }
-
-.suit-scroll { display:flex; gap:8px; overflow-x:auto; padding:4px 0; }
-.suit-btn { width:52px; height:52px; border-radius:12px; border:2px solid #f1f5f9; flex-shrink:0; background:#fff; transition:0.2s; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-.suit-btn.active { border-color:#2563eb; background: #eff6ff; }
-.suit-btn img { width:90%; height:90%; object-fit:contain; }
-.cancel-btn { font-size: 20px; color: #ef4444; background: #fef2f2; border: 2px solid #fee2e2; }
-
-.slot-scroll { display:flex; gap:10px; overflow-x:auto; padding-bottom:8px; }
-.slot-box { width:65px; height:85px; border-radius:8px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.1); flex-shrink:0; overflow:hidden; }
-
-.toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:10px 24px; background:#0f172a; color:white; border-radius:50px; font-size:13px; font-weight:bold; opacity:0; transition:0.3s; z-index:2000; }
-.no-scrollbar::-webkit-scrollbar { display:none; }
+body { margin:0; background:#f8fafc; }
+.canvas-container {
+  position: relative; width:350px; height:450px;
+  margin:auto; background:#fff; border-radius:28px;
+  box-shadow:0 20px 40px rgba(0,0,0,.15);
+}
+canvas { width:350px; height:450px; }
+.toast {
+  position:fixed; top:20px; left:50%; transform:translateX(-50%);
+  background:#0f172a; color:#fff; padding:10px 22px;
+  border-radius:999px; font-size:13px; font-weight:bold;
+  opacity:0; transition:.3s; z-index:2000;
+}
 </style>
 </head>
 <body>
+
 <div id="root"></div>
 <div id="toast" class="toast"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback } = React;
+const {useState,useRef,useEffect,useCallback} = React;
 
-function App() {
-    const canvasRef = useRef(null);
-    const [image, setImage] = useState(null);
-    const [suitImg, setSuitImg] = useState(null);
-    const [activeSuit, setActiveSuit] = useState(null);
-    const [p, setP] = useState({x:0, y:-20, s:0.75}); // 頭部
-    const [sp, setSp] = useState({s:1.0, y:0});       // 服裝
-    const [slots, setSlots] = useState([]);
-    const [preset, setPreset] = useState("id");
-    const [mode, setMode] = useState("guided");
+const CLOTHES = [
+  { id:"m1", src:"clothes/male/m1.png", meta:{ anchorNeckY:0.18, scaleBase:1.05 }},
+  { id:"m2", src:"clothes/male/m2.png", meta:{ anchorNeckY:0.20, scaleBase:1.1 }},
+  { id:"f1", src:"clothes/female/f1.png", meta:{ anchorNeckY:0.17, scaleBase:1.0 }},
+];
 
-    const PRESETS = {
-        id: { label:"戶政證件 (3.2-3.6cm)", min:71, max:80, inner:71, outer:80 },
-        passport: { label:"外交部護照 (70-80%)", min:70, max:80, inner:70, outer:80 },
-        resume: { label:"履歷/商務 (無規範)", min:55, max:70, inner:55, outer:70 }
-    };
+function App(){
+  const canvasRef = useRef(null);
+  const [photo,setPhoto] = useState(null);
+  const [cloth,setCloth] = useState(null);
+  const [clothMeta,setClothMeta] = useState(null);
+  const [p,setP] = useState({x:0,y:-20,s:0.75});
+  const [clothScale,setClothScale] = useState(1.0);
 
-    const CLOTHES = {
-        male: Array.from({length:5}, (_,i)=> `clothes/male/m${i+1}.png`),
-        female: Array.from({length:5}, (_,i)=> `clothes/female/f${i+1}.png`)
-    };
+  const toast = msg=>{
+    const t=document.getElementById("toast");
+    t.textContent=msg; t.style.opacity=1;
+    setTimeout(()=>t.style.opacity=0,1800);
+  };
 
-    const showToast = (msg) => {
-        const t = document.getElementById("toast");
-        t.textContent = msg; t.style.opacity = 1;
-        setTimeout(()=>{t.style.opacity=0;},2000);
-    };
+  const draw = useCallback(()=>{
+    const c=canvasRef.current;
+    const ctx=c.getContext("2d");
+    ctx.fillStyle="#fff"; ctx.fillRect(0,0,350,450);
 
-    const ratio = Math.round(p.s*100);
-    const currentMode = PRESETS[preset];
-    const status = ratio < currentMode.min - 5 || ratio > currentMode.max + 5 ? "bad" :
-                   ratio < currentMode.min || ratio > currentMode.max ? "warn" : "ok";
+    if(photo){
+      ctx.save();
+      ctx.translate(175+p.x,225+p.y);
+      ctx.scale(p.s,p.s);
+      ctx.drawImage(photo,-photo.width/2,-photo.height/2);
+      ctx.restore();
+    }
 
-    const draw = useCallback(() => {
-        const ctx = canvasRef.current.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0,0,350,450);
+    if(photo && cloth){
+      const headPx = photo.width * p.s * 0.55;
+      const baseScale = clothMeta?.scaleBase || 1.0;
+      const width = headPx * clothScale * baseScale;
+      const height = width * (cloth.height/cloth.width);
 
-        if(image){
-            ctx.save();
-            ctx.translate(175 + p.x, 225 + p.y);
-            ctx.scale(p.s, p.s);
-            ctx.drawImage(image, -image.width/2, -image.height/2);
-            ctx.restore();
-        }
+      const headNeckY = 225 + p.y + photo.height*p.s*0.15;
+      const clothNeckOffset = height * (clothMeta?.anchorNeckY || 0.18);
+      const y = headNeckY - clothNeckOffset;
 
-        if(suitImg){
-            ctx.save();
-            const baseWidth = 350 * sp.s;
-            const baseHeight = (suitImg.height / suitImg.width) * baseWidth;
-            ctx.drawImage(suitImg, (350 - baseWidth)/2, 450 - baseHeight + 15 + sp.y, baseWidth, baseHeight);
-            ctx.restore();
-        }
-    }, [image, suitImg, p, sp]);
+      ctx.drawImage(cloth,(350-width)/2,y,width,height);
+    }
+  },[photo,cloth,p,clothScale,clothMeta]);
 
-    useEffect(()=>{ draw(); }, [draw]);
+  useEffect(draw,[draw]);
 
-    const handleSuitClick = (path) => {
-        const img = new Image();
-        img.onload = () => { setSuitImg(img); setActiveSuit(path); setSp({s:1.0,y:0}); };
-        img.src = path;
-    };
-    const cancelSuit = () => { setSuitImg(null); setActiveSuit(null); setSp({s:1.0,y:0}); };
+  return (
+    <div className="p-4 max-w-md mx-auto">
+      <h1 className="font-black text-xl mb-2">EzID Taiwan v2.6</h1>
 
-    const saveToSlot = () => {
-        if(!image){ showToast("請先上傳照片"); return; }
-        const url = canvasRef.current.toDataURL("image/jpeg",0.95);
-        setSlots([url, ...slots].slice(0,8));
-        showToast("已存入槽位");
-    };
+      <div className="canvas-container mb-4">
+        <canvas ref={canvasRef} width="350" height="450"/>
+      </div>
 
-    const downloadSheet = async (type) => {
-        if(slots.length===0){ alert("槽位為空"); return; }
-        showToast(`產生 ${type} 拼版...`);
-        const pc = document.createElement("canvas");
-        const ctx = pc.getContext("2d");
-        if(type==='4x6'){
-            pc.width=1800; pc.height=1200; ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
-            const imgs = await Promise.all(slots.map(src=>new Promise(res=>{const img=new Image();img.onload=()=>res(img);img.src=src;})));
-            for(let i=0;i<4;i++) ctx.drawImage(imgs[i%imgs.length],80+i*428,80,413,531);
-            for(let i=0;i<5;i++) ctx.drawImage(imgs[i%imgs.length],80+i*341,650,331,449);
-        } else {
-            pc.width=2480; pc.height=3508; ctx.fillStyle="white"; ctx.fillRect(0,0,2480,3508);
-            const imgs = await Promise.all(slots.map(src=>new Promise(res=>{const img=new Image();img.onload=()=>res(img);img.src=src;})));
-            const startX=120, startY=120, gapX=450, gapY=560;
-            for(let row=0;row<6;row++){for(let col=0;col<5;col++){const idx=(row*5+col)%imgs.length;ctx.drawImage(imgs[idx],startX+col*gapX,startY+row*gapY,413,531);}}
-        }
-        const link = document.createElement("a"); link.download = `EzID_${type}.png`; link.href=pc.toDataURL("image/png"); link.click();
-    };
+      <div className="bg-white rounded-xl p-4 shadow space-y-3">
+        <input type="file" accept="image/*" onChange={e=>{
+          const f=e.target.files[0];
+          if(!f)return;
+          const img=new Image();
+          img.onload=()=>{ setPhoto(img); toast("照片載入完成"); };
+          img.src=URL.createObjectURL(f);
+        }}/>
 
-    return (
-        <div className="max-w-lg mx-auto p-4">
-            {/* 標題 */}
-            <div className="flex justify-between items-center mb-4 px-2">
-                <div>
-                    <h1 className="text-xl font-black text-slate-800 tracking-tight">EzID Taiwan</h1>
-                    <p className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">v2.5.18 Flagship</p>
-                </div>
-                <select value={preset} onChange={e=>setPreset(e.target.value)} className="text-xs font-bold bg-white border border-slate-200 rounded-lg px-2 py-1">
-                    {Object.entries(PRESETS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-                </select>
-            </div>
-
-            {/* Canvas */}
-            <div className="canvas-container">
-                <canvas ref={canvasRef} width="350" height="450"></canvas>
-                {mode==="guided" && (
-                    <>
-                        <div className="center-line"></div>
-                        <div className="id-guide">
-                            <div className="inner-guide" style={{width:`${currentMode.inner*0.95}%`,height:`${currentMode.inner}%`}}></div>
-                            <div className="outer-guide" style={{width:`${currentMode.outer*0.95}%`,height:`${currentMode.outer}%`}}></div>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* 控制面板 */}
-            <div className="fixed-panel">
-                <div className="mb-4">
-                    <label className="text-[10px] font-black text-slate-400 mb-2 block tracking-widest">👔 數位換裝 (M1-M5 / F1-F5)</label>
-                    <div className="suit-scroll no-scrollbar mb-2">
-                        <button onClick={cancelSuit} className="suit-btn cancel-btn">✕</button>
-                        {CLOTHES.male.map((p,i)=><button key={i} onClick={()=>handleSuitClick(p)} className={`suit-btn ${activeSuit===p?'active':''}`}><img src={p}/></button>)}
-                    </div>
-                    <div className="suit-scroll no-scrollbar mb-2">
-                        <button onClick={cancelSuit} className="suit-btn cancel-btn">✕</button>
-                        {CLOTHES.female.map((p,i)=><button key={i} onClick={()=>handleSuitClick(p)} className={`suit-btn ${activeSuit===p?'active':''}`}><img src={p}/></button>)}
-                    </div>
-
-                    {suitImg && (
-                        <div className="bg-blue-50 p-3 rounded-xl space-y-2 mb-2">
-                            <div className="control-group">
-                                <label className="!text-blue-600"><span>📐 服裝大小</span> <span>{Math.round(sp.s*100)}%</span></label>
-                                <input type="range" min="0.5" max="1.5" step="0.01" value={sp.s} onChange={e=>setSp({...sp,s:+e.target.value})}/>
-                            </div>
-                            <div className="control-group">
-                                <label className="!text-blue-600"><span>↕ 服裝高低</span></label>
-                                <input type="range" min="-50" max="50" step="1" value={sp.y} onChange={e=>setSp({...sp,y:+e.target.value})}/>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="control-group">
-                    <label><span>🔍 照片縮放</span> <span>{ratio}%</span></label>
-                    <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p,s:+e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="control-group">
-                        <label><span>↕ 照片垂直</span></label>
-                        <input type="range" min="-180" max="180" value={p.y} onChange={e=>setP({...p,y:+e.target.value})} />
-                    </div>
-                    <div className="control-group">
-                        <label><span>↔ 照片水平</span></label>
-                        <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p,x:+e.target.value})} />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                    <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-transform shadow-lg">
-                        📸 上傳照片
-                        <input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){ const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f); showToast("載入成功");}}}/>
-                    </label>
-                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-xs shadow-lg active:scale-95 transition-transform">📥 存入槽位</button>
-                </div>
-            </div>
+        <div className="flex gap-2">
+          {CLOTHES.map(c=>(
+            <button key={c.id} onClick={()=>{
+              const img=new Image();
+              img.onload=()=>{
+                setCloth(img);
+                setClothMeta(c.meta);
+                toast("已套用服裝");
+              };
+              img.src=c.src;
+            }} className="border px-2 py-1 rounded text-xs">{c.id}</button>
+          ))}
         </div>
-    );
+
+        <label className="text-xs font-bold">衣服大小</label>
+        <input type="range" min="0.6" max="2.2" step="0.01"
+          value={clothScale}
+          onChange={e=>setClothScale(+e.target.value)} />
+      </div>
+    </div>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
