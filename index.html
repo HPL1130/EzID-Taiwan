@@ -1,128 +1,163 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EzID Taiwan v2.6 Anchor</title>
-
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-
-<style>
-body { margin:0; background:#f8fafc; }
-.canvas-container {
-  position: relative; width:350px; height:450px;
-  margin:auto; background:#fff; border-radius:28px;
-  box-shadow:0 20px 40px rgba(0,0,0,.15);
-}
-canvas { width:350px; height:450px; }
-.toast {
-  position:fixed; top:20px; left:50%; transform:translateX(-50%);
-  background:#0f172a; color:#fff; padding:10px 22px;
-  border-radius:999px; font-size:13px; font-weight:bold;
-  opacity:0; transition:.3s; z-index:2000;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EzID Taiwan v2.6.2</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display:none; }
+        .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
+        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); }
+        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; }
+        .suit-btn { width:56px; height:56px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:14px; background:#fff; display:flex; align-items:center; justify-content:center; }
+        .suit-btn.active { border-color:#2563eb; background:#eff6ff; }
+        input[type=range] { width:100%; accent-color:#2563eb; }
+    </style>
 </head>
-<body>
-
-<div id="root"></div>
-<div id="toast" class="toast"></div>
+<body class="bg-slate-50">
+    <div id="root"></div>
 
 <script type="text/babel">
-const {useState,useRef,useEffect,useCallback} = React;
+const { useState, useRef, useEffect, useCallback } = React;
 
-const CLOTHES = [
-  { id:"m1", src:"clothes/male/m1.png", meta:{ anchorNeckY:0.18, scaleBase:1.05 }},
-  { id:"m2", src:"clothes/male/m2.png", meta:{ anchorNeckY:0.20, scaleBase:1.1 }},
-  { id:"f1", src:"clothes/female/f1.png", meta:{ anchorNeckY:0.17, scaleBase:1.0 }},
-];
+function App() {
+    const canvasRef = useRef(null);
+    const [image, setImage] = useState(null);
+    const [suitImg, setSuitImg] = useState(null);
+    const [activeSuit, setActiveSuit] = useState(null);
+    const [slots, setSlots] = useState([]);
+    
+    // 核心狀態：照片 (p) 與 服裝 (sp) 獨立控制
+    const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
+    const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
-function App(){
-  const canvasRef = useRef(null);
-  const [photo,setPhoto] = useState(null);
-  const [cloth,setCloth] = useState(null);
-  const [clothMeta,setClothMeta] = useState(null);
-  const [p,setP] = useState({x:0,y:-20,s:0.75});
-  const [clothScale,setClothScale] = useState(1.0);
+    const CLOTHES = {
+        male: Array.from({length:5}, (_,i)=> `clothes/male/m${i+1}.png`),
+        female: Array.from({length:5}, (_,i)=> `clothes/female/f${i+1}.png`)
+    };
 
-  const toast = msg=>{
-    const t=document.getElementById("toast");
-    t.textContent=msg; t.style.opacity=1;
-    setTimeout(()=>t.style.opacity=0,1800);
-  };
+    const draw = useCallback(() => {
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 350, 450);
 
-  const draw = useCallback(()=>{
-    const c=canvasRef.current;
-    const ctx=c.getContext("2d");
-    ctx.fillStyle="#fff"; ctx.fillRect(0,0,350,450);
+        if(image){
+            ctx.save();
+            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2);
+            ctx.restore();
+        }
 
-    if(photo){
-      ctx.save();
-      ctx.translate(175+p.x,225+p.y);
-      ctx.scale(p.s,p.s);
-      ctx.drawImage(photo,-photo.width/2,-photo.height/2);
-      ctx.restore();
-    }
+        if(suitImg){
+            ctx.save();
+            const w = 350 * sp.s;
+            const h = (suitImg.height / suitImg.width) * w;
+            ctx.drawImage(suitImg, (350 - w)/2 + sp.x, 450 - h + 15 + sp.y, w, h);
+            ctx.restore();
+        }
+    }, [image, suitImg, p, sp]);
 
-    if(photo && cloth){
-      const headPx = photo.width * p.s * 0.55;
-      const baseScale = clothMeta?.scaleBase || 1.0;
-      const width = headPx * clothScale * baseScale;
-      const height = width * (cloth.height/cloth.width);
+    useEffect(() => { draw(); }, [draw]);
 
-      const headNeckY = 225 + p.y + photo.height*p.s*0.15;
-      const clothNeckOffset = height * (clothMeta?.anchorNeckY || 0.18);
-      const y = headNeckY - clothNeckOffset;
+    const saveToSlot = () => {
+        if(!image) return alert("請先上傳照片");
+        setSlots([canvasRef.current.toDataURL("image/jpeg", 0.9), ...slots].slice(0, 8));
+    };
 
-      ctx.drawImage(cloth,(350-width)/2,y,width,height);
-    }
-  },[photo,cloth,p,clothScale,clothMeta]);
+    const downloadSheet = async (type) => {
+        if(!slots.length) return;
+        const pc = document.createElement("canvas");
+        const ctx = pc.getContext("2d");
+        const imgs = await Promise.all(slots.map(s => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=s; })));
+        
+        if(type === 'A4'){ // ibon A4 拼版 (30張)
+            pc.width=2480; pc.height=3508; ctx.fillStyle="white"; ctx.fillRect(0,0,2480,3508);
+            for(let r=0; r<6; r++) for(let c=0; c<5; c++) ctx.drawImage(imgs[(r*5+c)%imgs.length], 120+c*450, 120+r*560, 413, 531);
+        } else { // 4x6 吋拼版
+            pc.width=1800; pc.height=1200; ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
+            for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*428, 80, 413, 531);
+            for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*341, 650, 331, 449);
+        }
+        const a = document.createElement("a"); a.download=`EzID_${type}.png`; a.href=pc.toDataURL(); a.click();
+    };
 
-  useEffect(draw,[draw]);
+    return (
+        <div className="max-w-md mx-auto p-4">
+            <header className="flex justify-between items-center mb-4">
+                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.6.2</span></h1>
+                <div className="text-[10px] font-bold text-slate-400">頭部對齊內圈 71%</div>
+            </header>
 
-  return (
-    <div className="p-4 max-w-md mx-auto">
-      <h1 className="font-black text-xl mb-2">EzID Taiwan v2.6</h1>
+            <div className="canvas-container mb-6">
+                <canvas ref={canvasRef} width="350" height="450" />
+                <div className="center-line"></div>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="inner-guide" style={{width:'71%', height:'71%'}}></div>
+                </div>
+            </div>
 
-      <div className="canvas-container mb-4">
-        <canvas ref={canvasRef} width="350" height="450"/>
-      </div>
+            <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div className="mb-4">
+                    <label className="text-[10px] font-bold text-slate-400 block mb-2 uppercase">👔 數位換裝</label>
+                    <div className="flex flex-col gap-2">
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                            <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
+                            {CLOTHES.male.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                            <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
+                            {CLOTHES.female.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
+                        </div>
+                    </div>
+                </div>
 
-      <div className="bg-white rounded-xl p-4 shadow space-y-3">
-        <input type="file" accept="image/*" onChange={e=>{
-          const f=e.target.files[0];
-          if(!f)return;
-          const img=new Image();
-          img.onload=()=>{ setPhoto(img); toast("照片載入完成"); };
-          img.src=URL.createObjectURL(f);
-        }}/>
+                {suitImg && (
+                    <div className="bg-blue-50/50 p-3 rounded-2xl mb-4 text-[10px] font-bold text-blue-600">
+                        <div className="mb-2 flex justify-between">服裝微調 <span>{Math.round(sp.s*100)}%</span></div>
+                        <input type="range" min="0.5" max="2.0" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} className="mb-2"/>
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="range" min="-100" max="100" value={sp.y} onChange={e=>setSp({...sp, y:+e.target.value})} />
+                            <input type="range" min="-50" max="50" value={sp.x} onChange={e=>setSp({...sp, x:+e.target.value})} />
+                        </div>
+                    </div>
+                )}
 
-        <div className="flex gap-2">
-          {CLOTHES.map(c=>(
-            <button key={c.id} onClick={()=>{
-              const img=new Image();
-              img.onload=()=>{
-                setCloth(img);
-                setClothMeta(c.meta);
-                toast("已套用服裝");
-              };
-              img.src=c.src;
-            }} className="border px-2 py-1 rounded text-xs">{c.id}</button>
-          ))}
+                <div className="space-y-3">
+                    <div>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">照片縮放 <span>{Math.round(p.s*100)}%</span></div>
+                        <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p, y:+e.target.value})} />
+                        <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p, x:+e.target.value})} />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-6">
+                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer shadow-md">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
+                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-md">📥 存入槽位</button>
+                </div>
+            </section>
+
+            <div className="mt-6">
+                <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-2 px-1 uppercase">槽位 ({slots.length}/8) <button onClick={()=>setSlots([])} className="text-red-400">清空</button></div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    {slots.map((s,i)=><img key={i} src={s} className="w-16 h-20 rounded-lg border-2 border-white shadow-sm flex-shrink-0" onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))}/>)}
+                </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2">
+                <button onClick={()=>downloadSheet('4x6')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm">🖼️ 下載 4x6 吋沖印版</button>
+                <button onClick={()=>downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm">🏪 下載 ibon A4 拼版</button>
+            </div>
         </div>
-
-        <label className="text-xs font-bold">衣服大小</label>
-        <input type="range" min="0.6" max="2.2" step="0.01"
-          value={clothScale}
-          onChange={e=>setClothScale(+e.target.value)} />
-      </div>
-    </div>
-  );
+    );
 }
-
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
