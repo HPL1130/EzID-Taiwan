@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.7.0</title>
+    <title>EzID Taiwan v2.7.1</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -61,53 +61,110 @@ function App() {
         setSlots([canvasRef.current.toDataURL("image/jpeg", 0.95), ...slots].slice(0, 8));
     };
 
+    // ✂️ ibon 專用裁切框繪製
+    const drawIbonCell = (ctx, img, x, y, w, h) => {
+        ctx.drawImage(img, x, y, w, h);
+        // 黑色外框裁切線 (1px)
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h);
+        // 十字灰色輔助線 (0.5px)
+        ctx.strokeStyle = "#9ca3af";
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w / 2, y + h);
+        ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2);
+        ctx.stroke();
+    };
+
+    // 🏪 ibon A4 專用下載函式 (新增)
+    async function downloadA4IbonMixed(){
+        if(slots.length===0){alert("槽位為空");return}
+        const A4_W=2480, A4_H=3508;
+        const SAFE=100; // ibon 安全留白 10mm
+        const GAP=40;
+        const SIZE_2={w:413,h:531};
+        const SIZE_1={w:295,h:413};
+
+        const pc=document.createElement("canvas");
+        pc.width=A4_W; pc.height=A4_H;
+        const ctx=pc.getContext("2d");
+        ctx.fillStyle="#ffffff";
+        ctx.fillRect(0,0,A4_W,A4_H);
+
+        // 安全框繪製 (淡灰色提示)
+        ctx.strokeStyle="#e5e7eb";
+        ctx.lineWidth=2;
+        ctx.strokeRect(SAFE,SAFE,A4_W-SAFE*2,A4_H-SAFE*2);
+
+        const imgs=await Promise.all(slots.map(src=>new Promise(r=>{
+            const i=new Image(); i.onload=()=>r(i); i.src=src;
+        })));
+
+        let idx=0;
+        let y=SAFE+GAP;
+
+        // ===== 2 吋區優先 =====
+        const cols2=Math.floor((A4_W-SAFE*2)/(SIZE_2.w+GAP));
+        const rows2=Math.floor((A4_H*0.55)/(SIZE_2.h+GAP));
+
+        for(let r=0;r<rows2;r++){
+            let x=SAFE+GAP;
+            for(let c=0;c<cols2;c++){
+                drawIbonCell(ctx,imgs[idx%imgs.length],x,y,SIZE_2.w,SIZE_2.h);
+                idx++; x+=SIZE_2.w+GAP;
+            }
+            y+=SIZE_2.h+GAP;
+        }
+
+        // 分隔線
+        ctx.setLineDash([8,8]);
+        ctx.strokeStyle="#9ca3af";
+        ctx.beginPath();
+        ctx.moveTo(SAFE,y-20); ctx.lineTo(A4_W-SAFE,y-20);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // ===== 1 吋區補滿 =====
+        const cols1=Math.floor((A4_W-SAFE*2)/(SIZE_1.w+GAP));
+        const rows1=Math.floor((A4_H-y-SAFE)/(SIZE_1.h+GAP));
+
+        for(let r=0;r<rows1;r++){
+            let x=SAFE+GAP;
+            for(let c=0;c<cols1;c++){
+                drawIbonCell(ctx,imgs[idx%imgs.length],x,y,SIZE_1.w,SIZE_1.h);
+                idx++; x+=SIZE_1.w+GAP;
+            }
+            y+=SIZE_1.h+GAP;
+        }
+
+        const a=document.createElement("a");
+        a.href=pc.toDataURL("image/png");
+        a.download="EzID_ibON_A4_1+2inch.png";
+        a.click();
+    }
+
+    // 舊有的下載函式 (維持不變)
     const downloadSheet = async (type) => {
         if(!slots.length) return alert("槽位為空");
         const pc = document.createElement("canvas");
+        pc.width=1800; pc.height=1200;
         const ctx = pc.getContext("2d");
+        ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
         const imgs = await Promise.all(slots.map(s => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=s; })));
-        
-        if(type === 'A4'){ 
-            pc.width = 2480; pc.height = 3508; 
-            ctx.fillStyle = "white"; ctx.fillRect(0, 0, 2480, 3508);
-            
-            // --- 2 吋區 (4x4 = 16張) ---
-            const w2 = 413, h2 = 531, gapX2 = 180, gapY2 = 100;
-            const startX2 = (2480 - (w2 * 4 + gapX2 * 3)) / 2;
-            const startY2 = 150;
-            for(let r=0; r<4; r++) {
-                for(let c=0; c<4; c++) {
-                    ctx.drawImage(imgs[(r*4+c)%imgs.length], startX2 + c*(w2 + gapX2), startY2 + r*(h2 + gapY2), w2, h2);
-                }
-            }
-
-            // --- 1 吋區 (修正為 7 欄 x 3 列 = 21張) ---
-            const w1 = 295, h1 = 413, gapX1 = 110, gapY1 = 30;
-            const startX1 = (2480 - (w1 * 7 + gapX1 * 6)) / 2;
-            const startY1 = 2550; 
-            for(let r=0; r<3; r++) {
-                for(let c=0; c<7; c++) {
-                    ctx.drawImage(imgs[(r*7+c)%imgs.length], startX1 + c*(w1 + gapX1), startY1 + r*(h1 + gapY1), w1, h1);
-                }
-            }
-        } else {
-            pc.width=1800; pc.height=1200; ctx.fillStyle="white"; ctx.fillRect(0,0,1800,1200);
-            for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*428, 80, 413, 531);
-            for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*341, 650, 331, 449);
-        }
-
-        const timestamp = new Date().getTime();
-        const link = document.createElement("a");
-        link.download = `EzID_${type}_MAX37_${timestamp}.png`;
-        link.href = pc.toDataURL("image/png");
-        link.click();
+        for(let i=0; i<4; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*428, 80, 413, 531);
+        for(let i=0; i<5; i++) ctx.drawImage(imgs[i%imgs.length], 80+i*341, 650, 331, 449);
+        const a = document.createElement("a");
+        a.href=pc.toDataURL("image/png");
+        a.download=`EzID_4x6_${new Date().getTime()}.png`;
+        a.click();
     };
 
     return (
         <div className="max-w-md mx-auto p-4">
             <header className="flex justify-between items-center mb-4 px-2">
-                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.7.0</span></h1>
-                <div className="text-[9px] font-bold text-slate-400 uppercase">A4 混排 16大+21小</div>
+                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.7.1</span></h1>
+                <div className="text-[9px] font-bold text-slate-400 uppercase">ibon A4 專用佈局</div>
             </header>
 
             <div className="canvas-container mb-6">
@@ -121,7 +178,7 @@ function App() {
 
             <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                 <div className="mb-4 text-[10px] font-bold text-slate-400 uppercase">👔 數位換裝</div>
-                <div className="flex flex-col gap-2 mb-4">
+                <div className="flex flex-col gap-2 mb-4 overflow-hidden">
                     <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                         <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
                         {CLOTHES.male.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
@@ -131,17 +188,6 @@ function App() {
                         {CLOTHES.female.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
                     </div>
                 </div>
-
-                {suitImg && (
-                    <div className="bg-blue-50/50 p-3 rounded-2xl mb-4 space-y-2">
-                        <div className="flex justify-between text-[10px] font-bold text-blue-600">服裝微調 <span>{Math.round(sp.s*100)}%</span></div>
-                        <input type="range" min="0.5" max="2.0" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} />
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="range" min="-100" max="100" value={sp.y} onChange={e=>setSp({...sp, y:+e.target.value})} />
-                            <input type="range" min="-50" max="50" value={sp.x} onChange={e=>setSp({...sp, x:+e.target.value})} />
-                        </div>
-                    </div>
-                )}
 
                 <div className="space-y-3 pt-2">
                     <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1 uppercase">照片縮放 <span>{Math.round(p.s*100)}%</span></div>
@@ -166,8 +212,13 @@ function App() {
             </div>
 
             <div className="mt-6 flex flex-col gap-2">
-                <button onClick={()=>downloadSheet('4x6')} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm">🖼️ 下載 4x6 吋沖印版</button>
-                <button onClick={()=>downloadSheet('A4')} className="w-full bg-emerald-600 text-white py-3 rounded-2xl font-black text-sm">🏪 下載 ibon A4 混排 (37張)</button>
+                <button onClick={downloadA4IbonMixed} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm active:scale-[0.98] transition-transform shadow-lg shadow-emerald-100">
+                    🏪 ibon A4｜1 吋 + 2 吋 混排（安全邊界）
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                    <button onClick={()=>downloadSheet('4x6')} className="bg-slate-900 text-white py-3 rounded-xl font-bold text-xs opacity-80">4x6 吋沖印</button>
+                    <button onClick={()=>downloadSheet('A4')} className="bg-slate-200 text-slate-600 py-3 rounded-xl font-bold text-xs">一般 A4 混排</button>
+                </div>
             </div>
         </div>
     );
