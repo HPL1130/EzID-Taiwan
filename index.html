@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.3.1 PRO</title>
+    <title>EzID Taiwan v3.3.2 PRO</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,9 +11,9 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
         .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
-        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; }
-        .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; }
-        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 24px; border-radius:24px; font-size:12px; z-index:999; backdrop-filter:blur(4px); transition: opacity 0.2s; }
+        .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; pointer-events:none; }
+        .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; pointer-events:none; }
+        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 24px; border-radius:24px; font-size:12px; z-index:999; backdrop-filter:blur(4px); pointer-events:none; }
         input[type=range] { width:100%; accent-color:#2563eb; height:6px; background:transparent; appearance:none; cursor: pointer; position: relative; z-index: 10; }
     </style>
 </head>
@@ -21,18 +21,16 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback, startTransition } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 
-// --- 優化 28: 服裝陣列生成語義化 ---
 const CLOTHES = [
     ...Array(5).fill(0).map((_, i) => `clothes/male/m${i+1}.png`),
     ...Array(5).fill(0).map((_, i) => `clothes/female/f${i+1}.png`)
 ];
 
-const DPI = 300;
+const DPI = 300, A4_W = 2480, A4_H = 3508;
 const mmToPx = (mm) => Math.round(mm * DPI / 25.4);
-const SAFE = mmToPx(12); 
-const A4_W = 2480, A4_H = 3508;
+const SAFE = mmToPx(12);
 
 const CONTROL_RANGES = {
     photo: { s: {min:0.3, max:1.5, step:0.01}, y: {min:-150, max:150}, x: {min:-150, max:150} },
@@ -42,8 +40,9 @@ const CONTROL_RANGES = {
 function App() {
     const canvasRef = useRef(null);
     const toastTimer = useRef(null);
-    const rafRef = useRef(0);
     const dirtyRef = useRef(true);
+    const scheduledRef = useRef(false);
+    const fileInputRef = useRef(null);
 
     const [image, setImage] = useState(null);
     const [suitImg, setSuitImg] = useState(null);
@@ -52,27 +51,20 @@ function App() {
     const [toast, setToast] = useState("");
     const [cutMode, setCutMode] = useState("FRAME_L"); 
     
-    const INIT_P = { x: 0, y: -20, s: 0.75 };
-    const INIT_SP = { x: 0, y: 0, s: 1.0 };
-    const [p, setP] = useState(INIT_P);
-    const [sp, setSp] = useState(INIT_SP);
+    const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
+    const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
-    const markDirty = () => { dirtyRef.current = true; };
-    
-    // --- 優化 22 & 26: Toast 統一化與圖標語義化 ---
-    const showToast = (msg) => {
-        if (toastTimer.current) clearTimeout(toastTimer.current);
-        setToast(msg);
-        toastTimer.current = setTimeout(() => setToast(""), 2000); // 統一 2000ms
-    };
-
-    // --- 優化 29: Canvas 抗鋸齒 ---
+    // --- 修復 3: 改進 RAF 效能，僅在 dirty 時重繪 ---
     const draw = useCallback(() => {
-        const ctx = canvasRef.current.getContext("2d");
+        const cvs = canvasRef.current;
+        if (!cvs) return;
+        const ctx = cvs.getContext("2d");
+        if (!ctx) return; // 修復 4: Guard clause
+
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.fillStyle = "#ffffff"; 
-        ctx.fillRect(0, 0, 350, 450);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
+
         if(image){
             ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
             ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
@@ -85,84 +77,70 @@ function App() {
         }
     }, [image, suitImg, p, sp]);
 
-    useEffect(() => {
-        const loop = () => { if (dirtyRef.current) { dirtyRef.current = false; draw(); } rafRef.current = requestAnimationFrame(loop); };
-        rafRef.current = requestAnimationFrame(loop);
-        return () => cancelAnimationFrame(rafRef.current);
+    const scheduleDraw = useCallback(() => {
+        if (scheduledRef.current) return;
+        scheduledRef.current = true;
+        requestAnimationFrame(() => {
+            scheduledRef.current = false;
+            if (dirtyRef.current) {
+                dirtyRef.current = false;
+                draw();
+            }
+        });
     }, [draw]);
 
+    const markDirty = useCallback(() => {
+        dirtyRef.current = true;
+        scheduleDraw();
+    }, [scheduleDraw]);
+
+    useEffect(() => {
+        markDirty();
+        // 修復 10: 清理 Timer
+        return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
+    }, [markDirty]);
+
+    const showToast = (msg) => {
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        setToast(msg);
+        toastTimer.current = setTimeout(() => setToast(""), 2000); 
+    };
+
+    // --- 修復 1: Canvas 污染防呆 ---
     const selectSuit = (url) => {
         if(!url) { setSuitImg(null); setActiveSuit(null); markDirty(); return; }
         const img = new Image();
-        img.crossOrigin = "anonymous";
+        // 註：若衣服圖與 HTML 同源則可移除 anonymous 以減少 CORS 失敗機率
+        img.crossOrigin = "anonymous"; 
         img.onload = () => { setSuitImg(img); setActiveSuit(url); markDirty(); };
-        img.onerror = () => showToast("❌ 服裝載入失敗");
+        img.onerror = () => showToast("❌ 服裝載入失敗 (CORS 阻擋)");
         img.src = url;
     };
 
     const saveToSlot = () => {
         if(!image) return showToast("⚠️ 請先上傳照片");
-        canvasRef.current.toBlob((blob) => {
+        const cvs = canvasRef.current;
+        cvs.toBlob((blob) => {
+            if (!blob) return showToast("❌ 存入失敗：Canvas 被污染或異常"); // 修復 1A: 防呆
             const url = URL.createObjectURL(blob);
             setSlots(prev => {
                 const next = [url, ...prev];
-                if (next.length > 10) {
-                    const removed = next.pop();
-                    URL.revokeObjectURL(removed); 
-                }
+                if (next.length > 10) URL.revokeObjectURL(next.pop());
                 return next;
             });
             showToast("✅ 已存入槽位");
         }, "image/png");
     };
 
-    // --- 問題 21: 修復 clearSlots 函數缺失 ---
     const clearSlots = () => {
         slots.forEach(url => URL.revokeObjectURL(url));
         setSlots([]);
-        showToast("🔄 已清空所有槽位");
+        showToast("🔄 已清空槽位");
     };
 
-    const removeSlot = (i) => {
-        URL.revokeObjectURL(slots[i]);
-        setSlots(prev => prev.filter((_, idx) => idx !== i));
-        showToast("🗑️ 已移除照片");
-    };
-
-    // --- Layout Solver ---
-    const getCols = (sw, gap) => Math.floor((A4_W - SAFE * 2 + gap) / (sw + gap));
-    const getMaxRows = (startY, sh, gap, limitY) => {
-        const usable = limitY - startY;
-        return (usable < sh) ? 0 : Math.floor((usable + gap) / (sh + gap));
-    };
-
-    const drawPhotoWithLMark = (ctx, img, x, y, w, h) => {
-        ctx.drawImage(img, x, y, w, h);
-        ctx.save();
-        ctx.lineJoin = "miter"; ctx.lineCap = "square";
-        
-        // 優化 32: 繪製邏輯簡化 (內部封裝)
-        if (cutMode === "LIGHT") {
-            ctx.strokeStyle = "#E2E8F0"; ctx.lineWidth = 1;
-            ctx.strokeRect(x, y, w, h);
-        } else {
-            ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
-            if (cutMode !== "L_ONLY") ctx.strokeRect(x, y, w, h);
-            if (cutMode !== "FRAME") {
-                const L = 20;
-                ctx.beginPath();
-                ctx.moveTo(x+L, y); ctx.lineTo(x, y); ctx.lineTo(x, y+L);
-                ctx.moveTo(x+w-L, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+L);
-                ctx.moveTo(x+L, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-L);
-                ctx.moveTo(x+w-L, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y+h-L);
-                ctx.stroke();
-            }
-        }
-        ctx.restore();
-    };
-
+    // --- 修復 2 & 25: A4 下載優化 (改用 Blob 流程) ---
     const downloadA4 = async (mode) => {
-        if(!slots.length) return showToast("⚠️ 槽位內無照片");
+        if(!slots.length) return showToast("⚠️ 槽位為空");
         try {
             const pc = document.createElement("canvas");
             pc.width = A4_W; pc.height = A4_H;
@@ -170,14 +148,16 @@ function App() {
             ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, A4_W, A4_H);
 
             const imgs = await Promise.all(slots.map(s => new Promise((res, rej) => {
-                const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = s;
+                const i = new Image(); 
+                i.crossOrigin = "anonymous"; // 修復 7: 保持習慣
+                i.onload = () => res(i); i.onerror = () => rej(new Error("載入失敗")); i.src = s;
             })));
 
             let imgIdx = 0;
             const renderBlock = (sw, sh, gap, startY, rows, cols) => {
+                if (cols < 1 || rows < 1) return startY; // 修復 8: 防呆
                 const rowWidth = cols * sw + (cols - 1) * gap;
                 const startX = (A4_W - rowWidth) / 2;
-                if (startX < SAFE) throw new Error("越界");
                 for (let r = 0; r < rows; r++) {
                     const cy = startY + r * (sh + gap);
                     if (cy + sh > A4_H - SAFE) break;
@@ -189,36 +169,54 @@ function App() {
                 return startY + rows * (sh + gap);
             };
 
+            const getCols = (sw, gap) => Math.max(1, Math.floor((A4_W - SAFE * 2 + gap) / (sw + gap))); // 修復 8
+
             if (mode === 'ALL_2') {
                 const sw=413, sh=531, g=35;
-                renderBlock(sw, sh, g, SAFE, getMaxRows(SAFE, sh, g, A4_H - SAFE), getCols(sw, g));
+                renderBlock(sw, sh, g, SAFE, Math.floor((A4_H-SAFE*2+g)/(sh+g)), getCols(sw, g));
             } else if (mode === 'ALL_1') {
                 const sw=295, sh=413, g=25;
-                renderBlock(sw, sh, g, SAFE, getMaxRows(SAFE, sh, g, A4_H - SAFE), getCols(sw, g));
+                renderBlock(sw, sh, g, SAFE, Math.floor((A4_H-SAFE*2+g)/(sh+g)), getCols(sw, g));
             } else if (mode === 'MIX') {
-                const S2 = {w:413, h:531, g:35}, S1 = {w:295, h:413, g:25};
-                const c2 = getCols(S2.w, S2.g), c1 = getCols(S1.w, S1.g);
-                const maxR2 = getMaxRows(SAFE, S2.h, S2.g, A4_H - SAFE);
+                const S2={w:413,h:531,g:35}, S1={w:295,h:413,g:25}, c2=getCols(S2.w,S2.g), c1=getCols(S1.w,S1.g);
+                const maxR2 = Math.floor((A4_H-SAFE*2+S2.g)/(S2.h+S2.g));
                 let best = { r2: 0, r1: 0, total: -1 };
                 for(let r=0; r<=maxR2; r++){
-                    const yN = SAFE + r*(S2.h + S2.g);
-                    const r1 = getMaxRows(yN, S1.h, S1.g, A4_H - SAFE);
-                    const t = r*c2 + r1*c1;
-                    if (t > best.total || (t === best.total && r > best.r2)) best = { r2: r, r1, total: t };
+                    const nextY = SAFE + r*(S2.h+S2.g);
+                    const r1 = Math.floor((A4_H-nextY-SAFE+S1.g)/(S1.h+S1.g));
+                    if(r*c2+r1*c1 > best.total) best = {r2:r, r1};
                 }
-                const nextY = renderBlock(S2.w, S2.h, S2.g, SAFE, best.r2, c2);
-                renderBlock(S1.w, S1.h, S1.g, nextY, best.r1, c1);
+                renderBlock(S1.w,S1.h,S1.g, renderBlock(S2.w,S2.h,S2.g, SAFE, best.r2, c2), best.r1, c1);
             }
 
-            const a = document.createElement("a");
-            a.href = pc.toDataURL("image/png");
-            a.download = `EzID_${mode}_${Date.now()}.png`; a.click();
-            showToast(`✅ 下載成功 (${mode})`);
+            // 修改為 toBlob 下載，釋放記憶體壓力
+            pc.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `EzID_${mode}_${Date.now()}.png`; a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000); // 延後釋放
+                showToast(`✅ 下載成功 (${mode})`);
+            }, "image/png");
         } catch(e) { 
-            // 問題 25: 具體化錯誤訊息
-            console.error("A4 輸出異常:", e);
-            showToast(e.message === "越界" ? "❌ 排版超出邊界" : "❌ 下載失敗，請重試");
+            showToast(`❌ 發生錯誤: ${e.message}`);
         }
+    };
+
+    const drawPhotoWithLMark = (ctx, img, x, y, w, h) => {
+        ctx.drawImage(img, x, y, w, h);
+        ctx.save();
+        ctx.strokeStyle = cutMode === "LIGHT" ? "#E2E8F0" : "#000";
+        ctx.lineWidth = 1;
+        if (cutMode !== "L_ONLY") ctx.strokeRect(x, y, w, h);
+        if (cutMode !== "FRAME" && cutMode !== "LIGHT") {
+            const L = 20; ctx.beginPath();
+            ctx.moveTo(x+L, y); ctx.lineTo(x, y); ctx.lineTo(x, y+L);
+            ctx.moveTo(x+w-L, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+L);
+            ctx.moveTo(x+L, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-L);
+            ctx.moveTo(x+w-L, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y+h-L);
+            ctx.stroke();
+        }
+        ctx.restore();
     };
 
     return (
@@ -226,8 +224,8 @@ function App() {
             {toast && <div className="toast shadow-2xl">{toast}</div>}
             
             <header className="flex justify-between items-center mb-6 px-2">
-                <h1 className="font-black text-slate-800 italic text-xl leading-none">EzID <span className="text-blue-600 text-[10px] not-italic border border-blue-600 px-1 rounded">v3.3.1 PRO</span></h1>
-                <select value={cutMode} onChange={e=>setCutMode(e.target.value)} className="text-[10px] font-bold border rounded-lg px-2 py-1 bg-white outline-none shadow-sm border-slate-200">
+                <h1 className="font-black text-slate-800 italic text-xl">EzID <span className="text-blue-600 text-[10px] not-italic border border-blue-600 px-1 rounded">v3.3.2 PRO</span></h1>
+                <select value={cutMode} onChange={e=>setCutMode(e.target.value)} className="text-[10px] font-bold border rounded-lg px-2 py-1 bg-white outline-none shadow-sm">
                     <option value="FRAME_L">裁切：黑框 + L標</option>
                     <option value="L_ONLY">裁切：僅 L標</option>
                     <option value="FRAME">裁切：僅黑框</option>
@@ -237,93 +235,94 @@ function App() {
 
             <div className="canvas-container mb-6 shadow-2xl shadow-blue-100">
                 <canvas ref={canvasRef} width="350" height="450" />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="inner-guide" style={{width:'71%', height:'71%'}}></div>
-                    <div className="outer-guide" style={{width:'80%', height:'80%'}}></div>
-                </div>
+                <div className="inner-guide" style={{width:'71%', height:'71%'}}></div>
+                <div className="outer-guide" style={{width:'80%', height:'80%'}}></div>
             </div>
 
             <section className="space-y-4">
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
                     <div className="flex justify-between mb-4 items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">👔 服裝微調 (Suit)</span>
+                        <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">👔 Suit Control</span>
                         <div className="flex gap-2">
-                            <button className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 active:bg-slate-100" onClick={()=>{setSp(INIT_SP);markDirty();showToast("🔄 位置已重置")}}>👔 RESET</button>
-                            <button className="text-[10px] font-bold text-white bg-slate-800 px-2 py-1 rounded-lg active:opacity-80" onClick={()=>{setSp(INIT_SP);setP(INIT_P);selectSuit(null);markDirty();showToast("🔄 設定已全部重置")}}>🔄 ALL</button>
+                            <button className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded-lg border active:bg-slate-100" onClick={()=>{setSp({x:0,y:0,s:1});markDirty()}}>RESET</button>
                         </div>
                     </div>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6 pb-2">
-                        <button onClick={()=>selectSuit(null)} className="flex-shrink-0 w-12 h-12 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-300">✕</button>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-6">
                         {CLOTHES.map(s => (
-                            <button key={s} onClick={()=>selectSuit(s)} className={`flex-shrink-0 w-12 h-12 border-2 rounded-xl p-1 transition-all ${activeSuit===s?'border-blue-500 bg-blue-50':'border-transparent bg-slate-50'}`}><img src={s} className="w-full h-full object-contain"/></button>
+                            <button key={s} onClick={()=>selectSuit(s)} className={`flex-shrink-0 w-12 h-12 border-2 rounded-xl p-1 transition-all ${activeSuit===s?'border-blue-500 bg-blue-50':'border-transparent bg-slate-50'}`}>
+                                <img src={s} alt="suit preview" className="w-full h-full object-contain"/>
+                            </button>
                         ))}
                     </div>
                     {suitImg && (
                         <div className="space-y-5">
-                            <RangeSlider label="SCALE" val={sp.s} config={CONTROL_RANGES.suit.s} onChange={v=>{startTransition(()=>{setSp(s=>({...s, s:v}));markDirty()})}} unit="%" mul={100} />
-                            <RangeSlider label="Y-POS" val={sp.y} config={CONTROL_RANGES.suit.y} onChange={v=>{startTransition(()=>{setSp(s=>({...s, y:v}));markDirty()})}} />
-                            <RangeSlider label="X-POS" val={sp.x} config={CONTROL_RANGES.suit.x} onChange={v=>{startTransition(()=>{setSp(s=>({...s, x:v}));markDirty()})}} />
+                            <RangeSlider label="SCALE" val={sp.s} config={CONTROL_RANGES.suit.s} onChange={v=>{setSp(s=>({...s, s:v}));markDirty()}} unit="%" mul={100} />
+                            <RangeSlider label="Y-POS" val={sp.y} config={CONTROL_RANGES.suit.y} onChange={v=>{setSp(s=>({...s, y:v}));markDirty()}} />
+                            <RangeSlider label="X-POS" val={sp.x} config={CONTROL_RANGES.suit.x} onChange={v=>{setSp(s=>({...s, x:v}));markDirty()}} />
                         </div>
                     )}
                 </div>
 
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <div className="flex justify-between mb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">👤 照片調整 (Photo)</span>
-                        <button className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded-lg border border-slate-100" onClick={()=>{setP(INIT_P);markDirty()}}>RESET</button>
-                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase mb-4 block">👤 Photo Control</span>
                     <div className="space-y-5">
-                        <RangeSlider label="SCALE" val={p.s} config={CONTROL_RANGES.photo.s} onChange={v=>{startTransition(()=>{setP(s=>({...s, s:v}));markDirty()})}} unit="%" mul={100} />
+                        <RangeSlider label="SCALE" val={p.s} config={CONTROL_RANGES.photo.s} onChange={v=>{setP(s=>({...s, s:v}));markDirty()}} unit="%" mul={100} />
                         <div className="grid grid-cols-2 gap-4">
-                            <RangeSlider label="Y-POS" val={p.y} config={CONTROL_RANGES.photo.y} onChange={v=>{startTransition(()=>{setP(s=>({...s, y:v}));markDirty()})}} />
-                            <RangeSlider label="X-POS" val={p.x} config={CONTROL_RANGES.photo.x} onChange={v=>{startTransition(()=>{setP(s=>({...s, x:v}));markDirty()})}} />
+                            <RangeSlider label="Y-POS" val={p.y} config={CONTROL_RANGES.photo.y} onChange={v=>{setP(s=>({...s, y:v}));markDirty()}} />
+                            <RangeSlider label="X-POS" val={p.x} config={CONTROL_RANGES.photo.x} onChange={v=>{setP(s=>({...s, x:v}));markDirty()}} />
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 mt-6">
-                        <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-all shadow-lg shadow-slate-200">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{
-                            const f=e.target.files[0]; if(!f) return;
-                            const url=URL.createObjectURL(f); const img=new Image();
-                            img.onload=()=>{setImage(img);URL.revokeObjectURL(url);markDirty();showToast("✅ 照片已載入")}; img.src=url;
-                        }}/></label>
-                        <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-xs active:scale-95 transition-all shadow-lg shadow-blue-200">📥 存入槽位</button>
+                        <label className="bg-slate-800 text-white py-4 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 shadow-lg">
+                            📸 上傳照片
+                            <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={e=>{
+                                const f=e.target.files[0]; if(!f) return;
+                                const url=URL.createObjectURL(f); const img=new Image();
+                                img.onload=()=>{
+                                    setImage(img); URL.revokeObjectURL(url); markDirty(); showToast("✅ 照片已載入");
+                                    e.target.value = ''; // 修復 5: 清空 value 以利再次選擇同圖
+                                }; 
+                                img.onerror=()=>{ showToast("❌ 照片格式錯誤"); e.target.value = ''; };
+                                img.src=url;
+                            }}/>
+                        </label>
+                        <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-xs active:scale-95 shadow-lg">📥 存入槽位</button>
                     </div>
                 </div>
             </section>
 
-            <div className="mt-8 px-1">
+            <div className="mt-8">
                 <div className="flex justify-between items-center mb-4">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">Storage Slots ({slots.length}/10)</span>
-                    <button onClick={clearSlots} className="text-[9px] text-red-500 font-bold border border-red-100 px-3 py-1 rounded-full bg-red-50 active:bg-red-100 transition-colors">CLEAR ALL</button>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase font-mono px-2">Storage Slots ({slots.length}/10)</span>
+                    <button onClick={clearSlots} className="text-[9px] text-red-500 font-bold px-3 py-1 rounded-full bg-red-50 active:bg-red-100">CLEAR ALL</button>
                 </div>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                <div className="flex gap-3 overflow-x-auto no-scrollbar px-2">
                     {slots.map((url, i)=>(
                         <div key={url} className="relative flex-shrink-0">
-                            {/* 優化 23: 改為 active 狀態 */}
-                            <img src={url} className="w-16 h-20 rounded-xl border-2 border-white shadow-md object-cover transition-transform active:scale-90" />
-                            <button onClick={()=>removeSlot(i)} className="absolute -top-2 -right-2 bg-white text-red-500 w-6 h-6 rounded-full text-[10px] flex items-center justify-center border shadow-md font-bold active:scale-110">✕</button>
+                            <img src={url} alt="slot preview" className="w-16 h-20 rounded-xl border-2 border-white shadow-md object-cover active:scale-90 transition-transform" />
+                            <button onClick={()=>{URL.revokeObjectURL(slots[i]); setSlots(prev=>prev.filter((_,idx)=>idx!==i));}} aria-label="移除照片" className="absolute -top-2 -right-2 bg-white text-red-500 w-6 h-6 rounded-full text-[10px] flex items-center justify-center border shadow-md font-bold">✕</button>
                         </div>
                     ))}
                 </div>
             </div>
 
             <div className="mt-10 space-y-3">
-                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-[0.98] transition-all">🏪 ibon A4｜混排解算器</button>
+                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-[0.98]">🏪 ibon A4｜混排解算器</button>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md active:scale-[0.98] transition-all">🏪 全 2 吋</button>
-                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md active:scale-[0.98] transition-all">全 1 吋</button>
+                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md active:scale-[0.98]">🏪 全 2 吋</button>
+                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md active:scale-[0.98]">全 1 吋</button>
                 </div>
             </div>
         </div>
     );
 }
 
-// --- 優化 24: 視覺反饋組件 (h-1.5 增強) ---
 function RangeSlider({ label, val, config, onChange, unit="", mul=1 }) {
     const { min, max } = config;
     const percentage = ((val - min) / (max - min)) * 100;
     return (
         <div className="space-y-1.5 relative">
-            <div className="flex justify-between items-end">
+            <div className="flex justify-between">
                 <span className="text-[9px] font-bold text-slate-400 uppercase">{label}</span>
                 <span className="text-[10px] font-mono text-blue-600 font-bold">{Math.round(val * mul)}{unit}</span>
             </div>
@@ -331,6 +330,7 @@ function RangeSlider({ label, val, config, onChange, unit="", mul=1 }) {
                 <div className="absolute w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full transition-all duration-75" style={{ width: `${percentage}%` }} />
                 </div>
+                {/* 修復 6: 滑桿手感，暫時移除 startTransition 回歸同步更新 */}
                 <input type="range" {...config} value={val} onInput={e=>onChange(+e.target.value)} />
             </div>
         </div>
