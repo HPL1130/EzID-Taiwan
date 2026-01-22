@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.3.4 PRO</title>
+    <title>EzID Taiwan v3.3.5 PRO</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,7 +11,6 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
         
-        /* 畫布容器：3.5cm x 4.5cm 比例 */
         .canvas-container { 
             position:relative; 
             width:350px; 
@@ -24,35 +23,37 @@
             box-shadow:0 10px 30px rgba(0,0,0,0.08);
         }
 
-        /* 內圈 (3.2cm 臉長下限)：長度 320px */
+        /* 核心修正：利用百分比鎖定 71%-80% 比例，並大幅縮減寬度 */
+        
+        /* 內圈 (3.2cm 臉長下限)：佔高度 71% */
         .inner-guide { 
             border: 2px dotted rgba(16,185,129,0.5); 
             position: absolute; 
-            border-radius: 50% / 45%; 
-            width: 200px;   /* 調窄寬度，避免佔滿版面 */
-            height: 320px; 
+            border-radius: 50% / 48%; 
+            width: 180px;   /* 大幅調窄，不再佔滿左右 */
+            height: 71.1%;  /* 3.2 / 4.5 */
             left: 50%;
-            top: 50px;      /* 預留約 5mm 頭頂空間 */
-            transform: translateX(-50%);
+            top: 55%;       /* 垂直居中偏下一點 */
+            transform: translate(-50%, -50%);
             z-index: 100; 
             pointer-events: none; 
         }
 
-        /* 外圈 (3.6cm 臉長上限)：長度 360px */
+        /* 外圈 (3.6cm 臉長上限)：佔高度 80% */
         .outer-guide { 
-            border: 2px dashed rgba(245,158,11,0.35); 
+            border: 2px dashed rgba(245,158,11,0.3); 
             position: absolute; 
-            border-radius: 50% / 45%; 
-            width: 230px; 
-            height: 360px; 
+            border-radius: 50% / 48%; 
+            width: 210px; 
+            height: 80%;    /* 3.6 / 4.5 */
             left: 50%;
-            top: 30px;      /* 預留約 3mm 頭頂空間 */
-            transform: translateX(-50%);
+            top: 55%; 
+            transform: translate(-50%, -50%);
             z-index: 99; 
             pointer-events: none; 
         }
 
-        /* 中軸垂直輔助線 */
+        /* 中軸線 */
         .center-line {
             position: absolute;
             left: 50%;
@@ -211,7 +212,7 @@ function App() {
             {toast && <div className="toast shadow-2xl">{toast}</div>}
             
             <header className="flex justify-between items-center mb-6 px-2">
-                <h1 className="font-black text-slate-800 italic text-xl">EzID <span className="text-blue-600 text-[10px] not-italic border border-blue-600 px-1 rounded">v3.3.4 PRO</span></h1>
+                <h1 className="font-black text-slate-800 italic text-xl">EzID <span className="text-blue-600 text-[10px] not-italic border border-blue-600 px-1 rounded">v3.3.5 PRO</span></h1>
                 <select value={cutMode} onChange={e=>setCutMode(e.target.value)} className="text-[10px] font-bold border rounded-lg px-2 py-1 bg-white shadow-sm outline-none">
                     <option value="FRAME_L">標準裁切線</option>
                     <option value="LIGHT">淺色輔助線</option>
@@ -271,12 +272,12 @@ function App() {
                 </div>
             </section>
 
-            <div className="mt-8">
-                <div className="flex justify-between items-center mb-4 px-2">
+            <div className="mt-8 px-2">
+                <div className="flex justify-between items-center mb-4">
                     <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Storage Slots ({slots.length}/10)</span>
                     <button onClick={()=>{slots.forEach(u=>URL.revokeObjectURL(u));setSlots([]);showToast("🔄 已清空");}} className="text-[9px] text-red-500 font-bold px-3 py-1 rounded-full bg-red-50">CLEAR</button>
                 </div>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar px-2">
+                <div className="flex gap-3 overflow-x-auto no-scrollbar">
                     {slots.map((url, i)=>(
                         <div key={url} className="relative flex-shrink-0">
                             <img src={url} alt="slot" className="w-16 h-20 rounded-xl border-2 border-white shadow-md object-cover active:scale-90 transition-transform" />
@@ -298,7 +299,7 @@ function RangeSlider({ label, val, config, onChange, unit="", mul=1 }) {
     const percentage = ((val - min) / (max - min)) * 100;
     return (
         <div className="space-y-1.5 relative">
-            <div className="flex justify-between">
+            <div className="flex justify-between px-1">
                 <span className="text-[9px] font-bold text-slate-400 uppercase">{label}</span>
                 <span className="text-[10px] font-mono text-blue-600 font-bold">{Math.round(val * mul)}{unit}</span>
             </div>
