@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.8.6 - ibon Landscape Fix</title>
+    <title>EzID Taiwan v3.9.0</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,19 +13,20 @@
         .canvas-container { 
             position:relative; width:350px; height:450px; margin:0 auto; 
             background:#fff; border:2px solid #1e293b; border-radius:12px; overflow:hidden; 
-            touch-action: none; cursor: grab; box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            touch-action: none; cursor: grab; box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
         .inner-guide { position:absolute; left:50%; top:45%; width:62%; height:71.1%; border:2px dotted #10b981; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:100; pointer-events:none; }
         .outer-guide { position:absolute; left:50%; top:45%; width:70%; height:80%; border:2px dashed #f59e0b; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:99; pointer-events:none; }
         input[type=range] { width: 100%; accent-color: #2563eb; }
     </style>
 </head>
-<body class="bg-slate-50 p-4 pb-20">
+<body class="bg-slate-50 p-4 pb-12">
     <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
+// 修正後的路徑
 const SUITS = [
     ...Array(5).fill(0).map((_, i) => `male/m${i+1}.png`),
     ...Array(5).fill(0).map((_, i) => `female/f${i+1}.png`)
@@ -37,6 +38,8 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [slots, setSlots] = useState([]);
     const [target, setTarget] = useState("PHOTO");
+    
+    // 完全手動座標與縮放
     const [p, setP] = useState({ x: 0, y: -20, s: 0.8 });
     const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0 });
 
@@ -46,13 +49,19 @@ function App() {
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
+
         if (image) {
-            ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
-            ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
+            ctx.save();
+            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2);
+            ctx.restore();
         }
+
         if (suitImg) {
             ctx.save();
-            const w = suitImg.width * sp.s; const h = suitImg.height * sp.s;
+            const w = suitImg.width * sp.s;
+            const h = suitImg.height * sp.s;
             ctx.drawImage(suitImg, 175 - w/2 + sp.x, 225 - h/2 + sp.y, w, h);
             ctx.restore();
         }
@@ -75,13 +84,8 @@ function App() {
         lastPos.current = { x: pos.clientX, y: pos.clientY };
     };
 
-    // 核心輸出 Solver：4x6 (橫) vs A4 (直)
     const exportDoc = async (type, mode) => {
         if (!slots.length) return alert("請先存入槽位");
-        
-        // --- 物理規格設定 ---
-        // type '46' => 橫式 (1800x1200)
-        // type 'A4' => 直式 (2480x3508)
         const is46 = type === '46';
         const W = is46 ? 1800 : 2480;
         const H = is46 ? 1200 : 3508;
@@ -104,38 +108,41 @@ function App() {
                 const y = curY + Math.floor(i / cols) * (sh + gap);
                 if (y + sh > H - 50) break;
                 ctx.drawImage(imgs[i % imgs.length], x, y, sw, sh);
-                ctx.strokeStyle = "#eee"; ctx.strokeRect(x, y, sw, sh);
+                ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh);
             }
             curY += Math.ceil(count / cols) * (sh + gap) + gap;
         };
 
-        // 橫式 4x6 專屬優化排版
         if(is46) {
-            if(mode === 'MIX') { 
-                drawGrid(413, 531, 60, 2); // 2吋橫向排列
-                drawGrid(295, 413, 40, 4); // 1吋接續
-            } else if(mode === '2IN') { 
-                drawGrid(413, 531, 60, 8); 
-            } else { 
-                drawGrid(295, 413, 40, 12); 
-            }
+            if(mode === 'MIX') { drawGrid(413, 531, 60, 2); drawGrid(295, 413, 40, 4); }
+            else if(mode === '2IN') { drawGrid(413, 531, 60, 8); }
+            else { drawGrid(295, 413, 40, 12); }
         } else {
-            // A4 排版 (保持直向)
             if(mode === 'MIX') { drawGrid(413, 531, 40, 8); drawGrid(295, 413, 30, 12); }
             else if(mode === '2IN') { drawGrid(413, 531, 40, 20); }
             else { drawGrid(295, 413, 30, 35); }
         }
 
+        // 簡化日期時間命名
+        const now = new Date();
+        const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+        
         const a = document.createElement("a");
-        a.href = pc.toDataURL("image/png");
-        a.download = `EzID_${type}_${mode}_LANDSCAPE.png`; a.click();
+        a.href = pc.toDataURL("image/png", 1.0);
+        a.download = `${ts}.png`;
+        a.click();
     };
 
     return (
-        <div className="max-w-md mx-auto space-y-6">
-            <header className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm">
-                <h1 className="font-black italic text-xl">EzID <span className="text-blue-600">v3.8.6</span></h1>
-                <div className="bg-amber-100 px-2 py-1 rounded text-[9px] font-black text-amber-700">ibon 4x6 橫式修正版</div>
+        <div className="max-w-md mx-auto space-y-4">
+            <header className="space-y-2">
+                <div className="flex justify-between items-center">
+                    <h1 className="text-xl font-black italic tracking-tighter">EzID Taiwan <span className="text-blue-600">v3.9</span></h1>
+                    <span className="text-[10px] bg-slate-800 text-white px-2 py-0.5 rounded">STABLE</span>
+                </div>
+                <div className="bg-amber-50 border-l-4 border-amber-400 p-2 text-[10px] text-amber-800 font-medium">
+                    ⚠️ 辦理證件需使用6個月內近照，頭部高度須介於 3.2-3.6 公分之間。
+                </div>
             </header>
 
             <div className="canvas-container"
@@ -145,10 +152,10 @@ function App() {
                 <div className="inner-guide"></div><div className="outer-guide"></div>
             </div>
 
-            <div className="bg-white p-4 rounded-3xl shadow-sm space-y-4">
-                <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adjust {target}</span>
-                    <div className="flex bg-slate-100 p-1 rounded-lg gap-1 text-[10px] font-bold">
+            <div className="bg-white p-4 rounded-2xl shadow-sm space-y-3">
+                <div className="flex justify-between items-center text-[10px] font-black">
+                    <span className="text-slate-400 uppercase tracking-widest">Adjust {target} Size</span>
+                    <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
                         <button onClick={()=>setTarget("PHOTO")} className={`px-3 py-1 rounded ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像</button>
                         <button onClick={()=>setTarget("SUIT")} className={`px-3 py-1 rounded ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服</button>
                     </div>
@@ -161,14 +168,14 @@ function App() {
                        }} />
             </div>
 
-            <div className="bg-white p-4 rounded-3xl shadow-sm overflow-hidden border border-slate-100">
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+            <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                     <button onClick={()=>setSuitImg(null)} className="flex-shrink-0 w-12 h-12 bg-slate-50 border-2 border-dashed rounded-xl flex items-center justify-center text-slate-300">✕</button>
                     {SUITS.map(id => (
                         <button key={id} onClick={()=>{
                             const img = new Image(); img.onload = () => { setSuitImg(img); setTarget("SUIT"); };
                             img.src = `clothes/${id}`;
-                        }} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden bg-slate-50">
+                        }} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden bg-slate-50 active:border-blue-500">
                             <img src={`clothes/${id}`} className="w-full h-full object-contain" />
                         </button>
                     ))}
@@ -176,41 +183,37 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition tracking-widest">
+                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-bold cursor-pointer active:scale-95 transition">
                     📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
                         const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); };
                         img.src = URL.createObjectURL(e.target.files[0]);
                     }} />
                 </label>
                 <button onClick={() => setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10))} 
-                        className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg">📥 存入槽位 ({slots.length})</button>
+                        className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-bold shadow-lg">📥 存入槽位 ({slots.length})</button>
             </div>
 
-            <div className="space-y-4">
-                <div className="p-4 bg-white rounded-3xl border-2 border-emerald-100 shadow-sm space-y-4">
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-black text-emerald-800 uppercase italic">🏪 ibon 4x6 Landscape (橫向)</h3>
-                        <span className="text-[9px] bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full font-bold underline">符合實體機台規範</span>
-                    </div>
+            <div className="space-y-3">
+                <div className="p-3 bg-white rounded-2xl border border-emerald-200 space-y-2">
+                    <h3 className="text-[10px] font-black text-emerald-700 italic">🏪 ibon 4x6 橫式排版 (推薦)</h3>
                     <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-3 rounded-xl text-[10px] font-black">4x6 橫排</button>
-                        <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-3 rounded-xl text-[10px] font-black">橫版 2 吋</button>
-                        <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-3 rounded-xl text-[10px] font-black">橫版 1 吋</button>
+                        <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-2.5 rounded-xl text-[10px] font-bold">4x6 混排</button>
+                        <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-2.5 rounded-xl text-[10px] font-bold">2 吋全張</button>
+                        <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-2.5 rounded-xl text-[10px] font-bold">1 吋全張</button>
                     </div>
                 </div>
-
-                <div className="p-4 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4 opacity-75">
-                    <h3 className="text-xs font-black text-blue-800 uppercase italic">📄 Home A4 Portrait (直向)</h3>
+                <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
+                    <h3 className="text-[10px] font-black text-slate-500 italic">📄 家用 A4 直式排版</h3>
                     <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-3 rounded-xl text-[10px] font-black">A4 混排</button>
-                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-500 text-white py-3 rounded-xl text-[10px] font-black">全 2 吋</button>
-                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-500 text-white py-3 rounded-xl text-[10px] font-black">全 1 吋</button>
+                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-slate-400 text-white py-2.5 rounded-xl text-[10px] font-bold">A4 混排</button>
+                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-400 text-white py-2.5 rounded-xl text-[10px] font-bold">2 吋全張</button>
+                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-400 text-white py-2.5 rounded-xl text-[10px] font-bold">1 吋全張</button>
                     </div>
                 </div>
             </div>
 
-            <footer className="text-center p-4">
-                <p className="text-[10px] text-slate-400 font-medium">⚠️ 注意：使用 4x6 下載後的檔案應為橫向（寬大於高），此為沖印機台唯一標準。</p>
+            <footer className="text-center space-y-1 py-4">
+                <p className="text-[9px] text-slate-400 font-medium tracking-tighter">🛡️ 照片僅在瀏覽器端運算，不會上傳至任何伺服器。</p>
             </footer>
         </div>
     );
