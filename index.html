@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.7.0 - ibon Expert</title>
+    <title>EzID Taiwan v3.7.5 - STABLE</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,12 +12,12 @@
         .no-scrollbar::-webkit-scrollbar { display:none; }
         .canvas-container { 
             position:relative; width:350px; height:450px; margin:0 auto; 
-            background:#fff; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden; 
+            background:#f8fafc; border:2px solid #e2e8f0; border-radius:16px; overflow:hidden; 
             touch-action: none; cursor: grab;
         }
         .inner-guide { position:absolute; left:50%; top:45%; width:62%; height:71.1%; border:2px dotted #10b981; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:100; pointer-events:none; }
         .outer-guide { position:absolute; left:50%; top:45%; width:70%; height:80%; border:2px dashed #f59e0b; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:99; pointer-events:none; }
-        .mode-tag { position:absolute; top:12px; left:12px; background:rgba(255,255,255,0.9); padding:4px 10px; border-radius:8px; font-size:10px; font-weight:900; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
+        .mode-label { position:absolute; top:12px; left:12px; background:white; padding:2px 8px; border-radius:6px; font-size:10px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1); z-index:10; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -29,170 +29,181 @@ const { useState, useRef, useEffect, useCallback } = React;
 const M_SUITS = Array(5).fill(0).map((_, i) => ({ id: `male/m${i+1}.png`, neckY: 0.12, sW: 0.88 }));
 const F_SUITS = Array(5).fill(0).map((_, i) => ({ id: `female/f${i+1}.png`, neckY: 0.16, sW: 0.82 }));
 
-// 物理參數 (300 DPI)
-const DPI = 300;
-const SPECS = {
-    P46: { w: 1200, h: 1800, name: "4x6 相片紙", safe: 40 }, // 4x6 吋
-    A4:  { w: 2480, h: 3508, name: "A4 普通紙", safe: 100 }  // A4
-};
-
 function App() {
     const canvasRef = useRef(null);
     const [image, setImage] = useState(null);
     const [suit, setSuit] = useState({ img: null, meta: null });
     const [slots, setSlots] = useState([]);
     const [target, setTarget] = useState("PHOTO");
-    const [p, setP] = useState({ x: 0, y: -30, s: 0.8 });
+    
+    // 座標狀態：x, y 是相對於中心點的偏移
+    const [p, setP] = useState({ x: 0, y: 0, s: 0.5 }); // 初始化比例小一點，確保看得到
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
     const isDragging = useRef(false);
     const lastPos = useRef({ x: 0, y: 0 });
 
     const draw = useCallback(() => {
-        const ctx = canvasRef.current.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
-        if(image) {
-            ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
-            ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
-        }
-        if(suit.img) {
+        const cvs = canvasRef.current;
+        if (!cvs) return;
+        const ctx = cvs.getContext("2d");
+        
+        // 1. 清除畫布並填滿白色
+        ctx.clearRect(0, 0, 350, 450);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 350, 450);
+
+        // 2. 繪製人像 (先畫)
+        if (image) {
             ctx.save();
-            const w = suit.img.width * sp.s; const h = suit.img.height * sp.s;
-            ctx.drawImage(suit.img, (350 - w)/2 + sp.x + p.x, 305 + p.y - (h * suit.meta.neckY) + sp.y, w, h);
+            // 核心修正：移動到畫布中心點 (175, 225) 再套用偏移
+            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width / 2, -image.height / 2);
+            ctx.restore();
+        }
+
+        // 3. 繪製衣服 (後畫)
+        if (suit.img) {
+            ctx.save();
+            const m = suit.meta;
+            const w = suit.img.width * sp.s;
+            const h = suit.img.height * sp.s;
+            // 物理連動：衣服跟隨人像的 p.x 與 p.y
+            // 305 是預設脖子高度，扣除領口深度 m.neckY
+            const drawX = (350 - w) / 2 + sp.x + p.x;
+            const drawY = 305 + p.y - (h * m.neckY) + sp.y;
+            ctx.drawImage(suit.img, drawX, drawY, w, h);
             ctx.restore();
         }
     }, [image, suit, p, sp]);
 
     useEffect(() => { draw(); }, [draw]);
 
-    // 手勢邏輯
-    const handleStart = (e) => { isDragging.current = true; const pos = e.touches ? e.touches[0] : e; lastPos.current = { x: pos.clientX, y: pos.clientY }; };
+    // 手勢處理 (修正 dx/dy 計算)
+    const handleStart = (e) => {
+        if (!image && target === "PHOTO") return;
+        isDragging.current = true;
+        const pos = e.touches ? e.touches[0] : e;
+        lastPos.current = { x: pos.clientX, y: pos.clientY };
+    };
+
     const handleMove = (e) => {
         if (!isDragging.current) return;
         const pos = e.touches ? e.touches[0] : e;
         const dx = pos.clientX - lastPos.current.x;
         const dy = pos.clientY - lastPos.current.y;
-        if (target === "PHOTO") setP(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
-        else setSp(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
+
+        if (target === "PHOTO") {
+            setP(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
+        } else {
+            setSp(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
+        }
         lastPos.current = { x: pos.clientX, y: pos.clientY };
     };
+
     const handleWheel = (e) => {
-        const delta = e.deltaY * -0.001;
-        if (target === "PHOTO") setP(v => ({ ...v, s: Math.max(0.2, v.s + delta) }));
-        else setSp(v => ({ ...v, s: Math.max(0.2, v.s + delta) }));
+        const delta = e.deltaY * -0.0005;
+        if (target === "PHOTO") setP(v => ({ ...v, s: Math.max(0.1, v.s + delta) }));
+        else setSp(v => ({ ...v, s: Math.max(0.1, v.s + delta) }));
     };
 
-    // 核心輸出 Solver
-    const exportDoc = async (specKey, mode) => {
-        if(!slots.length) return alert("槽位是空的！");
-        const spec = SPECS[specKey];
-        const pc = document.createElement("canvas");
-        pc.width = spec.w; pc.height = spec.h;
-        const ctx = pc.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, spec.w, spec.h);
-
-        const imgs = await Promise.all(slots.map(s => new Promise(res => { const i = new Image(); i.onload = () => res(i); i.src = s; })));
-
-        let curY = spec.safe, imgIdx = 0;
-        const renderRow = (sw, sh, gap, total) => {
-            const cols = Math.floor((spec.w - 2 * spec.safe + gap) / (sw + gap));
-            const startX = (spec.w - (cols * sw + (cols - 1) * gap)) / 2;
-            for(let i=0; i<total; i++){
-                const r = Math.floor(i/cols), c = i%cols;
-                const x = startX + c*(sw+gap), y = curY + r*(sh+gap);
-                if (y + sh > spec.h - spec.safe) break;
-                ctx.drawImage(imgs[imgIdx % imgs.length], x, y, sw, sh);
-                ctx.strokeStyle = "#ddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, sw, sh);
-                imgIdx++;
-            }
-            curY += Math.ceil(total/cols) * (sh + gap) + gap;
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                setImage(img);
+                // 重置位置到中心，並根據圖片大小初始化縮放
+                const initScale = 300 / Math.max(img.width, img.height);
+                setP({ x: 0, y: -20, s: initScale });
+                setTarget("PHOTO");
+            };
+            img.src = event.target.result;
         };
+        reader.readAsDataURL(file);
+    };
 
-        if(mode === 'MIX') {
-            if(specKey === 'P46') { renderRow(413, 531, 35, 2); renderRow(295, 413, 25, 4); }
-            else { renderRow(413, 531, 50, 8); renderRow(295, 413, 40, 14); }
-        } else if(mode === 'ALL2') {
-            renderRow(413, 531, 35, specKey === 'P46' ? 8 : 20);
-        } else if(mode === 'ALL1') {
-            renderRow(295, 413, 25, specKey === 'P46' ? 12 : 35);
-        }
+    // 輸出功能 (4x6/A4)
+    const exportImage = async (spec, mode) => {
+        if (!slots.length) return alert("請先存入槽位");
+        const W = spec === 'P46' ? 1200 : 2480;
+        const H = spec === 'P46' ? 1800 : 3508;
+        const canvas = document.createElement("canvas");
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "white"; ctx.fillRect(0, 0, W, H);
+
+        const loadedImgs = await Promise.all(slots.map(src => new Promise(res => {
+            const i = new Image(); i.onload = () => res(i); i.src = src;
+        })));
+
+        const gap = 30, sw = 413, sh = 531; // 2吋為例
+        let curY = 60;
+        loadedImgs.forEach((img, i) => {
+            const x = 60 + (i % 2) * (sw + gap);
+            const y = curY + Math.floor(i / 2) * (sh + gap);
+            ctx.drawImage(img, x, y, sw, sh);
+            ctx.strokeStyle = "#ccc"; ctx.strokeRect(x, y, sw, sh);
+        });
 
         const link = document.createElement("a");
-        link.href = pc.toDataURL("image/png", 1.0);
-        link.download = `EzID_${specKey}_${mode}.png`;
+        link.href = canvas.toDataURL("image/png");
+        link.download = `EzID_${spec}_${mode}.png`;
         link.click();
     };
 
     return (
-        <div className="max-w-md mx-auto p-4 pb-10">
-            <header className="flex justify-between items-center mb-6">
-                <h1 className="font-black italic text-2xl tracking-tighter">EzID <span className="text-blue-600">3.7</span></h1>
+        <div className="max-w-md mx-auto p-4 select-none">
+            <header className="flex justify-between items-center mb-4">
+                <h1 className="font-black italic text-xl">EzID <span className="text-blue-600">3.7.5</span></h1>
                 <div className="flex bg-slate-200 p-1 rounded-xl">
-                    <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1.5 text-xs font-black rounded-lg transition ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-500'}`}>人像</button>
-                    <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1.5 text-xs font-black rounded-lg transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-500'}`}>衣服</button>
+                    <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1 text-xs font-bold rounded-lg ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-500'}`}>人像</button>
+                    <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1 text-xs font-bold rounded-lg ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-500'}`}>衣服</button>
                 </div>
             </header>
 
-            <div className="canvas-container shadow-2xl mb-6"
+            <div className="canvas-container shadow-lg mb-4"
                  onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false}
-                 onWheel={handleWheel} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}>
+                 onMouseLeave={()=>isDragging.current=false} onWheel={handleWheel}
+                 onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}>
+                <div className="mode-label">{target} MODE</div>
                 <canvas ref={canvasRef} width="350" height="450" />
-                <div className="mode-tag text-blue-600">{target} MODE</div>
                 <div className="inner-guide"></div>
                 <div className="outer-guide"></div>
             </div>
 
-            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-6">
+            <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 mb-4 overflow-hidden">
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    <button onClick={()=>setSuit({img:null, meta:null})} className="flex-shrink-0 w-14 h-14 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">✕</button>
+                    <button onClick={()=>setSuit({img:null, meta:null})} className="flex-shrink-0 w-12 h-12 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">✕</button>
                     {[...M_SUITS, ...F_SUITS].map(s => (
                         <button key={s.id} onClick={()=>{
-                            const img = new Image(); img.onload = () => {
-                                setSuit({ img, meta: s }); setTarget("SUIT");
-                                setSp(v => ({ ...v, s: (189 * 1.6) / (img.width * s.sW) }));
-                            }; img.src = `clothes/${s.id}`;
-                        }} className={`flex-shrink-0 w-14 h-14 border-2 rounded-2xl overflow-hidden ${suit.meta?.id===s.id?'border-blue-500':'border-transparent bg-slate-50'}`}>
+                            const img = new Image();
+                            img.onload = () => { setSuit({ img, meta: s }); setTarget("SUIT"); };
+                            img.src = `clothes/${s.id}`;
+                        }} className={`flex-shrink-0 w-12 h-12 border-2 rounded-xl overflow-hidden ${suit.meta?.id===s.id?'border-blue-500':'border-transparent'}`}>
                             <img src={`clothes/${s.id}`} className="w-full h-full object-contain" />
                         </button>
                     ))}
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-8">
-                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">
-                    📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
-                        const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); };
-                        img.src = URL.createObjectURL(e.target.files[0]);
-                    }} />
+            <div className="grid grid-cols-2 gap-3 mb-6">
+                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-bold cursor-pointer active:scale-95 transition-transform">
+                    📸 上傳照片
+                    <input type="file" hidden accept="image/*" onChange={handleFileUpload} />
                 </label>
-                <button onClick={() => setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10))} 
-                        className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg active:scale-95 transition">
+                <button onClick={() => setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10))}
+                        className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-bold active:scale-95 transition-transform">
                     📥 存入槽位 ({slots.length})
                 </button>
             </div>
 
-            <div className="space-y-6">
-                <section>
-                    <h3 className="text-[11px] font-black text-slate-400 mb-3 tracking-widest uppercase flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> ibon 4x6 相片紙
-                    </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('P46','MIX')} className="bg-white border-2 border-emerald-600 text-emerald-700 py-3 rounded-xl text-[10px] font-black hover:bg-emerald-50 transition">4x6 混排</button>
-                        <button onClick={()=>exportDoc('P46','ALL2')} className="bg-white border border-slate-200 text-slate-700 py-3 rounded-xl text-[10px] font-black">全 2 吋</button>
-                        <button onClick={()=>exportDoc('P46','ALL1')} className="bg-white border border-slate-200 text-slate-700 py-3 rounded-xl text-[10px] font-black">全 1 吋</button>
-                    </div>
-                </section>
-
-                <section>
-                    <h3 className="text-[11px] font-black text-slate-400 mb-3 tracking-widest uppercase flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span> ibon A4 普通紙
-                    </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-white border-2 border-blue-600 text-blue-700 py-3 rounded-xl text-[10px] font-black hover:bg-blue-50 transition">A4 混排</button>
-                        <button onClick={()=>exportDoc('A4','ALL2')} className="bg-white border border-slate-200 text-slate-700 py-3 rounded-xl text-[10px] font-black">全 2 吋</button>
-                        <button onClick={()=>exportDoc('A4','ALL1')} className="bg-white border border-slate-200 text-slate-700 py-3 rounded-xl text-[10px] font-black">全 1 吋</button>
-                    </div>
-                </section>
+            <div className="grid grid-cols-2 gap-2">
+                <button onClick={()=>exportImage('P46','MIX')} className="bg-emerald-600 text-white py-3 rounded-xl text-xs font-bold">4x6 混排下載</button>
+                <button onClick={()=>exportImage('A4','MIX')} className="bg-slate-700 text-white py-3 rounded-xl text-xs font-bold">A4 混排下載</button>
             </div>
         </div>
     );
