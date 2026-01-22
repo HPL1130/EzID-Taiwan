@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.8.0</title>
+    <title>EzID Taiwan v3.1.0</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,12 +13,9 @@
         .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:32px; border:8px solid #fff; box-shadow:0 20px 40px rgba(0,0,0,.1); overflow:hidden; }
         .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; }
         .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; }
-        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; z-index: 90; }
-        .suit-btn { width:52px; height:52px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:center; position:relative; }
-        .suit-btn.active { border-color:#2563eb; background:#eff6ff; }
-        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:8px 20px; border-radius:20px; font-size:12px; z-index:999; animation:fadeInOut 2s ease-in-out forwards; }
-        @keyframes fadeInOut { 0% { opacity:0; } 15% { opacity:1; } 85% { opacity:1; } 100% { opacity:0; } }
-        input[type=range] { width:100%; accent-color:#2563eb; cursor:pointer; }
+        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 24px; border-radius:24px; font-size:12px; z-index:999; backdrop-filter:blur(4px); transition: opacity 0.3s; }
+        input[type=range] { width:100%; accent-color:#2563eb; height:6px; background:#e2e8f0; border-radius:3px; appearance:none; }
+        .btn-reset { font-size: 9px; padding: 2px 6px; border-radius: 4px; background: #f1f5f9; color: #64748b; font-weight: bold; }
     </style>
 </head>
 <body class="bg-slate-50">
@@ -27,25 +24,43 @@
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
+const DPI = 300;
+const mmToPx = (mm) => Math.round(mm * DPI / 25.4);
+const SAFE = mmToPx(12); 
+const A4_W = 2480, A4_H = 3508;
+
 function App() {
     const canvasRef = useRef(null);
+    const toastTimer = useRef(null);
+    const rafRef = useRef(0);
+    const dirtyRef = useRef(true);
+
     const [image, setImage] = useState(null);
     const [suitImg, setSuitImg] = useState(null);
     const [activeSuit, setActiveSuit] = useState(null);
-    const [slots, setSlots] = useState([]);
+    const [slots, setSlots] = useState([]); // 存儲 Blob URLs
     const [toast, setToast] = useState("");
+    const [cutMode, setCutMode] = useState("FRAME_L"); // FRAME, L_ONLY, FRAME_L, LIGHT
     
-    // p: 照片, sp: 衣服
-    const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
-    const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
+    // 初始化狀態
+    const INIT_P = { x: 0, y: -20, s: 0.75 };
+    const INIT_SP = { x: 0, y: 0, s: 1.0 };
+    const [p, setP] = useState(INIT_P);
+    const [sp, setSp] = useState(INIT_SP);
 
     const CLOTHES = {
         male: Array.from({length:5}, (_,i)=> `clothes/male/m${i+1}.png`),
         female: Array.from({length:5}, (_,i)=> `clothes/female/f${i+1}.png`)
     };
 
-    const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""), 2000); };
+    const markDirty = () => { dirtyRef.current = true; };
+    const showToast = (msg) => {
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        setToast(msg);
+        toastTimer.current = setTimeout(() => setToast(""), 2000);
+    };
 
+    // S1: 渲染優化 - Dirty Loop
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
@@ -61,112 +76,157 @@ function App() {
         }
     }, [image, suitImg, p, sp]);
 
-    useEffect(() => { 
-        const frameId = requestAnimationFrame(draw);
-        return () => cancelAnimationFrame(frameId);
+    useEffect(() => {
+        const loop = () => { if (dirtyRef.current) { dirtyRef.current = false; draw(); } rafRef.current = requestAnimationFrame(loop); };
+        rafRef.current = requestAnimationFrame(loop);
+        return () => { cancelAnimationFrame(rafRef.current); if(toastTimer.current) clearTimeout(toastTimer.current); };
     }, [draw]);
 
+    // S1: 解決 Slots 記憶體與品質問題 (Blob URL)
+    const saveToSlot = () => {
+        if(!image) return alert("請先上傳照片");
+        canvasRef.current.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            setSlots(prev => [url, ...prev].slice(0, 10));
+            showToast("已存入槽位");
+        }, "image/png");
+    };
+
+    const removeSlot = (i) => {
+        setSlots(prev => {
+            URL.revokeObjectURL(prev[i]);
+            return prev.filter((_, idx) => idx !== i);
+        });
+    };
+
+    const clearSlots = () => {
+        slots.forEach(url => URL.revokeObjectURL(url));
+        setSlots([]);
+        showToast("已清空所有槽位");
+    };
+
     const handleUpload = (e) => {
-        const f = e.target.files[0];
-        if(!f) return;
+        const f = e.target.files[0]; if(!f) return;
         const url = URL.createObjectURL(f);
         const img = new Image();
-        img.onload = () => {
-            setImage(img);
-            URL.revokeObjectURL(url); // 修正 3: 記憶體洩漏
-            showToast("照片載入成功");
-        };
+        img.onload = () => { setImage(img); URL.revokeObjectURL(url); markDirty(); showToast("載入成功"); };
         img.src = url;
     };
 
     const selectSuit = (url) => {
-        if(!url) { setSuitImg(null); setActiveSuit(null); return; }
+        if(!url) { setSuitImg(null); setActiveSuit(null); markDirty(); return; }
         const img = new Image();
-        img.onload = () => {
-            setSuitImg(img);
-            setActiveSuit(url); // 修正 1: 確保圖片載入後才切換 Active 狀態
-        };
+        img.crossOrigin = "anonymous"; // S1: 處理潛在 CORS
+        img.onload = () => { setSuitImg(img); setActiveSuit(url); markDirty(); };
+        img.onerror = () => showToast("服裝載入失敗");
         img.src = url;
     };
 
-    const saveToSlot = () => {
-        if(!image) return alert("請先上傳照片");
-        setSlots(prev => [canvasRef.current.toDataURL("image/jpeg", 0.9), ...prev].slice(0, 10));
-        showToast("已存入槽位");
-    };
+    // S0-1: SSOT Layout Solver
+    const getCols = (sw, gap) => Math.max(1, Math.floor((A4_W - SAFE * 2 + gap) / (sw + gap)));
+    const getMaxRows = (startY, sh, gap) => Math.max(0, Math.floor((A4_H - SAFE - startY + gap) / (sh + gap)));
 
-    // ✂️ 專業裁切輔助 (L型角標系統)
-    const drawLMark = (ctx, x, y, w, h) => {
-        ctx.strokeStyle = "#000000"; ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, w, h); // 基礎黑框
+    const drawPhotoWithLMark = (ctx, img, x, y, w, h) => {
+        ctx.drawImage(img, x, y, w, h);
+        ctx.save();
+        ctx.lineJoin = "miter"; ctx.lineCap = "square";
         
-        // 四角 L 標 (強化易剪度)
-        const L = 20;
-        ctx.beginPath();
-        // 左上
-        ctx.moveTo(x-L, y); ctx.lineTo(x, y); ctx.lineTo(x, y-L);
-        // 右上
-        ctx.moveTo(x+w+L, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y-L);
-        // 左下
-        ctx.moveTo(x-L, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h+L);
-        // 右下
-        ctx.moveTo(x+w+L, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y+h+L);
-        ctx.stroke();
+        // S0: 裁切線模式切換
+        if (cutMode === "LIGHT") {
+            ctx.strokeStyle = "#E2E8F0"; ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, w, h);
+        } else {
+            ctx.strokeStyle = "#000"; ctx.lineWidth = 1;
+            if (cutMode !== "L_ONLY") ctx.strokeRect(x, y, w, h);
+            if (cutMode !== "FRAME") {
+                const L = 20;
+                ctx.beginPath();
+                ctx.moveTo(x+L, y); ctx.lineTo(x, y); ctx.lineTo(x, y+L);
+                ctx.moveTo(x+w-L, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+L);
+                ctx.moveTo(x+L, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h-L);
+                ctx.moveTo(x+w-L, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y+h-L);
+                ctx.stroke();
+            }
+        }
+        ctx.restore();
     };
 
     const downloadA4 = async (mode) => {
-        if(!slots.length) return alert("槽位為空");
-        const A4_W = 2480, A4_H = 3508, SAFE = 120;
-        const pc = document.createElement("canvas");
-        pc.width = A4_W; pc.height = A4_H;
-        const ctx = pc.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, A4_W, A4_H);
+        if(!slots.length) return;
+        try {
+            const pc = document.createElement("canvas");
+            pc.width = A4_W; pc.height = A4_H;
+            const ctx = pc.getContext("2d");
+            ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, A4_W, A4_H);
 
-        const imgs = await Promise.all(slots.map(s => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=s; })));
-        let idx = 0;
+            const imgs = await Promise.all(slots.map(s => new Promise((resolve, reject) => { 
+                const i = new Image(); 
+                i.onload = () => resolve(i); 
+                i.onerror = reject;
+                i.src = s; 
+            })));
 
-        const runLayout = (sw, sh, gap, startY, limitY) => {
-            const cols = Math.floor((A4_W - SAFE*2) / (sw + gap));
-            let currY = startY;
-            while(currY + sh < limitY) {
-                let startX = (A4_W - (cols * (sw + gap) - gap)) / 2;
-                for(let c=0; c<cols; c++) {
-                    drawLMark(ctx, startX + c*(sw+gap), currY, sw, sh);
-                    ctx.drawImage(imgs[idx%imgs.length], startX + c*(sw+gap), currY, sw, sh);
-                    idx++;
+            let imgIdx = 0;
+            const renderBlock = (sw, sh, gap, startY, rows, cols) => {
+                let currY = startY;
+                const rowWidth = cols * sw + (cols - 1) * gap;
+                const startX = (A4_W - rowWidth) / 2;
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        drawPhotoWithLMark(ctx, imgs[imgIdx % imgs.length], startX + c*(sw+gap), currY, sw, sh);
+                        imgIdx++;
+                    }
+                    currY += sh + gap;
                 }
-                currY += sh + gap;
+                return currY;
+            };
+
+            if (mode === 'ALL_2') {
+                const sw=413, sh=531, g=35;
+                renderBlock(sw, sh, g, SAFE, getMaxRows(SAFE, sh, g), getCols(sw, g));
+            } else if (mode === 'ALL_1') {
+                const sw=295, sh=413, g=25;
+                renderBlock(sw, sh, g, SAFE, getMaxRows(SAFE, sh, g), getCols(sw, g));
+            } else {
+                // MIX Solver
+                const S2 = {w:413, h:531, g:35}, S1 = {w:295, h:413, g:25};
+                const c2 = getCols(S2.w, S2.g), c1 = getCols(S1.w, S1.g);
+                const maxR2 = getMaxRows(SAFE, S2.h, S2.g);
+                let best = { r2: 0, r1: 0, total: 0 };
+                for(let r=0; r<=maxR2; r++){
+                    const yNext = SAFE + r*(S2.h + S2.g);
+                    const r1 = getMaxRows(yNext, S1.h, S1.g);
+                    if((r*c2 + r1*c1) >= best.total) best = { r2: r, r1, yNext };
+                }
+                const nextY = renderBlock(S2.w, S2.h, S2.g, SAFE, best.r2, c2);
+                renderBlock(S1.w, S1.h, S1.g, nextY, best.r1, c1);
             }
-            return currY;
-        };
 
-        if(mode === 'ALL_2') runLayout(413, 531, 35, SAFE, A4_H - SAFE);
-        else if(mode === 'ALL_1') runLayout(295, 413, 25, SAFE, A4_H - SAFE);
-        else {
-            let nextY = runLayout(413, 531, 35, SAFE, A4_H * 0.58);
-            runLayout(295, 413, 25, nextY + 40, A4_H - SAFE);
-        }
-
-        const a = document.createElement("a");
-        a.href = pc.toDataURL("image/png");
-        a.download = `EzID_A4_${mode}.png`;
-        a.click();
+            const a = document.createElement("a");
+            a.href = pc.toDataURL("image/png");
+            a.download = `EzID_${mode}_${Date.now()}.png`;
+            a.click();
+        } catch(e) { showToast("輸出失敗，請檢查槽位內容"); }
     };
 
     return (
-        <div className="max-w-md mx-auto p-4 pb-20">
-            {toast && <div className="toast">{toast}</div>}
+        <div className="max-w-md mx-auto p-4 pb-12">
+            {toast && <div className="toast shadow-2xl">{toast}</div>}
             
             <header className="flex justify-between items-end mb-4 px-2">
-                <h1 className="font-black text-slate-800 italic text-xl">EzID <span className="text-blue-500 text-xs not-italic">v2.8.0 PRO</span></h1>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter text-right">
-                    ibon Safe Area Ready<br/>L-Mark Precise Cut
+                <h1 className="font-black text-slate-800 italic text-xl">EzID <span className="text-blue-600 text-[10px] not-italic border border-blue-600 px-1 rounded">v3.1.0</span></h1>
+                <div className="flex flex-col items-end gap-1">
+                    <select value={cutMode} onChange={e=>setCutMode(e.target.value)} className="text-[9px] font-bold border rounded px-1 text-slate-500 bg-transparent">
+                        <option value="FRAME_L">裁切：黑框 + L標</option>
+                        <option value="L_ONLY">裁切：僅 L標</option>
+                        <option value="FRAME">裁切：僅黑框</option>
+                        <option value="LIGHT">裁切：淺色參考線</option>
+                    </select>
                 </div>
             </header>
 
-            <div className="canvas-container mb-6">
+            <div className="canvas-container mb-6 shadow-2xl shadow-blue-100">
                 <canvas ref={canvasRef} width="350" height="450" />
-                <div className="center-line"></div>
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="inner-guide" style={{width:'71%', height:'71%'}}></div>
                     <div className="outer-guide" style={{width:'80%', height:'80%'}}></div>
@@ -174,73 +234,72 @@ function App() {
             </div>
 
             <section className="space-y-4">
-                {/* 👔 修正 2: 加入女性與 SP 控制器 */}
                 <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                    <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">👔 數位換裝 (SP Mode)</span>
-                        <button onClick={()=>selectSuit(null)} className="text-[10px] text-red-500 font-bold">移除服裝</button>
+                    <div className="flex justify-between mb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">👔 換裝控制 (SP)</span>
+                        <button className="btn-reset" onClick={()=>{setSp(INIT_SP);markDirty()}}>RESET</button>
                     </div>
-                    <div className="space-y-3">
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                            {CLOTHES.male.map(s => <button key={s} onClick={()=>selectSuit(s)} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-10"/></button>)}
-                        </div>
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                            {CLOTHES.female.map(s => <button key={s} onClick={()=>selectSuit(s)} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-10"/></button>)}
-                        </div>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4 pb-1">
+                        <button onClick={()=>selectSuit(null)} className="suit-btn flex-shrink-0 w-[52px] h-[52px] text-red-500 border rounded-xl text-xs font-bold bg-white">✕</button>
+                        {[...CLOTHES.male, ...CLOTHES.female].map(s => (
+                            <button key={s} onClick={()=>selectSuit(s)} className={`flex-shrink-0 w-[52px] h-[52px] border rounded-xl p-1 bg-white ${activeSuit===s?'border-blue-500 bg-blue-50':''}`}><img src={s} className="w-full h-full object-contain"/></button>
+                        ))}
                     </div>
-
                     {suitImg && (
-                        <div className="mt-4 p-3 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
-                            <div className="grid grid-cols-2 gap-x-4">
-                                <div><div className="text-[9px] text-blue-500 font-bold mb-1">衣服大小</div><input type="range" min="0.5" max="2.5" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} /></div>
-                                <div><div className="text-[9px] text-blue-500 font-bold mb-1">垂直位置</div><input type="range" min="-100" max="100" value={sp.y} onChange={e=>setSp({...sp, y:+e.target.value})} /></div>
-                            </div>
+                        <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div className="flex items-center gap-4"><span className="text-[9px] font-bold text-slate-400 w-12">SIZE {Math.round(sp.s*100)}%</span><input type="range" min="0.5" max="3.5" step="0.01" value={sp.s} onInput={e=>{setSp({...sp, s:+e.target.value});markDirty()}} /></div>
+                            <div className="flex items-center gap-4"><span className="text-[9px] font-bold text-slate-400 w-12">Y-POS {sp.y}</span><input type="range" min="-150" max="150" value={sp.y} onInput={e=>{setSp({...sp, y:+e.target.value});markDirty()}} /></div>
+                            <div className="flex items-center gap-4"><span className="text-[9px] font-bold text-slate-400 w-12">X-POS {sp.x}</span><input type="range" min="-150" max="150" value={sp.x} onInput={e=>{setSp({...sp, x:+e.target.value});markDirty()}} /></div>
                         </div>
                     )}
                 </div>
 
-                <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-4">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">👤 照片調整 (P Mode)</div>
-                    <div className="space-y-4">
-                        <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-5">
+                    <div className="flex justify-between">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">👤 照片調整 (P)</span>
+                        <button className="btn-reset" onClick={()=>{setP(INIT_P);markDirty()}}>RESET</button>
+                    </div>
+                    <div className="space-y-4 px-1">
+                        <div><div className="flex justify-between mb-1"><span className="text-[9px] font-bold text-slate-400">SCALE</span><span className="text-[9px] font-mono">{Math.round(p.s*100)}%</span></div>
+                        <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onInput={e=>{setP({...p, s:+e.target.value});markDirty()}} /></div>
                         <div className="grid grid-cols-2 gap-4">
-                            <input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p, y:+e.target.value})} />
-                            <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p, x:+e.target.value})} />
+                            {/* S0: 修正 P.Y 範圍退化問題 */}
+                            <div><span className="text-[9px] font-bold text-slate-400">Y-AXIS ({p.y})</span><input type="range" min="-150" max="150" value={p.y} onInput={e=>{setP({...p, y:+e.target.value});markDirty()}} /></div>
+                            <div><span className="text-[9px] font-bold text-slate-400">X-AXIS ({p.x})</span><input type="range" min="-150" max="150" value={p.x} onInput={e=>{setP({...p, x:+e.target.value});markDirty()}} /></div>
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 mt-4">
-                        <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer shadow-md active:scale-95 transition-all">📸 上傳照片<input type="file" hidden accept="image/*" onChange={handleUpload}/></label>
-                        <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-md active:scale-95 transition-all">📥 存入槽位</button>
+                        <label className="bg-slate-800 text-white py-3.5 rounded-2xl text-center font-bold text-xs cursor-pointer active:scale-95 transition-all">📸 上傳照片<input type="file" hidden accept="image/*" onChange={handleUpload}/></label>
+                        <button onClick={saveToSlot} className="bg-blue-600 text-white py-3.5 rounded-2xl font-bold text-xs active:scale-95 transition-all shadow-lg shadow-blue-100">📥 存入槽位</button>
                     </div>
                 </div>
             </section>
 
-            <div className="mt-8">
-                <div className="flex justify-between items-center mb-3 px-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">排版槽位 ({slots.length}/10)</span>
-                    <button onClick={()=>setSlots([])} className="text-[10px] text-red-400 font-bold">全部清空</button>
+            <div className="mt-8 px-1">
+                <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">Slots {slots.length}/10</span>
+                    <button onClick={clearSlots} className="text-[9px] text-red-400 font-bold border border-red-100 px-2 py-1 rounded-lg">CLEAR</button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                    {slots.map((s,i)=>(
-                        <div key={i} className="relative flex-shrink-0 group">
-                            <img src={s} className="w-16 h-20 rounded-lg border-2 border-white shadow-sm" />
-                            <button onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))} className="absolute -top-1 -right-1 bg-red-500 text-white w-5 h-5 rounded-full text-[10px] shadow-sm">✕</button>
+                    {slots.map((url, i)=>(
+                        <div key={url} className="relative flex-shrink-0">
+                            <img src={url} className="w-16 h-20 rounded-xl border-2 border-white shadow-sm object-cover" />
+                            <button onClick={()=>removeSlot(i)} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white w-5 h-5 rounded-full text-[10px] flex items-center justify-center border-2 border-white shadow-sm">✕</button>
                         </div>
                     ))}
                 </div>
             </div>
 
             <div className="mt-8 space-y-3">
-                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all">🏪 ibon A4｜1+2 吋 混排</button>
+                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all">🏪 ibon A4｜混排解算器 (DPI 300)</button>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-md">🏪 A4 全 2 吋</button>
-                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-md">🏪 A4 全 1 吋</button>
+                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md">🏪 全 2 吋</button>
+                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs shadow-md">全 1 吋</button>
                 </div>
             </div>
             
-            <p className="mt-6 text-center text-[9px] text-slate-300 font-medium px-6 leading-relaxed">
-                * 若 iPhone 上傳照片方向不正確，請先至相簿旋轉編輯後再上傳。<br/>
-                * 輸出已自動套用 12mm 安全邊界。
+            <p className="mt-6 text-center text-[9px] text-slate-300 font-medium leading-relaxed">
+                SAFE: 12mm / DPI: 300 / BLOB_SLOTS: ENABLED / RENDER: DIRTY_LOOP
             </p>
         </div>
     );
