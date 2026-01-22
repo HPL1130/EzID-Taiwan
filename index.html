@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.9.8</title>
+    <title>EzID Taiwan v4.2.0 - 物理極限最終版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -90,86 +90,81 @@ function App() {
             const i = new Image(); i.onload = () => res(i); i.src = src;
         })));
 
-        let curY = is46 ? 100 : 120;
-        const drawGrid = (sw, sh, gap, count) => {
-            const cols = Math.floor((W - 80) / (sw + gap));
-            const startX = (W - (cols * sw + (cols - 1) * gap)) / 2;
-            for(let i=0; i<count; i++){
-                const x = startX + (i % cols) * (sw + gap);
-                const y = curY + Math.floor(i / cols) * (sh + gap);
-                ctx.drawImage(imgs[i % imgs.length], x, y, sw, sh);
-                ctx.strokeStyle = "#eee"; ctx.lineWidth = 2; ctx.strokeRect(x, y, sw, sh);
-            }
-            curY += Math.ceil(count / cols) * (sh + gap) + gap;
+        const putImg = (img, x, y, sw, sh) => {
+            ctx.drawImage(img, x, y, sw, sh);
+            ctx.strokeStyle = "#eee"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh);
         };
 
-        if(is46) {
-            if(mode === 'MIX') { 
-                drawGrid(413, 531, 35, 4); // 2吋 x 4 (橫排)
-                drawGrid(295, 413, 35, 5); // 1吋 x 5 (橫排)
-            } else if(mode === '2IN') { 
-                drawGrid(413, 531, 35, 8); // 2排 2吋
-            } else { 
-                drawGrid(295, 413, 35, 10); // 1吋最大化 (不旋轉情況下 2 排)
+        if (is46) {
+            // 4x6 橫向極限排版
+            const pad = 60, gap = 30;
+            if (mode === 'MIX') {
+                for(let i=0; i<4; i++) putImg(imgs[i%imgs.length], pad + i*(413+gap), pad, 413, 531);
+                for(let i=0; i<5; i++) putImg(imgs[i%imgs.length], pad + i*(295+gap), 620, 295, 413);
+            } else if (mode === '2IN') {
+                for(let i=0; i<8; i++) putImg(imgs[i%imgs.length], pad+(i%4)*(413+gap), pad+Math.floor(i/4)*(531+gap), 413, 531);
+            } else if (mode === '1IN') {
+                for(let i=0; i<12; i++) putImg(imgs[i%imgs.length], 20+(i%6)*(295+5), pad+Math.floor(i/6)*(413+gap), 295, 413);
             }
         } else {
-            if(mode === 'MIX') { drawGrid(413, 531, 40, 12); drawGrid(295, 413, 30, 20); }
-            else if(mode === '2IN') { drawGrid(413, 531, 40, 24); }
-            else { drawGrid(295, 413, 30, 48); }
+            // A4 縱向極限排版
+            const padX = 120, padY = 120, g = 40;
+            if (mode === 'MIX') {
+                // 2吋 15張 (5x3)
+                for(let i=0; i<15; i++) putImg(imgs[i%imgs.length], padX+(i%5)*(413+45), padY+Math.floor(i/5)*(531+45), 413, 531);
+                // 1吋 28張 (7x4) -> 起始 Y 座標: 120 + 3*(531+45) = 1848
+                for(let i=0; i<28; i++) putImg(imgs[i%imgs.length], padX+(i%7)*(295+40), 1880+Math.floor(i/7)*(413+40), 295, 413);
+            } else if (mode === '2IN') {
+                for(let i=0; i<30; i++) putImg(imgs[i%imgs.length], padX+(i%5)*(413+45), padY+Math.floor(i/5)*(531+40), 413, 531);
+            } else if (mode === '1IN') {
+                for(let i=0; i<56; i++) putImg(imgs[i%imgs.length], padX+(i%7)*(295+35), padY+Math.floor(i/7)*(413+15), 295, 413);
+            }
         }
 
         const now = new Date();
         const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-        
-        const a = document.createElement("a");
-        a.href = pc.toDataURL("image/png", 1.0);
-        a.download = `${ts}.png`;
-        a.click();
+        const a = document.createElement("a"); a.href = pc.toDataURL("image/png"); a.download = `${ts}.png`; a.click();
     };
 
     return (
         <div className="max-w-md mx-auto space-y-4">
             <header className="space-y-2">
                 <div className="flex justify-between items-center">
-                    <h1 className="text-xl font-black italic tracking-tighter text-slate-800">EzID Taiwan <span className="text-blue-600">v3.9.8</span></h1>
-                    <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded font-black">MAX UTILIZATION</span>
+                    <h1 className="text-xl font-black italic tracking-tighter">EzID Taiwan <span className="text-blue-600">v4.2</span></h1>
+                    <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-black">ULTIMATE LAYOUT</span>
                 </div>
                 <div className="bg-amber-50 border-l-4 border-amber-400 p-2 text-[10px] text-amber-800 font-medium">
-                    ⚠️ 實務提示：4x6 相片紙物理限制為 1200px 高度，1吋照橫放僅能塞 2 排以確保不被裁切。
+                    ⚠️ 規格確認：A4 全2吋提升至 30 張，全1吋提升至 56 張。4x6 維持物理極限佈局。
                 </div>
             </header>
 
-            <div className="canvas-container"
-                 onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false}
-                 onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}>
+            <div className="canvas-container" onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}>
                 <canvas ref={canvasRef} width="350" height="450" />
                 <div className="inner-guide"></div><div className="outer-guide"></div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl shadow-sm space-y-3 border border-slate-100">
-                <div className="flex justify-between items-center text-[10px] font-black">
-                    <span className="text-slate-400 tracking-widest uppercase">Manual Control: {target}</span>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] font-bold text-slate-400">CONTROL: {target}</span>
                     <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
-                        <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1 rounded-md transition ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像</button>
-                        <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1 rounded-md transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服</button>
+                        <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1 text-[10px] rounded ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像</button>
+                        <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1 text-[10px] rounded ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服</button>
                     </div>
                 </div>
-                <input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} 
-                       onChange={(e) => {
-                           const val = +e.target.value;
-                           if(target === "PHOTO") setP(v => ({...v, s: val}));
-                           else setSp(v => ({...v, s: val}));
-                       }} />
+                <input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={(e) => {
+                    const val = +e.target.value;
+                    if(target === "PHOTO") setP(v => ({...v, s: val})); else setSp(v => ({...v, s: val}));
+                }} />
             </div>
 
-            <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                    <button onClick={()=>setSuitImg(null)} className="flex-shrink-0 w-12 h-12 bg-slate-50 border-2 border-dashed rounded-xl flex items-center justify-center text-slate-300">✕</button>
+            <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    <button onClick={()=>setSuitImg(null)} className="flex-shrink-0 w-12 h-12 bg-slate-50 border-2 border-dashed rounded-xl text-slate-300">✕</button>
                     {SUITS.map(id => (
                         <button key={id} onClick={()=>{
                             const img = new Image(); img.onload = () => { setSuitImg(img); setTarget("SUIT"); };
                             img.src = `clothes/${id}`;
-                        }} className={`flex-shrink-0 w-12 h-12 border-2 rounded-xl overflow-hidden bg-slate-50 ${suitImg?.src.includes(id)?'border-blue-500':'border-transparent'}`}>
+                        }} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden bg-slate-50">
                             <img src={`clothes/${id}`} className="w-full h-full object-contain" />
                         </button>
                     ))}
@@ -177,45 +172,29 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-xl active:scale-95 transition">
-                    📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
-                        const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); };
-                        img.src = URL.createObjectURL(e.target.files[0]);
-                    }} />
-                </label>
-                <button onClick={() => setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10))} 
-                        className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-xl active:scale-95 transition">
-                    📥 存入槽位 ({slots.length})
-                </button>
+                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
+                    const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); }; img.src = URL.createObjectURL(e.target.files[0]);
+                }} /></label>
+                <button onClick={() => setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10))} className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg">📥 存入槽位 ({slots.length})</button>
             </div>
 
-            <div className="space-y-3">
-                <div className="p-4 bg-white rounded-3xl border border-emerald-100 shadow-sm space-y-4">
-                    <h3 className="text-xs font-black text-emerald-700 flex items-center gap-2 italic uppercase">
-                        🏪 ibon 4x6 Landscape Fix
-                    </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-3 rounded-xl text-[10px] font-black">4x6 混排 (4+5)</button>
-                        <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-3 rounded-xl text-[10px] font-black">2 吋 (8張)</button>
-                        <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-3 rounded-xl text-[10px] font-black">1 吋 (10張)</button>
-                    </div>
-                </div>
-
-                <div className="p-4 bg-white rounded-3xl border border-blue-100 shadow-sm space-y-4">
-                    <h3 className="text-xs font-black text-blue-700 flex items-center gap-2 italic uppercase">
-                        📄 Home A4 Portrait
-                    </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-3 rounded-xl text-[10px] font-black">A4 混排</button>
-                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-500 text-white py-3 rounded-xl text-[10px] font-black">全 2 吋</button>
-                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-500 text-white py-3 rounded-xl text-[10px] font-black">全 1 吋</button>
-                    </div>
+            <div className="p-4 bg-white rounded-3xl border-2 border-emerald-50 shadow-sm space-y-3">
+                <h3 className="text-xs font-black text-emerald-700 italic uppercase">🏪 ibon 4x6 (橫式極限)</h3>
+                <div className="grid grid-cols-3 gap-2">
+                    <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-3 rounded-xl text-[10px] font-black">4x6 混排 (9張)</button>
+                    <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-3 rounded-xl text-[10px] font-black">2吋 (8張)</button>
+                    <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-3 rounded-xl text-[10px] font-black">1吋 (12張)</button>
                 </div>
             </div>
 
-            <footer className="text-center py-6">
-                <p className="text-[10px] text-slate-300 font-bold tracking-widest uppercase">Safe ‧ Private ‧ Local</p>
-            </footer>
+            <div className="p-4 bg-white rounded-3xl border-2 border-blue-50 shadow-sm space-y-3">
+                <h3 className="text-xs font-black text-blue-700 italic uppercase">📄 A4 Paper (縱向極限)</h3>
+                <div className="grid grid-cols-3 gap-2">
+                    <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-3 rounded-xl text-[10px] font-black">A4 混排 (43張)</button>
+                    <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-500 text-white py-3 rounded-xl text-[10px] font-black">2吋 (30張)</button>
+                    <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-500 text-white py-3 rounded-xl text-[10px] font-black">1吋 (56張)</button>
+                </div>
+            </div>
         </div>
     );
 }
