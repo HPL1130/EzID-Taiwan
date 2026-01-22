@@ -3,169 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.5.0 ULTIMATE</title>
+    <title>EzID Taiwan v3.5.5 ibon-Ready</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
-        .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.08); }
-        .inner-guide { position:absolute; left:50%; top:50%; width:71.1%; height:71.1%; border:2px dotted rgba(16,185,129,0.5); border-radius:50%/46%; transform:translate(-50%,-56%); z-index:100; pointer-events:none; }
-        .outer-guide { position:absolute; left:50%; top:50%; width:80%; height:80%; border:2px dashed rgba(245,158,11,0.35); border-radius:50%/46%; transform:translate(-50%,-56%); z-index:99; pointer-events:none; }
+        .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border:1px solid #e2e8f0; overflow:hidden; }
+        
+        /* 比例修正：更窄的長橢圓，位置上移，符合內政部頭頂留白感 */
+        .inner-guide { 
+            position:absolute; left:50%; top:45%; /* 重心上移 */
+            width:62%; height:71.1%; 
+            border:2px dotted #10b981; border-radius:50% / 44%; 
+            transform:translate(-50%,-50%); z-index:100; pointer-events:none; 
+        }
+        .outer-guide { 
+            position:absolute; left:50%; top:45%; 
+            width:70%; height:80%; 
+            border:2px dashed #f59e0b; border-radius:50% / 44%; 
+            transform:translate(-50%,-50%); z-index:99; pointer-events:none; 
+        }
         .center-line { position:absolute; left:50%; top:0; bottom:0; width:1px; background:rgba(37,99,235,0.1); transform:translateX(-50%); }
-        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 24px; border-radius:24px; font-size:12px; z-index:999; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900">
+<body class="bg-slate-50">
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback, useMemo } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 
-// 1. 物理常數與 Meta (嚴禁 Magic Number)
-const PHYSICAL = {
-    CANVAS_W: 350, CANVAS_H: 450,
-    TARGET_FACE_H: 189, // 物理目標頭高 (px)
-    WORLD_NECK_Y: 310,  // 世界錨點：脖子固定所在的 Y 座標
-    HEAD_TO_NECK_RATIO: 0.55 // 臉心到脖子的距離比例
+// 修正路徑與 Meta
+const M_SUITS = Array(5).fill(0).map((_, i) => ({ id: `male/m${i+1}.png`, neckY: 0.12, sW: 0.88 }));
+const F_SUITS = Array(5).fill(0).map((_, i) => ({ id: `female/f${i+1}.png`, neckY: 0.16, sW: 0.82 }));
+
+// 輸出規格定義
+const SPECS = {
+    A4: { w: 2480, h: 3508, name: 'A4' },
+    P46: { w: 1200, h: 1800, name: '4x6' } // 300DPI 下 4x6 吋
 };
-
-const SUIT_DATA = {
-    'm1.png': { neckY: 0.12, shoulderW: 0.88 },
-    'f1.png': { neckY: 0.16, shoulderW: 0.82 },
-    'default': { neckY: 0.15, shoulderW: 0.85 }
-};
-
-const DPI = 300, A4_W = 2480, A4_H = 3508;
 
 function App() {
     const canvasRef = useRef(null);
     const [image, setImage] = useState(null);
-    const [suit, setSuit] = useState({ img: null, meta: null, id: null });
+    const [suit, setSuit] = useState({ img: null, meta: null });
     const [slots, setSlots] = useState([]);
-    const [toast, setToast] = useState("");
-    const [cutMode, setCutMode] = useState("FRAME_L");
-    
-    // 狀態：純偏移值，不含縮放邏輯
-    const [p, setP] = useState({ x: 0, y: 0, s: 0.75 });
+    const [p, setP] = useState({ x: 0, y: -30, s: 0.8 }); // 初始位置上移
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
-    // 2. 一鍵物理合身 Solver (Face & Suit Alignment)
-    const solveAutoFit = useCallback((imgObj) => {
-        if(!imgObj) return;
-        // 假設照片臉佔比 35% (證件照常見值)
-        const currentFaceH = imgObj.height * 0.35;
-        const autoScale = PHYSICAL.TARGET_FACE_H / currentFaceH;
-        
-        setP({ x: 0, y: -45, s: autoScale });
-
-        // 衣服同步縮放：人頭 ≈ 肩寬 1.6 倍
-        if (suit.img) {
-            const targetShoulder = PHYSICAL.TARGET_FACE_H * 1.6;
-            const suitShoulder = suit.img.width * suit.meta.shoulderW;
-            setSp(prev => ({ ...prev, s: targetShoulder / suitShoulder, x: 0, y: 0 }));
-        }
-        showToast("✨ 物理錨點對齊完成");
-    }, [suit.img]);
-
     const draw = useCallback(() => {
-        const cvs = canvasRef.current;
-        const ctx = cvs.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, PHYSICAL.CANVAS_W, PHYSICAL.CANVAS_H);
-
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
         if(image) {
-            ctx.save();
-            ctx.translate(PHYSICAL.CANVAS_W/2 + p.x, PHYSICAL.CANVAS_H/2 + p.y);
-            ctx.scale(p.s, p.s);
-            ctx.drawImage(image, -image.width/2, -image.height/2);
-            ctx.restore();
+            ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
+            ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
         }
-
         if(suit.img) {
             ctx.save();
-            const m = suit.meta;
-            const w = suit.img.width * sp.s;
-            const h = suit.img.height * sp.s;
-            // 衣服對齊世界脖子線：脖子線 - (衣服高度 * 領口比例)
-            const drawY = PHYSICAL.WORLD_NECK_Y - (h * m.neckY) + sp.y;
-            ctx.drawImage(suit.img, (PHYSICAL.CANVAS_W - w)/2 + sp.x, drawY, w, h);
+            const w = suit.img.width * sp.s; const h = suit.img.height * sp.s;
+            // 物理錨點修正：衣服對齊人臉底部
+            ctx.drawImage(suit.img, (350 - w)/2 + sp.x, 305 - (h * suit.meta.neckY) + sp.y, w, h);
             ctx.restore();
         }
     }, [image, suit, p, sp]);
 
     useEffect(() => { draw(); }, [draw]);
 
-    const selectSuit = (name) => {
-        if(!name) return setSuit({img:null, meta:null, id:null});
+    const selectSuit = (meta) => {
+        if(!meta) return setSuit({img:null, meta:null});
         const img = new Image();
         img.onload = () => {
-            const meta = SUIT_DATA[name] || SUIT_DATA.default;
-            setSuit({ img, meta, id: name });
-            // 選完衣服立刻觸發重算肩寬
-            const targetShoulder = PHYSICAL.TARGET_FACE_H * 1.6;
-            setSp(prev => ({ ...prev, s: targetShoulder / (img.width * meta.shoulderW) }));
+            setSuit({ img, meta });
+            setSp(prev => ({ ...prev, s: (189 * 1.6) / (img.width * meta.sW) }));
         };
-        img.src = `clothes/${name}`;
+        img.src = `clothes/${meta.id}`;
     };
 
-    // 3. A4 Solver 回歸 (SSOT)
-    const downloadA4 = async (mode) => {
-        if(!slots.length) return showToast("⚠️ 槽位為空");
+    const exportImage = async (specKey, mode) => {
+        if(!slots.length) return alert("請先存入槽位");
+        const spec = SPECS[specKey];
         const pc = document.createElement("canvas");
-        pc.width = A4_W; pc.height = A4_H;
+        pc.width = spec.w; pc.height = spec.h;
         const ctx = pc.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, A4_W, A4_H);
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, spec.w, spec.h);
 
-        const SAFE = Math.round(12 * DPI / 25.4);
         const imgs = await Promise.all(slots.map(s => new Promise(res => {
             const i = new Image(); i.onload = () => res(i); i.src = s;
         })));
 
-        let currentY = SAFE;
-        let imgIdx = 0;
+        const SAFE = Math.round(spec.w * 0.05);
+        let curY = SAFE, idx = 0;
 
-        const renderBatch = (sw, sh, gap, rows) => {
-            const cols = Math.floor((A4_W - 2 * SAFE + gap) / (sw + gap));
-            const startX = (A4_W - (cols * sw + (cols - 1) * gap)) / 2;
-            for(let r=0; r<rows; r++) {
-                if(currentY + sh > A4_H - SAFE) break;
-                for(let c=0; c<cols; c++) {
-                    const x = startX + c*(sw+gap), y = currentY;
-                    ctx.drawImage(imgs[imgIdx % imgs.length], x, y, sw, sh);
-                    ctx.strokeStyle = cutMode === 'LIGHT' ? "rgba(0,0,0,0.1)" : "#000";
-                    ctx.strokeRect(x, y, sw, sh);
-                    imgIdx++;
-                }
-                currentY += (sh + gap);
+        const renderRow = (sw, sh, gap, count) => {
+            const cols = Math.floor((spec.w - 2 * SAFE + gap) / (sw + gap));
+            const startX = (spec.w - (cols * sw + (cols - 1) * gap)) / 2;
+            for(let i=0; i<count; i++){
+                const r = Math.floor(i/cols), c = i%cols;
+                ctx.drawImage(imgs[idx % imgs.length], startX + c*(sw+gap), curY + r*(sh+gap), sw, sh);
+                ctx.strokeStyle = "#ccc"; ctx.strokeRect(startX + c*(sw+gap), curY + r*(sh+gap), sw, sh);
+                idx++;
             }
+            curY += (Math.ceil(count/cols) * (sh + gap));
         };
 
-        if(mode === 'MIX') { renderBatch(413, 531, 35, 2); renderBatch(295, 413, 25, 4); }
-        else if(mode === 'ALL_2') { renderBatch(413, 531, 35, 6); }
-        else if(mode === 'ALL_1') { renderBatch(295, 413, 25, 8); }
+        if(mode === 'MIX') { renderRow(413, 531, 30, specKey==='P46'?2:8); renderRow(295, 413, 20, specKey==='P46'?4:12); }
+        else if(mode === 'ALL2') { renderRow(413, 531, 30, specKey==='P46'?8:20); }
+        else if(mode === 'ALL1') { renderRow(295, 413, 20, specKey==='P46'?12:35); }
 
-        pc.toBlob(b => {
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(b); a.download = `EzID_${mode}.png`; a.click();
-        });
+        const a = document.createElement("a");
+        a.href = pc.toDataURL("image/png"); a.download = `EzID_${spec.name}_${mode}.png`; a.click();
     };
 
-    const showToast = (m) => { setToast(m); setTimeout(()=>setToast(""), 2000); };
-
     return (
-        <div className="max-w-md mx-auto p-4 pb-12">
-            {toast && <div className="toast shadow-2xl">{toast}</div>}
+        <div className="max-w-md mx-auto p-4">
+            <h1 className="font-black italic text-xl mb-4">EzID v3.5.5 <span className="text-xs bg-black text-white px-2 py-1 rounded">FIXED</span></h1>
             
-            <header className="flex justify-between items-center mb-6">
-                <h1 className="font-black italic text-xl">EzID <span className="text-blue-600 border border-blue-600 px-1 text-[10px] rounded">v3.5.0 ULTIMATE</span></h1>
-                <select value={cutMode} onChange={e=>setCutMode(e.target.value)} className="text-[10px] border rounded px-2 bg-white">
-                    <option value="FRAME_L">標準裁切線</option>
-                    <option value="LIGHT">淺色輔助線</option>
-                </select>
-            </header>
-
-            <div className="canvas-container mb-6">
+            <div className="canvas-container mb-4 shadow-xl rounded-lg">
                 <canvas ref={canvasRef} width="350" height="450" />
                 <div className="absolute inset-0 pointer-events-none">
                     <div className="inner-guide"></div>
@@ -174,63 +128,50 @@ function App() {
                 </div>
             </div>
 
-            <div className="space-y-4">
-                <div className="bg-white p-4 rounded-3xl border border-slate-100">
-                    <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] font-bold text-slate-400">SMART SUIT</span>
-                        <button onClick={solveAutoFit} className="text-[10px] text-blue-600 font-bold">RE-SOLVE</button>
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-                        <button onClick={()=>selectSuit(null)} className="flex-shrink-0 w-12 h-12 border-2 border-dashed border-slate-200 rounded-xl">✕</button>
-                        {['m1.png', 'f1.png'].map(id => (
-                            <button key={id} onClick={()=>selectSuit(id)} className={`flex-shrink-0 w-12 h-12 border-2 rounded-xl p-1 ${suit.id===id?'border-blue-500':'border-transparent bg-slate-50'}`}>
-                                <img src={`clothes/${id}`} className="w-full h-full object-contain" />
-                            </button>
-                        ))}
-                    </div>
-                    <div className="space-y-3">
-                        <input type="range" className="w-full" min="0.5" max="2.0" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} />
-                    </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-4">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    <button onClick={()=>selectSuit(null)} className="flex-shrink-0 w-12 h-12 border-2 border-dashed rounded-xl">✕</button>
+                    {[...M_SUITS, ...F_SUITS].map(s => (
+                        <button key={s.id} onClick={()=>selectSuit(s)} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden bg-slate-50">
+                            <img src={`clothes/${s.id}`} className="w-full h-full object-contain" />
+                        </button>
+                    ))}
                 </div>
-
-                <div className="bg-white p-5 rounded-3xl border border-slate-100 space-y-4">
-                    <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400">PHOTO ADJUST</span>
-                        <span className="text-[10px] font-mono">{Math.round(p.s*100)}%</span>
-                    </div>
-                    <input type="range" className="w-full" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
-                    <div className="grid grid-cols-2 gap-3">
-                        <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-xs font-bold cursor-pointer">
-                            📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
-                                const f = e.target.files[0]; if(!f) return;
-                                const img = new Image(); img.onload = () => { setImage(img); solveAutoFit(img); };
-                                img.src = URL.createObjectURL(f);
-                            }} />
-                        </label>
-                        <button onClick={() => {
-                            canvasRef.current.toBlob(b => {
-                                const url = URL.createObjectURL(b);
-                                setSlots(prev => {
-                                    const next = [url, ...prev];
-                                    if(next.length > 10) URL.revokeObjectURL(next.pop());
-                                    return next;
-                                });
-                                showToast("📥 已存入槽位");
-                            });
-                        }} className="bg-blue-600 text-white py-4 rounded-2xl text-xs font-bold shadow-lg">📥 存入槽位</button>
-                    </div>
-                </div>
+                <input type="range" className="w-full my-4" min="0.5" max="2" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} />
             </div>
 
-            <div className="mt-8 grid grid-cols-3 gap-2">
-                <button onClick={()=>downloadA4('ALL_1')} className="bg-slate-700 text-white py-3 rounded-xl font-bold text-[10px]">1 吋</button>
-                <button onClick={()=>downloadA4('ALL_2')} className="bg-slate-700 text-white py-3 rounded-xl font-bold text-[10px]">2 吋</button>
-                <button onClick={()=>downloadA4('MIX')} className="bg-emerald-700 text-white py-3 rounded-xl font-black text-[10px] shadow-lg">IBON MIX</button>
+            <div className="grid grid-cols-2 gap-2 mb-6">
+                <label className="bg-slate-800 text-white py-3 rounded-xl text-center text-xs font-bold cursor-pointer">
+                    📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
+                        const img = new Image(); img.onload = () => setImage(img); img.src = URL.createObjectURL(e.target.files[0]);
+                    }} />
+                </label>
+                <button onClick={() => {
+                    setSlots(prev => [canvasRef.current.toDataURL(), ...prev.slice(0,9)]);
+                }} className="bg-blue-600 text-white py-3 rounded-xl text-xs font-bold">📥 存入槽位 ({slots.length})</button>
+            </div>
+
+            <div className="space-y-4">
+                <div>
+                    <span className="text-[10px] font-bold text-slate-400 block mb-2 uppercase">🏪 ibon 4x6 相片紙 (推薦)</span>
+                    <div className="grid grid-cols-3 gap-2">
+                        <button onClick={()=>exportImage('P46','MIX')} className="bg-emerald-600 text-white py-2 rounded-lg text-[10px] font-bold">4x6 混排</button>
+                        <button onClick={()=>exportImage('P46','ALL2')} className="bg-slate-700 text-white py-2 rounded-lg text-[10px] font-bold">4x6 全部2吋</button>
+                        <button onClick={()=>exportImage('P46','ALL1')} className="bg-slate-700 text-white py-2 rounded-lg text-[10px] font-bold">4x6 全部1吋</button>
+                    </div>
+                </div>
+                <div>
+                    <span className="text-[10px] font-bold text-slate-400 block mb-2 uppercase">📄 家用 A4 普通紙</span>
+                    <div className="grid grid-cols-3 gap-2">
+                        <button onClick={()=>exportImage('A4','MIX')} className="bg-slate-400 text-white py-2 rounded-lg text-[10px] font-bold">A4 混排</button>
+                        <button onClick={()=>exportImage('A4','ALL2')} className="bg-slate-400 text-white py-2 rounded-lg text-[10px] font-bold">A4 全部2吋</button>
+                        <button onClick={()=>exportImage('A4','ALL1')} className="bg-slate-400 text-white py-2 rounded-lg text-[10px] font-bold">A4 全部1吋</button>
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
-
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
