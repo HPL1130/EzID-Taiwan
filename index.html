@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.4.0 PRO</title>
+    <title>EzID Taiwan v3.5.0 ULTIMATE</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,24 +11,30 @@
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
         .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.08); }
-        /* 嚴格比例標尺 */
         .inner-guide { position:absolute; left:50%; top:50%; width:71.1%; height:71.1%; border:2px dotted rgba(16,185,129,0.5); border-radius:50%/46%; transform:translate(-50%,-56%); z-index:100; pointer-events:none; }
         .outer-guide { position:absolute; left:50%; top:50%; width:80%; height:80%; border:2px dashed rgba(245,158,11,0.35); border-radius:50%/46%; transform:translate(-50%,-56%); z-index:99; pointer-events:none; }
         .center-line { position:absolute; left:50%; top:0; bottom:0; width:1px; background:rgba(37,99,235,0.1); transform:translateX(-50%); }
-        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 24px; border-radius:24px; font-size:12px; z-index:999; pointer-events:none; }
+        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 24px; border-radius:24px; font-size:12px; z-index:999; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 font-sans">
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// 1. 服裝 Meta 落地：定義頸部中心點 (0-1) 與 肩寬比例
-const SUIT_META = {
-    'm1.png': { neckY: 0.15, shoulderW: 0.85, scaleFix: 1.1 },
-    'f1.png': { neckY: 0.18, shoulderW: 0.80, scaleFix: 1.05 },
-    'default': { neckY: 0.2, shoulderW: 0.82, scaleFix: 1.0 }
+// 1. 物理常數與 Meta (嚴禁 Magic Number)
+const PHYSICAL = {
+    CANVAS_W: 350, CANVAS_H: 450,
+    TARGET_FACE_H: 189, // 物理目標頭高 (px)
+    WORLD_NECK_Y: 310,  // 世界錨點：脖子固定所在的 Y 座標
+    HEAD_TO_NECK_RATIO: 0.55 // 臉心到脖子的距離比例
+};
+
+const SUIT_DATA = {
+    'm1.png': { neckY: 0.12, shoulderW: 0.88 },
+    'f1.png': { neckY: 0.16, shoulderW: 0.82 },
+    'default': { neckY: 0.15, shoulderW: 0.85 }
 };
 
 const DPI = 300, A4_W = 2480, A4_H = 3508;
@@ -39,23 +45,38 @@ function App() {
     const [suit, setSuit] = useState({ img: null, meta: null, id: null });
     const [slots, setSlots] = useState([]);
     const [toast, setToast] = useState("");
+    const [cutMode, setCutMode] = useState("FRAME_L");
     
-    // 物理控制：P 為人像，SP 為衣服
-    const [p, setP] = useState({ x: 0, y: -20, s: 0.8 }); 
+    // 狀態：純偏移值，不含縮放邏輯
+    const [p, setP] = useState({ x: 0, y: 0, s: 0.75 });
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
-    // 核心：臉部錨點計算 (以畫布中心為基準)
-    // 假設臉部長度目標為 340px (中位數 3.4cm)
-    const faceAnchorY = useMemo(() => 225 + p.y, [p.y]); 
+    // 2. 一鍵物理合身 Solver (Face & Suit Alignment)
+    const solveAutoFit = useCallback((imgObj) => {
+        if(!imgObj) return;
+        // 假設照片臉佔比 35% (證件照常見值)
+        const currentFaceH = imgObj.height * 0.35;
+        const autoScale = PHYSICAL.TARGET_FACE_H / currentFaceH;
+        
+        setP({ x: 0, y: -45, s: autoScale });
+
+        // 衣服同步縮放：人頭 ≈ 肩寬 1.6 倍
+        if (suit.img) {
+            const targetShoulder = PHYSICAL.TARGET_FACE_H * 1.6;
+            const suitShoulder = suit.img.width * suit.meta.shoulderW;
+            setSp(prev => ({ ...prev, s: targetShoulder / suitShoulder, x: 0, y: 0 }));
+        }
+        showToast("✨ 物理錨點對齊完成");
+    }, [suit.img]);
 
     const draw = useCallback(() => {
         const cvs = canvasRef.current;
         const ctx = cvs.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, PHYSICAL.CANVAS_W, PHYSICAL.CANVAS_H);
 
         if(image) {
             ctx.save();
-            ctx.translate(175 + p.x, 225 + p.y);
+            ctx.translate(PHYSICAL.CANVAS_W/2 + p.x, PHYSICAL.CANVAS_H/2 + p.y);
             ctx.scale(p.s, p.s);
             ctx.drawImage(image, -image.width/2, -image.height/2);
             ctx.restore();
@@ -64,72 +85,102 @@ function App() {
         if(suit.img) {
             ctx.save();
             const m = suit.meta;
-            const baseW = 350 * m.scaleFix; // 依據 meta 修正基礎寬度
-            const w = baseW * sp.s;
-            const h = (suit.img.height / suit.img.width) * w;
-            
-            // 衣服錨點：頸部 Y 軸對齊臉部下緣
-            const neckGlobalY = 225 + p.y + (170 * p.s); // 170px 概算為臉心到頸部的距離
-            ctx.drawImage(suit.img, (350-w)/2 + sp.x, neckGlobalY + sp.y - (h * m.neckY), w, h);
+            const w = suit.img.width * sp.s;
+            const h = suit.img.height * sp.s;
+            // 衣服對齊世界脖子線：脖子線 - (衣服高度 * 領口比例)
+            const drawY = PHYSICAL.WORLD_NECK_Y - (h * m.neckY) + sp.y;
+            ctx.drawImage(suit.img, (PHYSICAL.CANVAS_W - w)/2 + sp.x, drawY, w, h);
             ctx.restore();
         }
     }, [image, suit, p, sp]);
 
     useEffect(() => { draw(); }, [draw]);
 
-    // 一鍵自動合身：真正的核心邏輯
-    const autoFit = () => {
-        if(!image) return;
-        // 假設頭部佔照片高度 60%
-        const estimatedHeadH = image.height * 0.6;
-        const targetHeadH = 340; // 3.4cm 物理目標
-        const newScale = targetHeadH / estimatedHeadH;
-        setP(prev => ({ ...prev, s: newScale, y: -25 })); // 鎖定 Y 軸留白
-        showToast("✨ 物理比例已自動對齊");
-    };
-
     const selectSuit = (name) => {
         if(!name) return setSuit({img:null, meta:null, id:null});
         const img = new Image();
-        img.crossOrigin = "anonymous";
         img.onload = () => {
-            const meta = SUIT_META[name] || SUIT_META.default;
+            const meta = SUIT_DATA[name] || SUIT_DATA.default;
             setSuit({ img, meta, id: name });
+            // 選完衣服立刻觸發重算肩寬
+            const targetShoulder = PHYSICAL.TARGET_FACE_H * 1.6;
+            setSp(prev => ({ ...prev, s: targetShoulder / (img.width * meta.shoulderW) }));
         };
         img.src = `clothes/${name}`;
     };
 
-    const downloadA4 = (mode) => {
-        if(slots.length === 0) return showToast("⚠️ 槽位為空");
-        // ... A4 混合計算邏輯 (採用動態 Row 推算)
-        showToast("🚀 A4 混排生成中...");
+    // 3. A4 Solver 回歸 (SSOT)
+    const downloadA4 = async (mode) => {
+        if(!slots.length) return showToast("⚠️ 槽位為空");
+        const pc = document.createElement("canvas");
+        pc.width = A4_W; pc.height = A4_H;
+        const ctx = pc.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, A4_W, A4_H);
+
+        const SAFE = Math.round(12 * DPI / 25.4);
+        const imgs = await Promise.all(slots.map(s => new Promise(res => {
+            const i = new Image(); i.onload = () => res(i); i.src = s;
+        })));
+
+        let currentY = SAFE;
+        let imgIdx = 0;
+
+        const renderBatch = (sw, sh, gap, rows) => {
+            const cols = Math.floor((A4_W - 2 * SAFE + gap) / (sw + gap));
+            const startX = (A4_W - (cols * sw + (cols - 1) * gap)) / 2;
+            for(let r=0; r<rows; r++) {
+                if(currentY + sh > A4_H - SAFE) break;
+                for(let c=0; c<cols; c++) {
+                    const x = startX + c*(sw+gap), y = currentY;
+                    ctx.drawImage(imgs[imgIdx % imgs.length], x, y, sw, sh);
+                    ctx.strokeStyle = cutMode === 'LIGHT' ? "rgba(0,0,0,0.1)" : "#000";
+                    ctx.strokeRect(x, y, sw, sh);
+                    imgIdx++;
+                }
+                currentY += (sh + gap);
+            }
+        };
+
+        if(mode === 'MIX') { renderBatch(413, 531, 35, 2); renderBatch(295, 413, 25, 4); }
+        else if(mode === 'ALL_2') { renderBatch(413, 531, 35, 6); }
+        else if(mode === 'ALL_1') { renderBatch(295, 413, 25, 8); }
+
+        pc.toBlob(b => {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(b); a.download = `EzID_${mode}.png`; a.click();
+        });
     };
 
     const showToast = (m) => { setToast(m); setTimeout(()=>setToast(""), 2000); };
 
     return (
         <div className="max-w-md mx-auto p-4 pb-12">
-            {toast && <div className="toast shadow-xl">{toast}</div>}
+            {toast && <div className="toast shadow-2xl">{toast}</div>}
             
             <header className="flex justify-between items-center mb-6">
-                <h1 className="font-black italic text-xl">EzID <span className="text-blue-600 border border-blue-600 px-1 text-[10px] rounded">v3.4.0 PRO</span></h1>
-                <button onClick={autoFit} className="bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-xs font-bold border border-blue-200">一鍵物理合身</button>
+                <h1 className="font-black italic text-xl">EzID <span className="text-blue-600 border border-blue-600 px-1 text-[10px] rounded">v3.5.0 ULTIMATE</span></h1>
+                <select value={cutMode} onChange={e=>setCutMode(e.target.value)} className="text-[10px] border rounded px-2 bg-white">
+                    <option value="FRAME_L">標準裁切線</option>
+                    <option value="LIGHT">淺色輔助線</option>
+                </select>
             </header>
 
             <div className="canvas-container mb-6">
                 <canvas ref={canvasRef} width="350" height="450" />
                 <div className="absolute inset-0 pointer-events-none">
-                    <div className="center-line"></div>
                     <div className="inner-guide"></div>
                     <div className="outer-guide"></div>
+                    <div className="center-line"></div>
                 </div>
             </div>
 
-            <div className="grid gap-4">
-                {/* 衣服選擇器與 Meta 套用 */}
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-                    <span className="text-[10px] font-bold text-slate-400 block mb-3 uppercase tracking-tighter">Smart Suit Fitting</span>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <div className="space-y-4">
+                <div className="bg-white p-4 rounded-3xl border border-slate-100">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] font-bold text-slate-400">SMART SUIT</span>
+                        <button onClick={solveAutoFit} className="text-[10px] text-blue-600 font-bold">RE-SOLVE</button>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
                         <button onClick={()=>selectSuit(null)} className="flex-shrink-0 w-12 h-12 border-2 border-dashed border-slate-200 rounded-xl">✕</button>
                         {['m1.png', 'f1.png'].map(id => (
                             <button key={id} onClick={()=>selectSuit(id)} className={`flex-shrink-0 w-12 h-12 border-2 rounded-xl p-1 ${suit.id===id?'border-blue-500':'border-transparent bg-slate-50'}`}>
@@ -137,42 +188,44 @@ function App() {
                             </button>
                         ))}
                     </div>
+                    <div className="space-y-3">
+                        <input type="range" className="w-full" min="0.5" max="2.0" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} />
+                    </div>
                 </div>
 
-                {/* 物理控制項 */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                <div className="bg-white p-5 rounded-3xl border border-slate-100 space-y-4">
                     <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Face Scale</span>
-                        <input type="range" className="w-2/3" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
+                        <span className="text-[10px] font-bold text-slate-400">PHOTO ADJUST</span>
+                        <span className="text-[10px] font-mono">{Math.round(p.s*100)}%</span>
                     </div>
-                    <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Suit Scale</span>
-                        <input type="range" className="w-2/3" min="0.5" max="2.0" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-3 pt-2">
-                        <label className="bg-slate-900 text-white py-3 rounded-2xl text-center text-xs font-bold cursor-pointer">
-                            上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
-                                const f = e.target.files[0];
-                                if(!f) return;
-                                const img = new Image();
-                                img.onload = () => { setImage(img); autoFit(); };
+                    <input type="range" className="w-full" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-xs font-bold cursor-pointer">
+                            📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
+                                const f = e.target.files[0]; if(!f) return;
+                                const img = new Image(); img.onload = () => { setImage(img); solveAutoFit(img); };
                                 img.src = URL.createObjectURL(f);
                             }} />
                         </label>
                         <button onClick={() => {
                             canvasRef.current.toBlob(b => {
                                 const url = URL.createObjectURL(b);
-                                setSlots([url, ...slots]);
+                                setSlots(prev => {
+                                    const next = [url, ...prev];
+                                    if(next.length > 10) URL.revokeObjectURL(next.pop());
+                                    return next;
+                                });
                                 showToast("📥 已存入槽位");
                             });
-                        }} className="bg-blue-600 text-white py-3 rounded-2xl text-xs font-bold">存入槽位</button>
+                        }} className="bg-blue-600 text-white py-4 rounded-2xl text-xs font-bold shadow-lg">📥 存入槽位</button>
                     </div>
                 </div>
             </div>
 
-            <div className="mt-8">
-                 <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl italic tracking-widest">A4 MIX MASTER OUTPUT</button>
+            <div className="mt-8 grid grid-cols-3 gap-2">
+                <button onClick={()=>downloadA4('ALL_1')} className="bg-slate-700 text-white py-3 rounded-xl font-bold text-[10px]">1 吋</button>
+                <button onClick={()=>downloadA4('ALL_2')} className="bg-slate-700 text-white py-3 rounded-xl font-bold text-[10px]">2 吋</button>
+                <button onClick={()=>downloadA4('MIX')} className="bg-emerald-700 text-white py-3 rounded-xl font-black text-[10px] shadow-lg">IBON MIX</button>
             </div>
         </div>
     );
