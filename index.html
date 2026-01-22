@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v4.2.0 - 物理極限最終版</title>
+    <title>EzID Taiwan v4.3.0</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -17,7 +17,8 @@
         }
         .inner-guide { position:absolute; left:50%; top:45%; width:62%; height:71.1%; border:2px dotted #10b981; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:100; pointer-events:none; }
         .outer-guide { position:absolute; left:50%; top:45%; width:70%; height:80%; border:2px dashed #f59e0b; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:99; pointer-events:none; }
-        input[type=range] { width: 100%; accent-color: #2563eb; }
+        .slot-item { position: relative; flex-shrink: 0; width: 80px; height: 100px; border: 2px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #fff; }
+        .slot-remove { position: absolute; top: 2px; right: 2px; background: rgba(239, 68, 68, 0.9); color: white; width: 18px; height: 18px; border-radius: 50%; display: flex; items-center; justify-center; font-size: 12px; cursor: pointer; z-index: 10; }
     </style>
 </head>
 <body class="bg-slate-50 p-4 pb-12">
@@ -35,7 +36,7 @@ function App() {
     const canvasRef = useRef(null);
     const [image, setImage] = useState(null);
     const [suitImg, setSuitImg] = useState(null);
-    const [slots, setSlots] = useState([]);
+    const [slots, setSlots] = useState([]); // 槽位陣列
     const [target, setTarget] = useState("PHOTO");
     const [p, setP] = useState({ x: 0, y: -20, s: 0.8 });
     const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0 });
@@ -75,8 +76,17 @@ function App() {
         lastPos.current = { x: pos.clientX, y: pos.clientY };
     };
 
+    const addToSlot = () => {
+        const dataUrl = canvasRef.current.toDataURL("image/png");
+        setSlots(prev => [dataUrl, ...prev].slice(0, 10)); // 最多存 10 張
+    };
+
+    const removeSlot = (index) => {
+        setSlots(prev => prev.filter((_, i) => i !== index));
+    };
+
     const exportDoc = async (type, mode) => {
-        if (!slots.length) return alert("請先存入槽位");
+        if (!slots.length) return alert("槽位中沒有照片，請先『存入槽位』");
         const is46 = type === '46';
         const W = is46 ? 1800 : 2480;
         const H = is46 ? 1200 : 3508;
@@ -96,7 +106,6 @@ function App() {
         };
 
         if (is46) {
-            // 4x6 橫向極限排版
             const pad = 60, gap = 30;
             if (mode === 'MIX') {
                 for(let i=0; i<4; i++) putImg(imgs[i%imgs.length], pad + i*(413+gap), pad, 413, 531);
@@ -107,12 +116,9 @@ function App() {
                 for(let i=0; i<12; i++) putImg(imgs[i%imgs.length], 20+(i%6)*(295+5), pad+Math.floor(i/6)*(413+gap), 295, 413);
             }
         } else {
-            // A4 縱向極限排版
-            const padX = 120, padY = 120, g = 40;
+            const padX = 120, padY = 120;
             if (mode === 'MIX') {
-                // 2吋 15張 (5x3)
                 for(let i=0; i<15; i++) putImg(imgs[i%imgs.length], padX+(i%5)*(413+45), padY+Math.floor(i/5)*(531+45), 413, 531);
-                // 1吋 28張 (7x4) -> 起始 Y 座標: 120 + 3*(531+45) = 1848
                 for(let i=0; i<28; i++) putImg(imgs[i%imgs.length], padX+(i%7)*(295+40), 1880+Math.floor(i/7)*(413+40), 295, 413);
             } else if (mode === '2IN') {
                 for(let i=0; i<30; i++) putImg(imgs[i%imgs.length], padX+(i%5)*(413+45), padY+Math.floor(i/5)*(531+40), 413, 531);
@@ -128,14 +134,9 @@ function App() {
 
     return (
         <div className="max-w-md mx-auto space-y-4">
-            <header className="space-y-2">
-                <div className="flex justify-between items-center">
-                    <h1 className="text-xl font-black italic tracking-tighter">EzID Taiwan <span className="text-blue-600">v4.2</span></h1>
-                    <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-black">ULTIMATE LAYOUT</span>
-                </div>
-                <div className="bg-amber-50 border-l-4 border-amber-400 p-2 text-[10px] text-amber-800 font-medium">
-                    ⚠️ 規格確認：A4 全2吋提升至 30 張，全1吋提升至 56 張。4x6 維持物理極限佈局。
-                </div>
+            <header className="flex justify-between items-center p-2">
+                <h1 className="text-xl font-black italic">EzID Taiwan <span className="text-blue-600">v4.3</span></h1>
+                <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded font-black">FULL FEATURE</span>
             </header>
 
             <div className="canvas-container" onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}>
@@ -143,12 +144,12 @@ function App() {
                 <div className="inner-guide"></div><div className="outer-guide"></div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-                <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-bold text-slate-400">CONTROL: {target}</span>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                    <span>CONTROL: {target} SCALE</span>
                     <div className="flex bg-slate-100 p-1 rounded-lg gap-1">
-                        <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1 text-[10px] rounded ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像</button>
-                        <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1 text-[10px] rounded ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服</button>
+                        <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1 rounded ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像</button>
+                        <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1 rounded ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服</button>
                     </div>
                 </div>
                 <input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={(e) => {
@@ -175,7 +176,27 @@ function App() {
                 <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
                     const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); }; img.src = URL.createObjectURL(e.target.files[0]);
                 }} /></label>
-                <button onClick={() => setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10))} className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg">📥 存入槽位 ({slots.length})</button>
+                <button onClick={addToSlot} className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg active:scale-95 transition">📥 存入槽位</button>
+            </div>
+
+            {/* 槽位顯示與調整區域 */}
+            <div className="bg-slate-200/50 p-3 rounded-2xl space-y-2">
+                <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Saved Slots ({slots.length}/10)</span>
+                    {slots.length > 0 && <button onClick={()=>setSlots([])} className="text-[10px] text-red-500 font-bold underline">清除全部</button>}
+                </div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar min-h-[100px] py-1">
+                    {slots.length === 0 ? (
+                        <div className="w-full flex items-center justify-center text-slate-400 text-[10px] italic">尚未存入任何照片</div>
+                    ) : (
+                        slots.map((src, idx) => (
+                            <div key={idx} className="slot-item shadow-sm">
+                                <div className="slot-remove" onClick={() => removeSlot(idx)}>×</div>
+                                <img src={src} className="w-full h-full object-cover" />
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
 
             <div className="p-4 bg-white rounded-3xl border-2 border-emerald-50 shadow-sm space-y-3">
