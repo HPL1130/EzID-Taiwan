@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v2.7.3</title>
+    <title>EzID Taiwan v2.8.0</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,9 +14,11 @@
         .inner-guide { border:2px dotted rgba(16,185,129,0.7); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 100; }
         .outer-guide { border:2px dashed rgba(245,158,11,0.5); position:absolute; border-radius:50%/46%; transform:translateY(-6%); z-index: 99; }
         .center-line { position:absolute; left:50%; top:0; bottom:0; width:1.5px; background:rgba(59,130,246,0.3); pointer-events:none; z-index: 90; }
-        .suit-btn { width:56px; height:56px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:14px; background:#fff; display:flex; align-items:center; justify-content:center; }
+        .suit-btn { width:52px; height:52px; flex-shrink:0; border:2px solid #f1f5f9; border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:center; position:relative; }
         .suit-btn.active { border-color:#2563eb; background:#eff6ff; }
-        input[type=range] { width:100%; accent-color:#2563eb; }
+        .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:8px 20px; border-radius:20px; font-size:12px; z-index:999; animation:fadeInOut 2s ease-in-out forwards; }
+        @keyframes fadeInOut { 0% { opacity:0; } 15% { opacity:1; } 85% { opacity:1; } 100% { opacity:0; } }
+        input[type=range] { width:100%; accent-color:#2563eb; cursor:pointer; }
     </style>
 </head>
 <body class="bg-slate-50">
@@ -31,6 +33,9 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [activeSuit, setActiveSuit] = useState(null);
     const [slots, setSlots] = useState([]);
+    const [toast, setToast] = useState("");
+    
+    // p: 照片, sp: 衣服
     const [p, setP] = useState({ x: 0, y: -20, s: 0.75 });
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
 
@@ -38,6 +43,8 @@ function App() {
         male: Array.from({length:5}, (_,i)=> `clothes/male/m${i+1}.png`),
         female: Array.from({length:5}, (_,i)=> `clothes/female/f${i+1}.png`)
     };
+
+    const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""), 2000); };
 
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
@@ -54,27 +61,62 @@ function App() {
         }
     }, [image, suitImg, p, sp]);
 
-    useEffect(() => { draw(); }, [draw]);
+    useEffect(() => { 
+        const frameId = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(frameId);
+    }, [draw]);
+
+    const handleUpload = (e) => {
+        const f = e.target.files[0];
+        if(!f) return;
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = () => {
+            setImage(img);
+            URL.revokeObjectURL(url); // 修正 3: 記憶體洩漏
+            showToast("照片載入成功");
+        };
+        img.src = url;
+    };
+
+    const selectSuit = (url) => {
+        if(!url) { setSuitImg(null); setActiveSuit(null); return; }
+        const img = new Image();
+        img.onload = () => {
+            setSuitImg(img);
+            setActiveSuit(url); // 修正 1: 確保圖片載入後才切換 Active 狀態
+        };
+        img.src = url;
+    };
 
     const saveToSlot = () => {
         if(!image) return alert("請先上傳照片");
-        setSlots([canvasRef.current.toDataURL("image/jpeg", 0.95), ...slots].slice(0, 8));
+        setSlots(prev => [canvasRef.current.toDataURL("image/jpeg", 0.9), ...prev].slice(0, 10));
+        showToast("已存入槽位");
     };
 
-    // ✂️ 只繪製照片與黑色裁切外框
-    const drawCellOnly = (ctx, img, x, y, w, h) => {
-        ctx.drawImage(img, x, y, w, h);
-        ctx.strokeStyle = "#000000";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x, y, w, h);
+    // ✂️ 專業裁切輔助 (L型角標系統)
+    const drawLMark = (ctx, x, y, w, h) => {
+        ctx.strokeStyle = "#000000"; ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, w, h); // 基礎黑框
+        
+        // 四角 L 標 (強化易剪度)
+        const L = 20;
+        ctx.beginPath();
+        // 左上
+        ctx.moveTo(x-L, y); ctx.lineTo(x, y); ctx.lineTo(x, y-L);
+        // 右上
+        ctx.moveTo(x+w+L, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y-L);
+        // 左下
+        ctx.moveTo(x-L, y+h); ctx.lineTo(x, y+h); ctx.lineTo(x, y+h+L);
+        // 右下
+        ctx.moveTo(x+w+L, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y+h+L);
+        ctx.stroke();
     };
 
-    // 🏪 A4 核心下載邏輯
     const downloadA4 = async (mode) => {
         if(!slots.length) return alert("槽位為空");
-        const A4_W = 2480, A4_H = 3508, SAFE = 120, GAP = 45;
-        const S2 = { w: 413, h: 531 }, S1 = { w: 295, h: 413 };
-        
+        const A4_W = 2480, A4_H = 3508, SAFE = 120;
         const pc = document.createElement("canvas");
         pc.width = A4_W; pc.height = A4_H;
         const ctx = pc.getContext("2d");
@@ -83,64 +125,43 @@ function App() {
         const imgs = await Promise.all(slots.map(s => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=s; })));
         let idx = 0;
 
-        if (mode === 'ALL_2') {
-            const cols = Math.floor((A4_W - SAFE*2) / (S2.w + GAP));
-            const rows = Math.floor((A4_H - SAFE*2) / (S2.h + GAP));
-            for(let r=0; r<rows; r++) {
-                let x = SAFE + (A4_W - SAFE*2 - (cols*(S2.w+GAP)-GAP))/2;
+        const runLayout = (sw, sh, gap, startY, limitY) => {
+            const cols = Math.floor((A4_W - SAFE*2) / (sw + gap));
+            let currY = startY;
+            while(currY + sh < limitY) {
+                let startX = (A4_W - (cols * (sw + gap) - gap)) / 2;
                 for(let c=0; c<cols; c++) {
-                    drawCellOnly(ctx, imgs[idx%imgs.length], x, SAFE + r*(S2.h+GAP), S2.w, S2.h);
-                    idx++; x += S2.w + GAP;
+                    drawLMark(ctx, startX + c*(sw+gap), currY, sw, sh);
+                    ctx.drawImage(imgs[idx%imgs.length], startX + c*(sw+gap), currY, sw, sh);
+                    idx++;
                 }
+                currY += sh + gap;
             }
-        } else if (mode === 'ALL_1') {
-            const cols = Math.floor((A4_W - SAFE*2) / (S1.w + GAP));
-            const rows = Math.floor((A4_H - SAFE*2) / (S1.h + GAP));
-            for(let r=0; r<rows; r++) {
-                let x = SAFE + (A4_W - SAFE*2 - (cols*(S1.w+GAP)-GAP))/2;
-                for(let c=0; c<cols; c++) {
-                    drawCellOnly(ctx, imgs[idx%imgs.length], x, SAFE + r*(S1.h+GAP), S1.w, S1.h);
-                    idx++; x += S1.w + GAP;
-                }
-            }
-        } else if (mode === 'MIX') {
-            let y = SAFE;
-            const c2 = Math.floor((A4_W - SAFE*2) / (S2.w + GAP));
-            const r2 = 3; // 混排時固定 2 吋排 3 列
-            for(let r=0; r<r2; r++) {
-                let x = SAFE + (A4_W - SAFE*2 - (c2*(S2.w+GAP)-GAP))/2;
-                for(let c=0; c<c2; c++) {
-                    drawCellOnly(ctx, imgs[idx%imgs.length], x, y, S2.w, S2.h);
-                    idx++; x += S2.w + GAP;
-                }
-                y += S2.h + GAP;
-            }
-            // 分隔提示線
-            ctx.setLineDash([10, 10]); ctx.strokeStyle = "#e5e7eb"; ctx.beginPath();
-            ctx.moveTo(SAFE, y - GAP/2); ctx.lineTo(A4_W - SAFE, y - GAP/2); ctx.stroke(); ctx.setLineDash([]);
-            const c1 = Math.floor((A4_W - SAFE*2) / (S1.w + GAP));
-            const r1 = Math.floor((A4_H - y - SAFE) / (S1.h + GAP));
-            for(let r=0; r<r1; r++) {
-                let x = SAFE + (A4_W - SAFE*2 - (c1*(S1.w+GAP)-GAP))/2;
-                for(let c=0; c<c1; c++) {
-                    drawCellOnly(ctx, imgs[idx%imgs.length], x, y, S1.w, S1.h);
-                    idx++; x += S1.w + GAP;
-                }
-                y += S1.h + GAP;
-            }
+            return currY;
+        };
+
+        if(mode === 'ALL_2') runLayout(413, 531, 35, SAFE, A4_H - SAFE);
+        else if(mode === 'ALL_1') runLayout(295, 413, 25, SAFE, A4_H - SAFE);
+        else {
+            let nextY = runLayout(413, 531, 35, SAFE, A4_H * 0.58);
+            runLayout(295, 413, 25, nextY + 40, A4_H - SAFE);
         }
 
         const a = document.createElement("a");
         a.href = pc.toDataURL("image/png");
-        a.download = `EzID_A4_${mode}_${new Date().getTime()}.png`;
+        a.download = `EzID_A4_${mode}.png`;
         a.click();
     };
 
     return (
-        <div className="max-w-md mx-auto p-4">
-            <header className="flex justify-between items-center mb-4 px-2">
-                <h1 className="font-black text-slate-800 italic">EzID Taiwan <span className="text-[10px] text-blue-500 not-italic">v2.7.3</span></h1>
-                <div className="text-[9px] font-bold text-slate-400 uppercase">純淨裁切線佈局</div>
+        <div className="max-w-md mx-auto p-4 pb-20">
+            {toast && <div className="toast">{toast}</div>}
+            
+            <header className="flex justify-between items-end mb-4 px-2">
+                <h1 className="font-black text-slate-800 italic text-xl">EzID <span className="text-blue-500 text-xs not-italic">v2.8.0 PRO</span></h1>
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter text-right">
+                    ibon Safe Area Ready<br/>L-Mark Precise Cut
+                </div>
             </header>
 
             <div className="canvas-container mb-6">
@@ -152,43 +173,75 @@ function App() {
                 </div>
             </div>
 
-            <section className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
-                <div className="mb-4 text-[10px] font-bold text-slate-400 uppercase">👔 數位換裝</div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar mb-4">
-                    <button onClick={()=>{setSuitImg(null);setActiveSuit(null)}} className="suit-btn text-red-500 font-bold">✕</button>
-                    {CLOTHES.male.map(s => <button key={s} onClick={()=>{const img=new Image();img.onload=()=>setSuitImg(img);img.src=s;setActiveSuit(s)}} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-4/5"/></button>)}
-                </div>
-
-                <div className="space-y-3 pt-2">
-                    <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1 uppercase">照片縮放 <span>{Math.round(p.s*100)}%</span></div>
-                    <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
-                    <div className="grid grid-cols-2 gap-4">
-                        <input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p, y:+e.target.value})} />
-                        <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p, x:+e.target.value})} />
+            <section className="space-y-4">
+                {/* 👔 修正 2: 加入女性與 SP 控制器 */}
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">👔 數位換裝 (SP Mode)</span>
+                        <button onClick={()=>selectSuit(null)} className="text-[10px] text-red-500 font-bold">移除服裝</button>
                     </div>
+                    <div className="space-y-3">
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                            {CLOTHES.male.map(s => <button key={s} onClick={()=>selectSuit(s)} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-10"/></button>)}
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                            {CLOTHES.female.map(s => <button key={s} onClick={()=>selectSuit(s)} className={`suit-btn ${activeSuit===s?'active':''}`}><img src={s} className="w-10"/></button>)}
+                        </div>
+                    </div>
+
+                    {suitImg && (
+                        <div className="mt-4 p-3 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
+                            <div className="grid grid-cols-2 gap-x-4">
+                                <div><div className="text-[9px] text-blue-500 font-bold mb-1">衣服大小</div><input type="range" min="0.5" max="2.5" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} /></div>
+                                <div><div className="text-[9px] text-blue-500 font-bold mb-1">垂直位置</div><input type="range" min="-100" max="100" value={sp.y} onChange={e=>setSp({...sp, y:+e.target.value})} /></div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-6">
-                    <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer shadow-sm">📸 上傳照片<input type="file" hidden accept="image/*" onChange={e=>{const f=e.target.files[0]; if(f){const img=new Image(); img.onload=()=>setImage(img); img.src=URL.createObjectURL(f);}}}/></label>
-                    <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-sm">📥 存入槽位</button>
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-4">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">👤 照片調整 (P Mode)</div>
+                    <div className="space-y-4">
+                        <input type="range" min="0.3" max="1.5" step="0.01" value={p.s} onChange={e=>setP({...p, s:+e.target.value})} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <input type="range" min="-150" max="150" value={p.y} onChange={e=>setP({...p, y:+e.target.value})} />
+                            <input type="range" min="-100" max="100" value={p.x} onChange={e=>setP({...p, x:+e.target.value})} />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                        <label className="bg-slate-800 text-white py-3 rounded-xl text-center font-bold text-xs cursor-pointer shadow-md active:scale-95 transition-all">📸 上傳照片<input type="file" hidden accept="image/*" onChange={handleUpload}/></label>
+                        <button onClick={saveToSlot} className="bg-blue-600 text-white py-3 rounded-xl font-bold text-xs shadow-md active:scale-95 transition-all">📥 存入槽位</button>
+                    </div>
                 </div>
             </section>
 
-            <div className="mt-6 px-1">
-                <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-2 uppercase">排版槽位 ({slots.length}/8) <button onClick={()=>setSlots([])} className="text-red-400">清空</button></div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    {slots.map((s,i)=><img key={i} src={s} className="w-16 h-20 rounded-lg border-2 border-white shadow-sm flex-shrink-0" onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))}/>)}
+            <div className="mt-8">
+                <div className="flex justify-between items-center mb-3 px-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">排版槽位 ({slots.length}/10)</span>
+                    <button onClick={()=>setSlots([])} className="text-[10px] text-red-400 font-bold">全部清空</button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                    {slots.map((s,i)=>(
+                        <div key={i} className="relative flex-shrink-0 group">
+                            <img src={s} className="w-16 h-20 rounded-lg border-2 border-white shadow-sm" />
+                            <button onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))} className="absolute -top-1 -right-1 bg-red-500 text-white w-5 h-5 rounded-full text-[10px] shadow-sm">✕</button>
+                        </div>
+                    ))}
                 </div>
             </div>
 
-            <div className="mt-6 space-y-2">
-                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm active:scale-95 transition-transform shadow-lg shadow-emerald-100">🏪 ibon A4｜1+2 吋 混排</button>
-                <div className="grid grid-cols-2 gap-2">
-                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-sm">🏪 A4 全 2 吋</button>
-                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-sm">🏪 A4 全 1 吋</button>
+            <div className="mt-8 space-y-3">
+                <button onClick={()=>downloadA4('MIX')} className="w-full bg-emerald-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all">🏪 ibon A4｜1+2 吋 混排</button>
+                <div className="grid grid-cols-2 gap-3">
+                    <button onClick={()=>downloadA4('ALL_2')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-md">🏪 A4 全 2 吋</button>
+                    <button onClick={()=>downloadA4('ALL_1')} className="bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs shadow-md">🏪 A4 全 1 吋</button>
                 </div>
-                <div className="pt-2 text-center text-[10px] text-slate-400 font-medium tracking-widest uppercase">已套用 10mm 安全邊界 & 裁切實線</div>
             </div>
+            
+            <p className="mt-6 text-center text-[9px] text-slate-300 font-medium px-6 leading-relaxed">
+                * 若 iPhone 上傳照片方向不正確，請先至相簿旋轉編輯後再上傳。<br/>
+                * 輸出已自動套用 12mm 安全邊界。
+            </p>
         </div>
     );
 }
