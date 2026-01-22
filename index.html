@@ -3,58 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v3.5.5 ibon-Ready</title>
+    <title>EzID Taiwan v3.6.0 - 手感回歸</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .no-scrollbar::-webkit-scrollbar { display:none; }
-        .canvas-container { position:relative; width:350px; height:450px; margin:0 auto; background:#fff; border:1px solid #e2e8f0; overflow:hidden; }
+        /* 畫布手勢優化 */
+        .canvas-container { 
+            position:relative; width:350px; height:450px; margin:0 auto; 
+            background:#fff; border:1px solid #e2e8f0; overflow:hidden; 
+            touch-action: none; cursor: grab;
+        }
+        .canvas-container:active { cursor: grabbing; }
         
-        /* 比例修正：更窄的長橢圓，位置上移，符合內政部頭頂留白感 */
-        .inner-guide { 
-            position:absolute; left:50%; top:45%; /* 重心上移 */
-            width:62%; height:71.1%; 
-            border:2px dotted #10b981; border-radius:50% / 44%; 
-            transform:translate(-50%,-50%); z-index:100; pointer-events:none; 
-        }
-        .outer-guide { 
-            position:absolute; left:50%; top:45%; 
-            width:70%; height:80%; 
-            border:2px dashed #f59e0b; border-radius:50% / 44%; 
-            transform:translate(-50%,-50%); z-index:99; pointer-events:none; 
-        }
-        .center-line { position:absolute; left:50%; top:0; bottom:0; width:1px; background:rgba(37,99,235,0.1); transform:translateX(-50%); }
+        .inner-guide { position:absolute; left:50%; top:45%; width:62%; height:71.1%; border:2px dotted #10b981; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:100; pointer-events:none; }
+        .outer-guide { position:absolute; left:50%; top:45%; width:70%; height:80%; border:2px dashed #f59e0b; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:99; pointer-events:none; }
+        .active-ring { position:absolute; bottom:10px; right:10px; font-size:10px; font-weight:bold; padding:2px 8px; border-radius:10px; }
     </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-100">
     <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
-// 修正路徑與 Meta
 const M_SUITS = Array(5).fill(0).map((_, i) => ({ id: `male/m${i+1}.png`, neckY: 0.12, sW: 0.88 }));
 const F_SUITS = Array(5).fill(0).map((_, i) => ({ id: `female/f${i+1}.png`, neckY: 0.16, sW: 0.82 }));
-
-// 輸出規格定義
-const SPECS = {
-    A4: { w: 2480, h: 3508, name: 'A4' },
-    P46: { w: 1200, h: 1800, name: '4x6' } // 300DPI 下 4x6 吋
-};
 
 function App() {
     const canvasRef = useRef(null);
     const [image, setImage] = useState(null);
     const [suit, setSuit] = useState({ img: null, meta: null });
     const [slots, setSlots] = useState([]);
-    const [p, setP] = useState({ x: 0, y: -30, s: 0.8 }); // 初始位置上移
+    
+    // 操控狀態
+    const [target, setTarget] = useState("PHOTO"); // PHOTO 或 SUIT
+    const [p, setP] = useState({ x: 0, y: -30, s: 0.8 }); 
     const [sp, setSp] = useState({ x: 0, y: 0, s: 1.0 });
+    const isDragging = useRef(false);
+    const lastPos = useRef({ x: 0, y: 0 });
 
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
+        ctx.clearRect(0, 0, 350, 450);
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
+
         if(image) {
             ctx.save(); ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s, p.s);
             ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
@@ -62,113 +57,106 @@ function App() {
         if(suit.img) {
             ctx.save();
             const w = suit.img.width * sp.s; const h = suit.img.height * sp.s;
-            // 物理錨點修正：衣服對齊人臉底部
-            ctx.drawImage(suit.img, (350 - w)/2 + sp.x, 305 - (h * suit.meta.neckY) + sp.y, w, h);
+            // 物理連動：衣服預設跟隨人像垂直位移，但保有獨立 sp.y 修正
+            const neckBaseY = 305 + p.y; 
+            ctx.drawImage(suit.img, (350 - w)/2 + sp.x + p.x, neckBaseY - (h * suit.meta.neckY) + sp.y, w, h);
             ctx.restore();
         }
     }, [image, suit, p, sp]);
 
     useEffect(() => { draw(); }, [draw]);
 
-    const selectSuit = (meta) => {
-        if(!meta) return setSuit({img:null, meta:null});
-        const img = new Image();
-        img.onload = () => {
-            setSuit({ img, meta });
-            setSp(prev => ({ ...prev, s: (189 * 1.6) / (img.width * meta.sW) }));
-        };
-        img.src = `clothes/${meta.id}`;
+    // 直接拖曳處理
+    const handleStart = (e) => {
+        isDragging.current = true;
+        const pos = e.touches ? e.touches[0] : e;
+        lastPos.current = { x: pos.clientX, y: pos.clientY };
     };
 
-    const exportImage = async (specKey, mode) => {
-        if(!slots.length) return alert("請先存入槽位");
-        const spec = SPECS[specKey];
-        const pc = document.createElement("canvas");
-        pc.width = spec.w; pc.height = spec.h;
-        const ctx = pc.getContext("2d");
-        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, spec.w, spec.h);
+    const handleMove = (e) => {
+        if (!isDragging.current) return;
+        const pos = e.touches ? e.touches[0] : e;
+        const dx = pos.clientX - lastPos.current.x;
+        const dy = pos.clientY - lastPos.current.y;
 
-        const imgs = await Promise.all(slots.map(s => new Promise(res => {
-            const i = new Image(); i.onload = () => res(i); i.src = s;
-        })));
+        if (target === "PHOTO") {
+            setP(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        } else {
+            setSp(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        }
+        lastPos.current = { x: pos.clientX, y: pos.clientY };
+    };
 
-        const SAFE = Math.round(spec.w * 0.05);
-        let curY = SAFE, idx = 0;
-
-        const renderRow = (sw, sh, gap, count) => {
-            const cols = Math.floor((spec.w - 2 * SAFE + gap) / (sw + gap));
-            const startX = (spec.w - (cols * sw + (cols - 1) * gap)) / 2;
-            for(let i=0; i<count; i++){
-                const r = Math.floor(i/cols), c = i%cols;
-                ctx.drawImage(imgs[idx % imgs.length], startX + c*(sw+gap), curY + r*(sh+gap), sw, sh);
-                ctx.strokeStyle = "#ccc"; ctx.strokeRect(startX + c*(sw+gap), curY + r*(sh+gap), sw, sh);
-                idx++;
-            }
-            curY += (Math.ceil(count/cols) * (sh + gap));
-        };
-
-        if(mode === 'MIX') { renderRow(413, 531, 30, specKey==='P46'?2:8); renderRow(295, 413, 20, specKey==='P46'?4:12); }
-        else if(mode === 'ALL2') { renderRow(413, 531, 30, specKey==='P46'?8:20); }
-        else if(mode === 'ALL1') { renderRow(295, 413, 20, specKey==='P46'?12:35); }
-
-        const a = document.createElement("a");
-        a.href = pc.toDataURL("image/png"); a.download = `EzID_${spec.name}_${mode}.png`; a.click();
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY * -0.001;
+        if (target === "PHOTO") {
+            setP(prev => ({ ...prev, s: Math.min(Math.max(prev.s + delta, 0.1), 3) }));
+        } else {
+            setSp(prev => ({ ...prev, s: Math.min(Math.max(prev.s + delta, 0.1), 3) }));
+        }
     };
 
     return (
-        <div className="max-w-md mx-auto p-4">
-            <h1 className="font-black italic text-xl mb-4">EzID v3.5.5 <span className="text-xs bg-black text-white px-2 py-1 rounded">FIXED</span></h1>
+        <div className="max-w-md mx-auto p-4 select-none">
+            <div className="flex justify-between items-end mb-4">
+                <h1 className="font-black italic text-2xl tracking-tighter text-slate-800">EzID <span className="text-blue-600">3.6</span></h1>
+                <div className="flex bg-slate-200 p-1 rounded-lg">
+                    <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1 text-xs font-bold rounded-md transition ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-500'}`}>人像</button>
+                    <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1 text-xs font-bold rounded-md transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-500'}`}>衣服</button>
+                </div>
+            </div>
             
-            <div className="canvas-container mb-4 shadow-xl rounded-lg">
+            <div 
+                className="canvas-container shadow-2xl rounded-2xl mb-6"
+                onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false}
+                onMouseLeave={()=>isDragging.current=false} onWheel={handleWheel}
+                onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}
+            >
                 <canvas ref={canvasRef} width="350" height="450" />
-                <div className="absolute inset-0 pointer-events-none">
-                    <div className="inner-guide"></div>
-                    <div className="outer-guide"></div>
-                    <div className="center-line"></div>
+                <div className="inner-guide"></div>
+                <div className="outer-guide"></div>
+                <div className={`active-ring ${target==='PHOTO'?'bg-emerald-500':'bg-blue-500'} text-white`}>
+                    正在調整：{target === 'PHOTO' ? '人像 (拖曳/滾輪)' : '衣服 (拖曳/滾輪)'}
                 </div>
             </div>
 
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-4">
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                    <button onClick={()=>selectSuit(null)} className="flex-shrink-0 w-12 h-12 border-2 border-dashed rounded-xl">✕</button>
+            <div className="bg-white p-4 rounded-3xl shadow-sm mb-6">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    <button onClick={()=>{setSuit({img:null,meta:null});setTarget("PHOTO")}} className="flex-shrink-0 w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 font-bold">✕</button>
                     {[...M_SUITS, ...F_SUITS].map(s => (
-                        <button key={s.id} onClick={()=>selectSuit(s)} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden bg-slate-50">
+                        <button key={s.id} onClick={()=>{
+                            const img = new Image(); img.onload = () => {
+                                setSuit({ img, meta: s });
+                                setTarget("SUIT"); // 自動切換到衣服模式
+                                setSp(prev => ({ ...prev, s: (189 * 1.6) / (img.width * s.sW) }));
+                            };
+                            img.src = `clothes/${s.id}`;
+                        }} className={`flex-shrink-0 w-14 h-14 border-2 rounded-2xl transition overflow-hidden ${suit.meta?.id===s.id?'border-blue-500 bg-blue-50':'border-transparent bg-slate-50'}`}>
                             <img src={`clothes/${s.id}`} className="w-full h-full object-contain" />
                         </button>
                     ))}
                 </div>
-                <input type="range" className="w-full my-4" min="0.5" max="2" step="0.01" value={sp.s} onChange={e=>setSp({...sp, s:+e.target.value})} />
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mb-6">
-                <label className="bg-slate-800 text-white py-3 rounded-xl text-center text-xs font-bold cursor-pointer">
-                    📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => {
-                        const img = new Image(); img.onload = () => setImage(img); img.src = URL.createObjectURL(e.target.files[0]);
+            <div className="grid grid-cols-2 gap-4">
+                <label className="bg-slate-800 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer active:scale-95 transition">
+                    📸 上傳照片
+                    <input type="file" hidden accept="image/*" onChange={e => {
+                        const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); };
+                        img.src = URL.createObjectURL(e.target.files[0]);
                     }} />
                 </label>
                 <button onClick={() => {
-                    setSlots(prev => [canvasRef.current.toDataURL(), ...prev.slice(0,9)]);
-                }} className="bg-blue-600 text-white py-3 rounded-xl text-xs font-bold">📥 存入槽位 ({slots.length})</button>
+                    setSlots([canvasRef.current.toDataURL(), ...slots].slice(0,10));
+                }} className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg active:scale-95 transition">
+                    📥 存入槽位 ({slots.length})
+                </button>
             </div>
-
-            <div className="space-y-4">
-                <div>
-                    <span className="text-[10px] font-bold text-slate-400 block mb-2 uppercase">🏪 ibon 4x6 相片紙 (推薦)</span>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportImage('P46','MIX')} className="bg-emerald-600 text-white py-2 rounded-lg text-[10px] font-bold">4x6 混排</button>
-                        <button onClick={()=>exportImage('P46','ALL2')} className="bg-slate-700 text-white py-2 rounded-lg text-[10px] font-bold">4x6 全部2吋</button>
-                        <button onClick={()=>exportImage('P46','ALL1')} className="bg-slate-700 text-white py-2 rounded-lg text-[10px] font-bold">4x6 全部1吋</button>
-                    </div>
-                </div>
-                <div>
-                    <span className="text-[10px] font-bold text-slate-400 block mb-2 uppercase">📄 家用 A4 普通紙</span>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportImage('A4','MIX')} className="bg-slate-400 text-white py-2 rounded-lg text-[10px] font-bold">A4 混排</button>
-                        <button onClick={()=>exportImage('A4','ALL2')} className="bg-slate-400 text-white py-2 rounded-lg text-[10px] font-bold">A4 全部2吋</button>
-                        <button onClick={()=>exportImage('A4','ALL1')} className="bg-slate-400 text-white py-2 rounded-lg text-[10px] font-bold">A4 全部1吋</button>
-                    </div>
-                </div>
-            </div>
+            
+            <p className="text-center text-[10px] text-slate-400 mt-6 font-medium uppercase tracking-widest">
+                使用鼠標或手指直接在畫布拖曳、滾輪縮放
+            </p>
         </div>
     );
 }
