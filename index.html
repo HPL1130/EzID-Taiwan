@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v7.6</title>
+    <title>EzID Taiwan v7.7</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,10 +30,13 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [slots, setSlots] = useState([]);
     const [target, setTarget] = useState("PHOTO");
-    const [p, setP] = useState({ x: 0, y: -20, s: 0.8, f: 1 });
+    
+    // 初始化參數：之後更換圖片將「不再重設」這些值
+    const [p, setP] = useState({ x: 0, y: -20, s: 0.45, f: 1 });
     const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0 });
     const [cfg, setCfg] = useState({ bright: 100, guide: 0.8, name: "ProID" });
 
+    // 繪製邏輯
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
@@ -56,6 +59,7 @@ function App() {
 
     useEffect(() => { requestAnimationFrame(draw); }, [draw]);
 
+    // 觸控邏輯 (維持 7.6 的穩定性)
     const last = useRef({ pos: { x: 0, y: 0 }, dist: 0 });
     const handlePointer = (e, type) => {
         const isT = e?.touches?.length > 0;
@@ -77,8 +81,9 @@ function App() {
         } else if (type === 'end') { last.current.pos = null; }
     };
 
+    // 輸出邏輯 (循環填充不留白)
     const exportDoc = async (type, mode) => {
-        if (!slots.length) return alert("請先存入照片到槽位");
+        if (!slots.length) return alert("槽位是空的");
         const isA4 = type === 'A4';
         const W = isA4 ? 2480 : 1800, H = isA4 ? 3508 : 1200;
         const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
@@ -104,23 +109,19 @@ function App() {
                 const gX = 40, gY = 40;
                 const sX = (2480 - (295 * 6 + gX * 5)) / 2, sY = (3508 - (413 * 7 + gY * 6)) / 2;
                 for(let i=0; i<42; i++) put(imgs[i % imgs.length], sX + (i % 6) * (295 + gX), sY + Math.floor(i / 6) * (413 + gY), 295, 413);
-            } else { // MIX
+            } else {
                 const sX2 = (2480 - (413 * 4 + 60 * 3)) / 2, sX1 = (2480 - (295 * 6 + 40 * 5)) / 2;
                 for(let i=0; i<12; i++) put(imgs[i % imgs.length], sX2 + (i % 4) * 473, 300 + Math.floor(i / 4) * 591, 413, 531);
                 for(let i=0; i<18; i++) put(imgs[i % imgs.length], sX1 + (i % 6) * 335, 2150 + Math.floor(i / 6) * 453, 295, 413);
             }
-        } else { // 4x6
+        } else {
             if (mode === 'MIX') {
                 for(let i=0; i<4; i++) put(imgs[i % imgs.length], 90 + i * 410, 80, 413, 531);
                 for(let i=0; i<5; i++) put(imgs[i % imgs.length], 90 + i * 325, 660, 295, 413);
             } else if (mode === '2IN') {
-                const gX = 15, gY = 15;
-                const sX = (1800 - (413 * 4 + gX * 3)) / 2, sY = (1200 - (531 * 2 + gY * 1)) / 2;
-                for(let i=0; i<8; i++) put(imgs[i % imgs.length], sX + (i % 4) * (413 + gX), sY + Math.floor(i / 4) * (531 + gY), 413, 531);
+                for(let i=0; i<8; i++) put(imgs[i % imgs.length], 90 + (i % 4) * 410, 70 + Math.floor(i / 4) * 540, 413, 531);
             } else {
-                const gX = 10, gY = 10;
-                const sX = (1800 - (295 * 5 + gX * 4)) / 2, sY = (1200 - (413 * 2 + gY * 1)) / 2;
-                for(let i=0; i<10; i++) put(imgs[i % imgs.length], sX + (i % 5) * (295 + gX), sY + Math.floor(i / 5) * (413 + gY), 295, 413);
+                for(let i=0; i<10; i++) put(imgs[i % imgs.length], 150 + (i % 5) * 310, 160 + Math.floor(i / 5) * 460, 295, 413);
             }
         }
 
@@ -133,10 +134,10 @@ function App() {
     return (
         <div className="max-w-md mx-auto space-y-4">
             <header className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm sticky top-0 z-[200]">
-                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600 font-black tracking-tighter text-2xl px-1">v7.6</span></h1>
+                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600 font-black tracking-tighter text-2xl px-1">v7.7</span></h1>
                 <div className="flex gap-2">
                     <button onClick={()=>setP(v=>({...v, f: v.f*-1}))} className="px-3 py-1 bg-slate-900 text-white rounded-xl text-xs font-bold active:scale-95 transition">鏡像</button>
-                    <input type="text" value={cfg.name} onChange={e=>setCfg({...cfg,name:e.target.value})} className="w-24 bg-slate-100 rounded-lg px-2 text-[10px] font-bold border focus:border-blue-500 outline-none" placeholder="自訂檔名" />
+                    <input type="text" value={cfg.name} onChange={e=>setCfg({...cfg,name:e.target.value})} className="w-24 bg-slate-100 rounded-lg px-2 text-[10px] font-bold border outline-none" placeholder="自訂檔名" />
                 </div>
             </header>
 
@@ -152,20 +153,21 @@ function App() {
                     <button onClick={()=>setTarget("SUIT")} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服調整</button>
                 </div>
                 <div className="space-y-4">
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Scale</span><input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 accent-blue-600 h-1" /></div>
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Guide</span><input type="range" min="0" max="1" step="0.1" value={cfg.guide} onChange={e=>setCfg({...cfg,guide:+e.target.value})} className="flex-1 accent-emerald-500 h-1" /></div>
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Bright</span><input type="range" min="60" max="140" value={cfg.bright} onChange={e=>setCfg({...cfg,bright:+e.target.value})} className="flex-1 accent-amber-400 h-1" /></div>
+                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center">SCALE</span><input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 accent-blue-600 h-1" /></div>
+                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center">GUIDE</span><input type="range" min="0" max="1" step="0.1" value={cfg.guide} onChange={e=>setCfg({...cfg,guide:+e.target.value})} className="flex-1 accent-emerald-500 h-1" /></div>
+                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center">BRIGHT</span><input type="range" min="60" max="140" value={cfg.bright} onChange={e=>setCfg({...cfg,bright:+e.target.value})} className="flex-1 accent-amber-400 h-1" /></div>
                 </div>
             </div>
 
+            {/* 衣服路徑修正：clothes/${s} */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar px-2 bg-white/50 p-2 rounded-2xl mx-1">
                 {SUITS.map(s => (
-                    <img key={s} src={`clothes/${s}`} onClick={()=>{const i=new Image(); i.src=`clothes/${s}`; i.onload=()=>{setSuitImg(i); setTarget("SUIT")}} } className="w-12 h-12 p-1 border rounded-xl bg-white flex-shrink-0 cursor-pointer active:scale-90 transition shadow-sm border-slate-100" />
+                    <img key={s} src={`clothes/${s}`} onClick={()=>{const i=new Image(); i.src=`clothes/${s}`; i.onload=()=>{setSuitImg(i); setTarget("SUIT")}} } className="w-12 h-12 p-1 border rounded-xl bg-white flex-shrink-0 cursor-pointer active:scale-90 transition shadow-sm" />
                 ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 px-2 pt-2">
-                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setP({x:0,y:-20,s:(350/i.width)*0.8,f:1}); setTarget("PHOTO")}} }} /></label>
+            <div className="grid grid-cols-2 gap-4 px-2">
+                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO") /* 關鍵：移除 setP 重置邏輯，保留使用者調好的參數 */ }} }} /></label>
                 <button onClick={()=>{
                     const temp = document.createElement("canvas"); temp.width = 350; temp.height = 450;
                     const tctx = temp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, 350, 450);
@@ -187,19 +189,19 @@ function App() {
 
             <div className="px-2 space-y-4 pb-24">
                 <div className="bg-white p-5 rounded-[2rem] border-2 border-blue-50 shadow-xl space-y-4">
-                    <h3 className="text-[10px] font-black text-blue-600 tracking-widest uppercase px-1">📄 A4 Paper Layout</h3>
+                    <h3 className="text-[10px] font-black text-blue-600 tracking-widest uppercase">📄 A4 Paper (Auto-Fill)</h3>
                     <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-bold">混排 (滿)</button>
-                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">2吋 (滿)</button>
-                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">1吋 (滿)</button>
+                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-bold">混排</button>
+                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">2吋</button>
+                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">1吋</button>
                     </div>
                 </div>
                 <div className="bg-white p-5 rounded-[2rem] border-2 border-emerald-50 shadow-xl space-y-4">
-                    <h3 className="text-[10px] font-black text-emerald-600 tracking-widest uppercase px-1">🏪 Ibon 4x6 Layout</h3>
+                    <h3 className="text-[10px] font-black text-emerald-600 tracking-widest uppercase">🏪 Ibon 4x6 (Auto-Fill)</h3>
                     <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-4 rounded-xl text-[10px] font-bold">混排 (滿)</button>
-                        <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">2吋 (滿)</button>
-                        <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">1吋 (滿)</button>
+                        <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-4 rounded-xl text-[10px] font-bold">混排</button>
+                        <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">2吋</button>
+                        <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">1吋</button>
                     </div>
                 </div>
             </div>
