@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v7.7</title>
+    <title>EzID Taiwan v7.8</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,6 +15,11 @@
             background:#fff; border:4px solid #0f172a; border-radius:24px; overflow:hidden; 
             touch-action: none; cursor: grab; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
         }
+        /* 校色條樣式 */
+        .color-strip {
+            display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 8px;
+        }
+        .color-block { flex: 1; height: 100%; }
     </style>
 </head>
 <body class="bg-slate-100 p-4 pb-16 font-sans select-none">
@@ -30,13 +35,10 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [slots, setSlots] = useState([]);
     const [target, setTarget] = useState("PHOTO");
-    
-    // 初始化參數：之後更換圖片將「不再重設」這些值
     const [p, setP] = useState({ x: 0, y: -20, s: 0.45, f: 1 });
     const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0 });
     const [cfg, setCfg] = useState({ bright: 100, guide: 0.8, name: "ProID" });
 
-    // 繪製邏輯
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
@@ -59,7 +61,6 @@ function App() {
 
     useEffect(() => { requestAnimationFrame(draw); }, [draw]);
 
-    // 觸控邏輯 (維持 7.6 的穩定性)
     const last = useRef({ pos: { x: 0, y: 0 }, dist: 0 });
     const handlePointer = (e, type) => {
         const isT = e?.touches?.length > 0;
@@ -81,25 +82,19 @@ function App() {
         } else if (type === 'end') { last.current.pos = null; }
     };
 
-    // 輸出邏輯 (循環填充不留白)
     const exportDoc = async (type, mode) => {
         if (!slots.length) return alert("槽位是空的");
         const isA4 = type === 'A4';
         const W = isA4 ? 2480 : 1800, H = isA4 ? 3508 : 1200;
         const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
         const ctx = pc.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, W, H);
-
         const imgs = await Promise.all(slots.map(s => new Promise(res => {
             const i = new Image(); i.onload = () => res(i); i.src = s.data;
         })));
-
         const put = (img, x, y, sw, sh) => {
-            ctx.save(); ctx.beginPath();
-            ctx.drawImage(img, x, y, sw, sh);
-            ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh);
-            ctx.restore();
+            ctx.save(); ctx.beginPath(); ctx.drawImage(img, x, y, sw, sh);
+            ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh); ctx.restore();
         };
-
         if (isA4) {
             if (mode === '2IN') {
                 const gX = 60, gY = 60;
@@ -124,20 +119,17 @@ function App() {
                 for(let i=0; i<10; i++) put(imgs[i % imgs.length], 150 + (i % 5) * 310, 160 + Math.floor(i / 5) * 460, 295, 413);
             }
         }
-
-        const now = new Date();
-        const timeStr = `${now.getMonth()+1}${now.getDate()}_${now.getHours()}${now.getMinutes()}`;
         const a = document.createElement("a"); a.href = pc.toDataURL("image/png", 1.0);
-        a.download = `${cfg.name}_${timeStr}_${type}_${mode}.png`; a.click();
+        a.download = `${cfg.name}_Export.png`; a.click();
     };
 
     return (
         <div className="max-w-md mx-auto space-y-4">
             <header className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm sticky top-0 z-[200]">
-                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600 font-black tracking-tighter text-2xl px-1">v7.7</span></h1>
+                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600 font-black text-2xl px-1">v7.8</span></h1>
                 <div className="flex gap-2">
                     <button onClick={()=>setP(v=>({...v, f: v.f*-1}))} className="px-3 py-1 bg-slate-900 text-white rounded-xl text-xs font-bold active:scale-95 transition">鏡像</button>
-                    <input type="text" value={cfg.name} onChange={e=>setCfg({...cfg,name:e.target.value})} className="w-24 bg-slate-100 rounded-lg px-2 text-[10px] font-bold border outline-none" placeholder="自訂檔名" />
+                    <input type="text" value={cfg.name} onChange={e=>setCfg({...cfg,name:e.target.value})} className="w-24 bg-slate-100 rounded-lg px-2 text-[10px] font-bold border outline-none" />
                 </div>
             </header>
 
@@ -148,18 +140,26 @@ function App() {
             </div>
 
             <div className="bg-white p-5 rounded-[2rem] shadow-xl space-y-4 mx-1">
+                {/* 校色基準條：輔助判斷亮度與白平衡 */}
+                <div className="space-y-1">
+                    <div className="flex justify-between px-1"><span className="text-[8px] font-black text-slate-400">Calibration Strip (White to Black)</span></div>
+                    <div className="color-strip">
+                        {[100, 80, 60, 40, 20, 0].map(l => (
+                            <div key={l} className="color-block" style={{background: `hsl(0, 0%, ${l}%)`}}></div>
+                        ))}
+                    </div>
+                </div>
+
                 <div className="flex bg-slate-100 p-1 rounded-2xl">
                     <button onClick={()=>setTarget("PHOTO")} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像調整</button>
                     <button onClick={()=>setTarget("SUIT")} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服調整</button>
                 </div>
                 <div className="space-y-4">
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center">SCALE</span><input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 accent-blue-600 h-1" /></div>
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center">GUIDE</span><input type="range" min="0" max="1" step="0.1" value={cfg.guide} onChange={e=>setCfg({...cfg,guide:+e.target.value})} className="flex-1 accent-emerald-500 h-1" /></div>
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center">BRIGHT</span><input type="range" min="60" max="140" value={cfg.bright} onChange={e=>setCfg({...cfg,bright:+e.target.value})} className="flex-1 accent-amber-400 h-1" /></div>
+                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Scale</span><input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 accent-blue-600 h-1" /></div>
+                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Bright</span><input type="range" min="60" max="140" value={cfg.bright} onChange={e=>setCfg({...cfg,bright:+e.target.value})} className="flex-1 accent-amber-400 h-1" /></div>
                 </div>
             </div>
 
-            {/* 衣服路徑修正：clothes/${s} */}
             <div className="flex gap-2 overflow-x-auto no-scrollbar px-2 bg-white/50 p-2 rounded-2xl mx-1">
                 {SUITS.map(s => (
                     <img key={s} src={`clothes/${s}`} onClick={()=>{const i=new Image(); i.src=`clothes/${s}`; i.onload=()=>{setSuitImg(i); setTarget("SUIT")}} } className="w-12 h-12 p-1 border rounded-xl bg-white flex-shrink-0 cursor-pointer active:scale-90 transition shadow-sm" />
@@ -167,7 +167,7 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 px-2">
-                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO") /* 關鍵：移除 setP 重置邏輯，保留使用者調好的參數 */ }} }} /></label>
+                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO")}} }} /></label>
                 <button onClick={()=>{
                     const temp = document.createElement("canvas"); temp.width = 350; temp.height = 450;
                     const tctx = temp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, 350, 450);
