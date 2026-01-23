@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v7.8</title>
+    <title>EzID Taiwan v7.9</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,14 +15,15 @@
             background:#fff; border:4px solid #0f172a; border-radius:24px; overflow:hidden; 
             touch-action: none; cursor: grab; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
         }
-        /* 校色條樣式 */
-        .color-strip {
-            display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 8px;
+        .preview-overlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
         }
+        .color-strip { display: flex; width: 100%; height: 6px; border-radius: 3px; overflow: hidden; }
         .color-block { flex: 1; height: 100%; }
     </style>
 </head>
-<body class="bg-slate-100 p-4 pb-16 font-sans select-none">
+<body class="bg-slate-100 pb-20 font-sans select-none">
     <div id="root"></div>
 
 <script type="text/babel">
@@ -35,74 +36,74 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [slots, setSlots] = useState([]);
     const [target, setTarget] = useState("PHOTO");
-    const [p, setP] = useState({ x: 0, y: -20, s: 0.45, f: 1 });
-    const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0 });
+    // p.r = 旋轉, p.f = 鏡像
+    const [p, setP] = useState({ x: 0, y: -20, s: 0.45, r: 0, f: 1 });
+    const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0, r: 0 });
     const [cfg, setCfg] = useState({ bright: 100, guide: 0.8, name: "ProID" });
+    const [preImg, setPreImg] = useState(null);
 
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
         if (image) {
             ctx.save(); ctx.filter = `brightness(${cfg.bright}%)`;
-            ctx.translate(175 + p.x, 225 + p.y); ctx.scale(p.s * p.f, p.s);
+            ctx.translate(175 + p.x, 225 + p.y); 
+            ctx.rotate(p.r * Math.PI / 180);
+            ctx.scale(p.s * p.f, p.s);
             ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
         }
         if (suitImg) {
-            ctx.save(); ctx.translate(175 + sp.x, 225 + sp.y); ctx.scale(sp.s, sp.s);
+            ctx.save(); ctx.translate(175 + sp.x, 225 + sp.y); 
+            ctx.rotate(sp.r * Math.PI / 180);
+            ctx.scale(sp.s, sp.s);
             ctx.drawImage(suitImg, -suitImg.width/2, -suitImg.height/2); ctx.restore();
         }
+        const isCentered = Math.abs(p.x) < 8 && Math.abs(p.y + 20) < 8;
         if (cfg.guide > 0) {
             ctx.save(); ctx.globalAlpha = cfg.guide; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
-            ctx.strokeStyle = "#10b981"; ctx.beginPath(); ctx.ellipse(175, 203, 108, 160, 0, 0, 7); ctx.stroke();
-            ctx.strokeStyle = "#f59e0b"; ctx.beginPath(); ctx.ellipse(175, 203, 122, 180, 0, 0, 7); ctx.stroke();
+            ctx.strokeStyle = isCentered ? "#10b981" : "#94a3b8"; 
+            ctx.beginPath(); ctx.ellipse(175, 203, 108, 160, 0, 0, 7); ctx.stroke();
             ctx.restore();
         }
     }, [image, suitImg, p, sp, cfg]);
 
     useEffect(() => { requestAnimationFrame(draw); }, [draw]);
 
-    const last = useRef({ pos: { x: 0, y: 0 }, dist: 0 });
+    const last = useRef({ pos: { x: 0, y: 0 } });
     const handlePointer = (e, type) => {
         const isT = e?.touches?.length > 0;
         if (type === 'start') {
             last.current.pos = { x: (isT ? e.touches[0] : e).clientX, y: (isT ? e.touches[0] : e).clientY };
-            if (e.touches?.length === 2) last.current.dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
         } else if (type === 'move' && last.current.pos) {
-            if (e.touches?.length === 2) {
-                const d = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
-                const factor = d / last.current.dist;
-                target === "PHOTO" ? setP(v=>({...v, s:v.s*factor})) : setSp(v=>({...v, s:v.s*factor}));
-                last.current.dist = d;
-            } else {
-                const cur = isT ? e.touches[0] : e;
-                const dx = cur.clientX - last.current.pos.x, dy = cur.clientY - last.current.pos.y;
-                target === "PHOTO" ? setP(v=>({...v, x:v.x+dx, y:v.y+dy})) : setSp(v=>({...v, x:v.x+dx, y:v.y+dy}));
-                last.current.pos = { x: cur.clientX, y: cur.clientY };
-            }
+            const cur = isT ? e.touches[0] : e;
+            const dx = cur.clientX - last.current.pos.x, dy = cur.clientY - last.current.pos.y;
+            target === "PHOTO" ? setP(v=>({...v, x:v.x+dx, y:v.y+dy})) : setSp(v=>({...v, x:v.x+dx, y:v.y+dy}));
+            last.current.pos = { x: cur.clientX, y: cur.clientY };
         } else if (type === 'end') { last.current.pos = null; }
     };
 
     const exportDoc = async (type, mode) => {
-        if (!slots.length) return alert("槽位是空的");
+        if (!slots.length) return alert("槽位是空的，請先存入照片");
         const isA4 = type === 'A4';
         const W = isA4 ? 2480 : 1800, H = isA4 ? 3508 : 1200;
         const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
         const ctx = pc.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, W, H);
+
         const imgs = await Promise.all(slots.map(s => new Promise(res => {
             const i = new Image(); i.onload = () => res(i); i.src = s.data;
         })));
+
         const put = (img, x, y, sw, sh) => {
-            ctx.save(); ctx.beginPath(); ctx.drawImage(img, x, y, sw, sh);
+            ctx.save(); ctx.drawImage(img, x, y, sw, sh);
             ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh); ctx.restore();
         };
+
         if (isA4) {
             if (mode === '2IN') {
-                const gX = 60, gY = 60;
-                const sX = (2480 - (413 * 4 + gX * 3)) / 2, sY = (3508 - (531 * 5 + gY * 4)) / 2;
+                const gX = 60, gY = 60; const sX = (2480 - (413 * 4 + gX * 3)) / 2, sY = (3508 - (531 * 5 + gY * 4)) / 2;
                 for(let i=0; i<20; i++) put(imgs[i % imgs.length], sX + (i % 4) * (413 + gX), sY + Math.floor(i / 4) * (531 + gY), 413, 531);
             } else if (mode === '1IN') {
-                const gX = 40, gY = 40;
-                const sX = (2480 - (295 * 6 + gX * 5)) / 2, sY = (3508 - (413 * 7 + gY * 6)) / 2;
+                const gX = 40, gY = 40; const sX = (2480 - (295 * 6 + gX * 5)) / 2, sY = (3508 - (413 * 7 + gY * 6)) / 2;
                 for(let i=0; i<42; i++) put(imgs[i % imgs.length], sX + (i % 6) * (295 + gX), sY + Math.floor(i / 6) * (413 + gY), 295, 413);
             } else {
                 const sX2 = (2480 - (413 * 4 + 60 * 3)) / 2, sX1 = (2480 - (295 * 6 + 40 * 5)) / 2;
@@ -119,92 +120,86 @@ function App() {
                 for(let i=0; i<10; i++) put(imgs[i % imgs.length], 150 + (i % 5) * 310, 160 + Math.floor(i / 5) * 460, 295, 413);
             }
         }
-        const a = document.createElement("a"); a.href = pc.toDataURL("image/png", 1.0);
-        a.download = `${cfg.name}_Export.png`; a.click();
+        setPreImg(pc.toDataURL("image/png"));
     };
 
     return (
-        <div className="max-w-md mx-auto space-y-4">
+        <div className="max-w-md mx-auto p-4 space-y-6">
             <header className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm sticky top-0 z-[200]">
-                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600 font-black text-2xl px-1">v7.8</span></h1>
+                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600">v7.9</span></h1>
                 <div className="flex gap-2">
-                    <button onClick={()=>setP(v=>({...v, f: v.f*-1}))} className="px-3 py-1 bg-slate-900 text-white rounded-xl text-xs font-bold active:scale-95 transition">鏡像</button>
-                    <input type="text" value={cfg.name} onChange={e=>setCfg({...cfg,name:e.target.value})} className="w-24 bg-slate-100 rounded-lg px-2 text-[10px] font-bold border outline-none" />
+                    <button onClick={()=>setP(v=>({...v, f:v.f*-1}))} className="px-3 py-1 bg-slate-800 text-white rounded-lg text-xs font-bold">鏡像</button>
+                    <button onClick={()=>target==="PHOTO"?setP({x:0,y:-20,s:0.45,r:0,f:1}):setSp({x:0,y:80,s:1.0,r:0})} className="px-3 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">歸位</button>
                 </div>
             </header>
 
-            <div className="canvas-container"
-                 onTouchStart={e=>handlePointer(e,'start')} onTouchMove={e=>handlePointer(e,'move')} onTouchEnd={()=>handlePointer(null,'end')}
-                 onMouseDown={e=>handlePointer(e,'start')} onMouseMove={e=>handlePointer(e,'move')} onMouseUp={()=>handlePointer(null,'end')}>
+            <div className="canvas-container" onPointerDown={e=>handlePointer(e,'start')} onPointerMove={e=>handlePointer(e,'move')} onPointerUp={()=>handlePointer(null,'end')} onPointerLeave={()=>handlePointer(null,'end')}>
                 <canvas ref={canvasRef} width="350" height="450" className="w-full h-full" />
             </div>
 
-            <div className="bg-white p-5 rounded-[2rem] shadow-xl space-y-4 mx-1">
-                {/* 校色基準條：輔助判斷亮度與白平衡 */}
-                <div className="space-y-1">
-                    <div className="flex justify-between px-1"><span className="text-[8px] font-black text-slate-400">Calibration Strip (White to Black)</span></div>
-                    <div className="color-strip">
-                        {[100, 80, 60, 40, 20, 0].map(l => (
-                            <div key={l} className="color-block" style={{background: `hsl(0, 0%, ${l}%)`}}></div>
-                        ))}
-                    </div>
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-xl space-y-5 mx-1">
+                <div className="color-strip">
+                    {[100, 80, 60, 40, 20, 0].map(l => <div key={l} className="color-block" style={{background:`hsl(0,0%,${l}%)`}} />)}
                 </div>
-
                 <div className="flex bg-slate-100 p-1 rounded-2xl">
-                    <button onClick={()=>setTarget("PHOTO")} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像調整</button>
-                    <button onClick={()=>setTarget("SUIT")} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服調整</button>
+                    {["PHOTO", "SUIT"].map(t => (
+                        <button key={t} onClick={()=>setTarget(t)} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target===t?'bg-white shadow text-blue-600':'text-slate-400'}`}>{t==='PHOTO'?'人像調整':'衣服調整'}</button>
+                    ))}
                 </div>
                 <div className="space-y-4">
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Scale</span><input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 accent-blue-600 h-1" /></div>
-                    <div className="flex items-center gap-3"><span className="text-[10px] font-bold text-slate-400 w-12 text-center uppercase">Bright</span><input type="range" min="60" max="140" value={cfg.bright} onChange={e=>setCfg({...cfg,bright:+e.target.value})} className="flex-1 accent-amber-400 h-1" /></div>
+                    <div className="flex items-center gap-4"><span className="text-[10px] font-bold text-slate-400 w-10">縮放</span><input type="range" min="0.1" max="2" step="0.01" value={target==="PHOTO"?p.s:sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 h-1 accent-blue-600" /></div>
+                    <div className="flex items-center gap-4"><span className="text-[10px] font-bold text-slate-400 w-10">旋轉</span><input type="range" min="-45" max="45" value={target==="PHOTO"?p.r:sp.r} onChange={e=>target==="PHOTO"?setP({...p,r:+e.target.value}):setSp({...sp,r:+e.target.value})} className="flex-1 h-1 accent-emerald-500" /></div>
+                    <div className="flex items-center gap-4"><span className="text-[10px] font-bold text-slate-400 w-10">亮度</span><input type="range" min="60" max="140" value={cfg.bright} onChange={e=>setCfg({...cfg,bright:+e.target.value})} className="flex-1 h-1 accent-amber-500" /></div>
                 </div>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto no-scrollbar px-2 bg-white/50 p-2 rounded-2xl mx-1">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar py-2">
                 {SUITS.map(s => (
-                    <img key={s} src={`clothes/${s}`} onClick={()=>{const i=new Image(); i.src=`clothes/${s}`; i.onload=()=>{setSuitImg(i); setTarget("SUIT")}} } className="w-12 h-12 p-1 border rounded-xl bg-white flex-shrink-0 cursor-pointer active:scale-90 transition shadow-sm" />
+                    <img key={s} src={`clothes/${s}`} onClick={()=>{const i=new Image(); i.src=`clothes/${s}`; i.onload=()=>{setSuitImg(i); setTarget("SUIT")}} } className="w-14 h-14 p-1 border-2 border-white rounded-2xl shadow-sm bg-white flex-shrink-0 active:scale-90 transition" />
                 ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-4 px-2">
-                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO")}} }} /></label>
+            {/* 下載防誤觸間隔區 */}
+            <div className="grid grid-cols-2 gap-4 pt-12">
+                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO")}} }} /></label>
                 <button onClick={()=>{
                     const temp = document.createElement("canvas"); temp.width = 350; temp.height = 450;
                     const tctx = temp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, 350, 450);
-                    if (image) { tctx.save(); tctx.filter = `brightness(${cfg.bright}%)`; tctx.translate(175 + p.x, 225 + p.y); tctx.scale(p.s * p.f, p.s); tctx.drawImage(image, -image.width/2, -image.height/2); tctx.restore(); }
-                    if (suitImg) { tctx.save(); tctx.translate(175 + sp.x, 225 + sp.y); tctx.scale(sp.s, sp.s); tctx.drawImage(suitImg, -suitImg.width/2, -suitImg.height/2); tctx.restore(); }
+                    if (image) { tctx.save(); tctx.filter = `brightness(${cfg.bright}%)`; tctx.translate(175 + p.x, 225 + p.y); tctx.rotate(p.r * Math.PI / 180); tctx.scale(p.s * p.f, p.s); tctx.drawImage(image, -image.width/2, -image.height/2); tctx.restore(); }
+                    if (suitImg) { tctx.save(); tctx.translate(175 + sp.x, 225 + sp.y); tctx.rotate(sp.r * Math.PI / 180); tctx.scale(sp.s, sp.s); tctx.drawImage(suitImg, -suitImg.width/2, -suitImg.height/2); tctx.restore(); }
                     setSlots([{ data: temp.toDataURL("image/png"), config: { image, suitImg, p, sp, cfg } }, ...slots].slice(0, 10));
-                }} className="bg-blue-600 text-white py-4 rounded-3xl text-sm font-black shadow-lg active:scale-95 transition">📥 存入槽位</button>
+                }} className="bg-blue-600 text-white py-4 rounded-3xl font-black shadow-lg active:scale-95 transition">📥 存入槽位</button>
             </div>
 
-            <div className="bg-slate-200/50 p-4 rounded-[2.5rem] flex gap-3 overflow-x-auto no-scrollbar min-h-[140px] mx-2 shadow-inner">
+            <div className="bg-slate-200/50 p-4 rounded-[2.5rem] flex gap-3 overflow-x-auto no-scrollbar min-h-[140px] shadow-inner">
                 {slots.map((s, i) => (
                     <div key={i} className="relative w-24 h-32 bg-white rounded-xl shadow-md flex-shrink-0 border-2 border-white overflow-hidden group">
                         <img src={s.data} className="w-full h-full object-cover" />
-                        <div className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center text-[10px] z-10 font-bold" onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))}>✕</div>
-                        <div className="absolute inset-x-0 bottom-0 bg-slate-900/80 text-white text-[8px] text-center py-1 cursor-pointer" onClick={()=>{const c=s.config; setImage(c.image); setSuitImg(c.suitImg); setP({...c.p}); setSp({...c.sp}); setCfg(c.cfg);}}>載入編輯</div>
+                        <div className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 flex items-center justify-center text-[10px] font-bold" onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))}>✕</div>
+                        <div className="absolute inset-x-0 bottom-0 bg-slate-900/80 text-white text-[8px] text-center py-1 cursor-pointer" onClick={()=>{const c=s.config; setImage(c.image); setSuitImg(c.suitImg); setP({...c.p}); setSp({...c.sp}); setCfg(c.cfg);}}>載入</div>
                     </div>
                 ))}
             </div>
 
-            <div className="px-2 space-y-4 pb-24">
-                <div className="bg-white p-5 rounded-[2rem] border-2 border-blue-50 shadow-xl space-y-4">
-                    <h3 className="text-[10px] font-black text-blue-600 tracking-widest uppercase">📄 A4 Paper (Auto-Fill)</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-4 rounded-xl text-[10px] font-bold">混排</button>
-                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">2吋</button>
-                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">1吋</button>
-                    </div>
-                </div>
-                <div className="bg-white p-5 rounded-[2rem] border-2 border-emerald-50 shadow-xl space-y-4">
-                    <h3 className="text-[10px] font-black text-emerald-600 tracking-widest uppercase">🏪 Ibon 4x6 (Auto-Fill)</h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-4 rounded-xl text-[10px] font-bold">混排</button>
-                        <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">2吋</button>
-                        <button onClick={()=>exportDoc('46','1IN')} className="bg-slate-700 text-white py-4 rounded-xl text-[10px] font-bold">1吋</button>
-                    </div>
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-xl space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                    <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-800 text-white py-4 rounded-2xl text-xs font-bold">A4 滿版輸出</button>
+                    <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-4 rounded-2xl text-xs font-bold">4x6 滿版輸出</button>
                 </div>
             </div>
+
+            {preImg && (
+                <div className="preview-overlay">
+                    <div className="bg-white p-3 rounded-2xl max-w-[90vw] max-h-[70vh] overflow-auto shadow-2xl">
+                        <img src={preImg} className="w-full h-auto" />
+                    </div>
+                    <p className="text-white text-xs mt-4 font-bold">請確認排版與照片完整性</p>
+                    <div className="flex gap-4 mt-6">
+                        <button onClick={()=>setPreImg(null)} className="px-8 py-3 bg-slate-700 text-white rounded-2xl font-bold">取消</button>
+                        <a href={preImg} download={`${cfg.name}_Export.png`} onClick={()=>setPreImg(null)} className="px-8 py-3 bg-blue-500 text-white rounded-2xl font-bold text-center">確定下載</a>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
