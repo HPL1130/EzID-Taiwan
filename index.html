@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v7.9</title>
+    <title>EzID Taiwan v7.9 Full</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -19,8 +19,6 @@
             position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); z-index: 1000;
             display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
         }
-        .color-strip { display: flex; width: 100%; height: 6px; border-radius: 3px; overflow: hidden; }
-        .color-block { flex: 1; height: 100%; }
     </style>
 </head>
 <body class="bg-slate-100 pb-20 font-sans select-none">
@@ -36,7 +34,6 @@ function App() {
     const [suitImg, setSuitImg] = useState(null);
     const [slots, setSlots] = useState([]);
     const [target, setTarget] = useState("PHOTO");
-    // p.r = 旋轉, p.f = 鏡像
     const [p, setP] = useState({ x: 0, y: -20, s: 0.45, r: 0, f: 1 });
     const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0, r: 0 });
     const [cfg, setCfg] = useState({ bright: 100, guide: 0.8, name: "ProID" });
@@ -58,10 +55,9 @@ function App() {
             ctx.scale(sp.s, sp.s);
             ctx.drawImage(suitImg, -suitImg.width/2, -suitImg.height/2); ctx.restore();
         }
-        const isCentered = Math.abs(p.x) < 8 && Math.abs(p.y + 20) < 8;
         if (cfg.guide > 0) {
             ctx.save(); ctx.globalAlpha = cfg.guide; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
-            ctx.strokeStyle = isCentered ? "#10b981" : "#94a3b8"; 
+            ctx.strokeStyle = (Math.abs(p.x) < 8) ? "#10b981" : "#94a3b8"; 
             ctx.beginPath(); ctx.ellipse(175, 203, 108, 160, 0, 0, 7); ctx.stroke();
             ctx.restore();
         }
@@ -69,7 +65,7 @@ function App() {
 
     useEffect(() => { requestAnimationFrame(draw); }, [draw]);
 
-    const last = useRef({ pos: { x: 0, y: 0 } });
+    const last = useRef({ pos: null });
     const handlePointer = (e, type) => {
         const isT = e?.touches?.length > 0;
         if (type === 'start') {
@@ -83,7 +79,7 @@ function App() {
     };
 
     const exportDoc = async (type, mode) => {
-        if (!slots.length) return alert("槽位是空的，請先存入照片");
+        if (!slots.length) return alert("槽位空的");
         const isA4 = type === 'A4';
         const W = isA4 ? 2480 : 1800, H = isA4 ? 3508 : 1200;
         const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
@@ -124,8 +120,8 @@ function App() {
     };
 
     return (
-        <div className="max-w-md mx-auto p-4 space-y-6">
-            <header className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm sticky top-0 z-[200]">
+        <div className="max-w-md mx-auto p-4 space-y-6 pb-24">
+            <header className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm">
                 <h1 className="text-xl font-black italic">EzID <span className="text-blue-600">v7.9</span></h1>
                 <div className="flex gap-2">
                     <button onClick={()=>setP(v=>({...v, f:v.f*-1}))} className="px-3 py-1 bg-slate-800 text-white rounded-lg text-xs font-bold">鏡像</button>
@@ -133,17 +129,14 @@ function App() {
                 </div>
             </header>
 
-            <div className="canvas-container" onPointerDown={e=>handlePointer(e,'start')} onPointerMove={e=>handlePointer(e,'move')} onPointerUp={()=>handlePointer(null,'end')} onPointerLeave={()=>handlePointer(null,'end')}>
+            <div className="canvas-container" onPointerDown={e=>handlePointer(e,'start')} onPointerMove={e=>handlePointer(e,'move')} onPointerUp={()=>handlePointer(null,'end')}>
                 <canvas ref={canvasRef} width="350" height="450" className="w-full h-full" />
             </div>
 
-            <div className="bg-white p-6 rounded-[2.5rem] shadow-xl space-y-5 mx-1">
-                <div className="color-strip">
-                    {[100, 80, 60, 40, 20, 0].map(l => <div key={l} className="color-block" style={{background:`hsl(0,0%,${l}%)`}} />)}
-                </div>
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-xl space-y-4">
                 <div className="flex bg-slate-100 p-1 rounded-2xl">
                     {["PHOTO", "SUIT"].map(t => (
-                        <button key={t} onClick={()=>setTarget(t)} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target===t?'bg-white shadow text-blue-600':'text-slate-400'}`}>{t==='PHOTO'?'人像調整':'衣服調整'}</button>
+                        <button key={t} onClick={()=>setTarget(t)} className={`flex-1 py-2 text-xs font-black rounded-xl transition ${target===t?'bg-white shadow text-blue-600':'text-slate-400'}`}>{t==='PHOTO'?'人像':'衣服'}</button>
                     ))}
                 </div>
                 <div className="space-y-4">
@@ -159,7 +152,6 @@ function App() {
                 ))}
             </div>
 
-            {/* 下載防誤觸間隔區 */}
             <div className="grid grid-cols-2 gap-4 pt-12">
                 <label className="bg-slate-900 text-white py-4 rounded-3xl text-center font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO")}} }} /></label>
                 <button onClick={()=>{
@@ -182,9 +174,13 @@ function App() {
             </div>
 
             <div className="bg-white p-6 rounded-[2.5rem] shadow-xl space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                    <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-800 text-white py-4 rounded-2xl text-xs font-bold">A4 滿版輸出</button>
-                    <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-4 rounded-2xl text-xs font-bold">4x6 滿版輸出</button>
+                <div className="grid grid-cols-3 gap-2">
+                    <button onClick={()=>exportDoc('A4','MIX')} className="bg-slate-800 text-white py-3 rounded-xl text-[10px] font-bold">A4 混排</button>
+                    <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-800 text-white py-3 rounded-xl text-[10px] font-bold">A4 2吋</button>
+                    <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-800 text-white py-3 rounded-xl text-[10px] font-bold">A4 1吋</button>
+                    <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-3 rounded-xl text-[10px] font-bold">46 混排</button>
+                    <button onClick={()=>exportDoc('46','2IN')} className="bg-emerald-600 text-white py-3 rounded-xl text-[10px] font-bold">46 2吋</button>
+                    <button onClick={()=>exportDoc('46','1IN')} className="bg-emerald-600 text-white py-3 rounded-xl text-[10px] font-bold">46 1吋</button>
                 </div>
             </div>
 
@@ -193,7 +189,6 @@ function App() {
                     <div className="bg-white p-3 rounded-2xl max-w-[90vw] max-h-[70vh] overflow-auto shadow-2xl">
                         <img src={preImg} className="w-full h-auto" />
                     </div>
-                    <p className="text-white text-xs mt-4 font-bold">請確認排版與照片完整性</p>
                     <div className="flex gap-4 mt-6">
                         <button onClick={()=>setPreImg(null)} className="px-8 py-3 bg-slate-700 text-white rounded-2xl font-bold">取消</button>
                         <a href={preImg} download={`${cfg.name}_Export.png`} onClick={()=>setPreImg(null)} className="px-8 py-3 bg-blue-500 text-white rounded-2xl font-bold text-center">確定下載</a>
