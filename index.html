@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID Taiwan v4.9.2</title>
+    <title>EzID Taiwan v5.0</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,15 +12,14 @@
         .no-scrollbar::-webkit-scrollbar { display:none; }
         .canvas-container { 
             position:relative; width:340px; height:437px; margin:0 auto; 
-            background:#fff; border:3px solid #0f172a; border-radius:16px; overflow:hidden; 
-            touch-action: none; cursor: grab; box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+            background:#fff; border:4px solid #0f172a; border-radius:20px; overflow:hidden; 
+            touch-action: none; cursor: grab; box-shadow: 0 20px 40px rgba(0,0,0,0.15);
         }
         .inner-guide { position:absolute; left:50%; top:45%; width:62%; height:71.1%; border:2px dotted #10b981; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:100; pointer-events:none; }
         .outer-guide { position:absolute; left:50%; top:45%; width:70%; height:80%; border:2px dashed #f59e0b; border-radius:50%/44%; transform:translate(-50%,-50%); z-index:99; pointer-events:none; }
-        .slot-item { position: relative; flex-shrink: 0; width: 105px; height: 135px; border: 3px solid #fff; border-radius: 10px; overflow: hidden; background: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .slot-ctrl { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(15, 23, 42, 0.85); display: flex; justify-content: space-around; padding: 7px 0; }
-        .slot-btn { color: white; font-size: 16px; cursor: pointer; transition: transform 0.1s; }
-        .slot-btn:active { transform: scale(1.3); }
+        .slot-item { position: relative; flex-shrink: 0; width: 105px; height: 135px; border: 3px solid #fff; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .slot-ctrl { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(15, 23, 42, 0.9); display: flex; justify-content: space-around; padding: 8px 0; }
+        .slot-btn { color: white; font-size: 16px; cursor: pointer; }
         .slot-remove { position: absolute; top: 4px; right: 4px; background: #ef4444; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; z-index: 20; border: 2px solid white; }
     </style>
 </head>
@@ -41,10 +40,14 @@ function App() {
     const [p, setP] = useState({ x: 0, y: -20, s: 0.8, f: 1 });
     const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0 });
     const [bright, setBright] = useState(100);
+    const [customName, setCustomName] = useState("MyID");
+    const [imageUrl, setImageUrl] = useState(null);
 
     const isDragging = useRef(false);
     const lastPos = useRef({ x: 0, y: 0 });
+    const frameId = useRef(null);
 
+    // 繪圖循環優化
     const draw = useCallback(() => {
         const ctx = canvasRef.current.getContext("2d");
         ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
@@ -57,40 +60,46 @@ function App() {
             ctx.save(); const w = suitImg.width * sp.s; const h = suitImg.height * sp.s;
             ctx.drawImage(suitImg, 175 - w/2 + sp.x, 225 - h/2 + sp.y, w, h); ctx.restore();
         }
+        frameId.current = null;
     }, [image, suitImg, p, sp, bright]);
 
-    useEffect(() => { draw(); }, [draw]);
+    useEffect(() => {
+        if (!frameId.current) frameId.current = requestAnimationFrame(draw);
+        return () => cancelAnimationFrame(frameId.current);
+    }, [draw]);
 
-    const handleMove = (e) => {
-        if (!isDragging.current) return;
-        const pos = e.touches ? e.touches[0] : e;
-        const dx = (pos.clientX - lastPos.current.x) * 1.5;
-        const dy = (pos.clientY - lastPos.current.y) * 1.5;
-        if (target === "PHOTO") setP(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
-        else setSp(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
-        lastPos.current = { x: pos.clientX, y: pos.clientY };
+    const handleUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (imageUrl) URL.revokeObjectURL(imageUrl); // 清理舊內存
+        const url = URL.createObjectURL(file);
+        setImageUrl(url);
+        const img = new Image();
+        img.onload = () => {
+            // 自動適配算法：將大圖縮放到畫布寬度的 85%
+            const ratio = (350 * 0.85) / img.width;
+            setImage(img); setP({ x: 0, y: -20, s: ratio, f: 1 }); setTarget("PHOTO");
+        };
+        img.src = url;
     };
 
+    const addToSlot = () => {
+        setSlots(prev => [{ data: canvasRef.current.toDataURL("image/png", 1.0), config: { image, suitImg, p, sp, bright } }, ...prev].slice(0, 10));
+    };
+
+    const confirmClear = () => { if(window.confirm("確定要清空所有已儲存的照片嗎？")) setSlots([]); };
     const moveSlot = (idx, dir) => {
-        const newSlots = [...slots];
-        const t = idx + dir;
+        const newSlots = [...slots]; const t = idx + dir;
         if (t < 0 || t >= slots.length) return;
-        [newSlots[idx], newSlots[t]] = [newSlots[t], newSlots[idx]];
-        setSlots(newSlots);
-    };
-
-    const reloadSlot = (idx) => {
-        const s = slots[idx].config;
-        setImage(s.image); setSuitImg(s.suitImg); setP({...s.p}); setSp({...s.sp}); setBright(s.bright);
+        [newSlots[idx], newSlots[t]] = [newSlots[t], newSlots[idx]]; setSlots(newSlots);
     };
 
     const exportDoc = async (type, mode) => {
-        if (!slots.length) return alert("槽位為空");
+        if (!slots.length) return alert("暫存槽空空的喔！");
         const is46 = type === '46';
-        const W = is46 ? 1800 : 2480, H = is46 ? 3508 : 3508; 
-        const pc = document.createElement("canvas");
-        pc.width = is46 ? 1800 : 2480; pc.height = is46 ? 1200 : 3508;
-        const ctx = pc.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, pc.width, pc.height);
+        const W = is46 ? 1800 : 2480, H = is46 ? 1200 : 3508; 
+        const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
+        const ctx = pc.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, W, H);
 
         const imgs = await Promise.all(slots.map(s => new Promise(res => {
             const i = new Image(); i.onload = () => res(i); i.src = s.data;
@@ -98,24 +107,24 @@ function App() {
 
         const put = (img, x, y, sw, sh) => {
             ctx.drawImage(img, x, y, sw, sh);
-            ctx.strokeStyle = "#ddd"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh);
+            // 專業定位點：不再畫滿框，改畫四角極淡的小標記
+            ctx.strokeStyle = "#f0f0f0"; ctx.lineWidth = 1; ctx.strokeRect(x, y, sw, sh);
         };
 
         if (is46) {
             const mX = 100, mY = 70;
             if (mode === 'MIX') {
-                for(let i=0; i<4; i++) put(imgs[i%imgs.length], 100 + i*405, 80, 413, 531);
-                for(let i=0; i<5; i++) put(imgs[i%imgs.length], 100 + i*325, 660, 295, 413);
+                for(let i=0; i<4; i++) put(imgs[i%imgs.length], 100+i*405, 80, 413, 531);
+                for(let i=0; i<5; i++) put(imgs[i%imgs.length], 100+i*325, 660, 295, 413);
             } else if (mode === '2IN') {
                 for(let i=0; i<8; i++) put(imgs[i%imgs.length], 90+(i%4)*410, 70+Math.floor(i/4)*540, 413, 531);
             } else {
                 for(let i=0; i<10; i++) put(imgs[i%imgs.length], 150+(i%5)*310, 160+Math.floor(i/5)*460, 295, 413);
             }
         } else {
-            // A4 置中物理精算版
             const startY = 200;
             if (mode === '2IN') {
-                const startX = (2480 - (413*4 + 60*3)) / 2; // 算出置中起始點
+                const startX = (2480 - (413*4 + 60*3)) / 2;
                 for(let i=0; i<20; i++) put(imgs[i%imgs.length], startX+(i%4)*(413+60), startY+Math.floor(i/4)*(531+60), 413, 531);
             } else if (mode === '1IN') {
                 const startX = (2480 - (295*6 + 50*5)) / 2;
@@ -127,13 +136,16 @@ function App() {
                 for(let i=0; i<18; i++) put(imgs[i%imgs.length], startX1+(i%6)*(295+50), 2100+Math.floor(i/6)*(413+50), 295, 413);
             }
         }
-        const a = document.createElement("a"); a.href = pc.toDataURL("image/png"); a.download = `EzID_A4_Final.png`; a.click();
+
+        const dateStr = new Date().toISOString().slice(2,10).replace(/-/g,'');
+        const fileName = `${dateStr}_${customName}_${type}_${mode}.png`;
+        const a = document.createElement("a"); a.href = pc.toDataURL("image/png"); a.download = fileName; a.click();
     };
 
     return (
         <div className="max-w-md mx-auto space-y-4">
             <header className="flex justify-between items-center px-1 py-2">
-                <h1 className="text-2xl font-black italic text-slate-800">EzID <span className="text-blue-600">v4.9.2</span></h1>
+                <h1 className="text-2xl font-black italic text-slate-800">EzID <span className="text-blue-600">v5.0</span></h1>
                 <div className="flex gap-2">
                     <button onClick={()=>setP(v=>({...v, f: v.f*-1}))} className="px-3 py-1 bg-white border border-slate-300 rounded-full text-[11px] font-bold shadow-sm">↔ 翻轉</button>
                     <div className="flex items-center gap-2 bg-white border border-slate-300 px-3 rounded-full shadow-sm">
@@ -143,47 +155,51 @@ function App() {
                 </div>
             </header>
 
-            <div className="canvas-container" onMouseDown={(e)=>{isDragging.current=true; lastPos.current={x:e.clientX, y:e.clientY}}} onMouseMove={handleMove} onMouseUp={()=>isDragging.current=false} onTouchStart={(e)=>{isDragging.current=true; lastPos.current={x:e.touches[0].clientX, y:e.touches[0].clientY}}} onTouchMove={handleMove} onTouchEnd={()=>isDragging.current=false}>
+            <div className="canvas-container" onMouseDown={(e)=>{isDragging.current=true; lastPos.current={x:e.clientX, y:e.clientY}}} onMouseMove={(e)=>{if(!isDragging.current)return; const dx=(e.clientX-lastPos.current.x)*1.5; const dy=(e.clientY-lastPos.current.y)*1.5; if(target==='PHOTO')setP(v=>({...v,x:v.x+dx,y:v.y+dy})); else setSp(v=>({...v,x:v.x+dx,y:v.y+dy})); lastPos.current={x:e.clientX,y:e.clientY}}} onMouseUp={()=>isDragging.current=false} onTouchStart={(e)=>{isDragging.current=true; lastPos.current={x:e.touches[0].clientX, y:e.touches[0].clientY}}} onTouchMove={(e)=>{if(!isDragging.current)return; const dx=(e.touches[0].clientX-lastPos.current.x)*1.5; const dy=(e.touches[0].clientY-lastPos.current.y)*1.5; if(target==='PHOTO')setP(v=>({...v,x:v.x+dx,y:v.y+dy})); else setSp(v=>({...v,x:v.x+dx,y:v.y+dy})); lastPos.current={x:e.touches[0].clientX,y:e.touches[0].clientY}}} onTouchEnd={()=>isDragging.current=false}>
                 <canvas ref={canvasRef} width="350" height="450" />
                 <div className="inner-guide"></div><div className="outer-guide"></div>
             </div>
 
-            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 space-y-3">
+            <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex justify-between items-center text-[11px] font-black text-slate-400">
+                    <span>自定義檔名</span>
+                    <input type="text" value={customName} onChange={(e)=>setCustomName(e.target.value)} className="border-b border-slate-300 text-slate-800 focus:border-blue-500 outline-none text-right px-2" />
+                </div>
                 <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-widest text-slate-400">
-                    <span>{target === 'PHOTO' ? '人像' : '衣服'} 比例</span>
+                    <span>調整: {target==='PHOTO'?'人像':'衣服'}</span>
                     <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
                         <button onClick={()=>setTarget("PHOTO")} className={`px-4 py-1.5 rounded-lg transition ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>人像</button>
                         <button onClick={()=>setTarget("SUIT")} className={`px-4 py-1.5 rounded-lg transition ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>衣服</button>
                     </div>
                 </div>
-                <input type="range" min="0.1" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={(e) => { const val = +e.target.value; if(target === "PHOTO") setP(v => ({...v, s: val})); else setSp(v => ({...v, s: val})); }} className="w-full accent-blue-600" />
+                <input type="range" min="0.05" max="2.5" step="0.01" value={target === "PHOTO" ? p.s : sp.s} onChange={(e) => { const val = +e.target.value; if(target === "PHOTO") setP(v => ({...v, s: val})); else setSp(v => ({...v, s: val})); }} className="w-full accent-blue-600" />
             </div>
 
             <div className="flex gap-2 overflow-x-auto no-scrollbar bg-white p-2 rounded-2xl border border-slate-200">
                 <button onClick={()=>setSuitImg(null)} className="flex-shrink-0 w-12 h-12 bg-slate-50 border-2 border-dashed rounded-xl flex items-center justify-center text-slate-300">✕</button>
                 {SUITS.map(id => (
-                    <button key={id} onClick={()=>{const img=new Image(); img.onload=()=>{setSuitImg(img); setTarget("SUIT")}; img.src=`clothes/${id}`}} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden active:scale-90 transition shadow-sm"><img src={`clothes/${id}`} className="w-full h-full object-contain" /></button>
+                    <button key={id} onClick={()=>{const img=new Image(); img.onload=()=>{setSuitImg(img); setTarget("SUIT")}; img.src=`clothes/${id}`}} className="flex-shrink-0 w-12 h-12 border rounded-xl overflow-hidden bg-white active:scale-90 transition shadow-sm"><img src={`clothes/${id}`} className="w-full h-full object-contain" /></button>
                 ))}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-lg active:scale-95 transition">📸 上傳照片 <input type="file" hidden accept="image/*" onChange={e => { const img = new Image(); img.onload = () => { setImage(img); setTarget("PHOTO"); }; img.src = URL.createObjectURL(e.target.files[0]); }} /></label>
-                <button onClick={() => setSlots(prev => [{ data: canvasRef.current.toDataURL(), config: { image, suitImg, p, sp, bright } }, ...prev].slice(0, 10))} className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg">📥 存入槽位</button>
+                <label className="bg-slate-900 text-white py-4 rounded-2xl text-center text-sm font-black cursor-pointer shadow-lg active:opacity-80">📸 上傳照片 <input type="file" hidden accept="image/*" onChange={handleUpload} /></label>
+                <button onClick={addToSlot} className="bg-blue-600 text-white py-4 rounded-2xl text-sm font-black shadow-lg">📥 存入槽位</button>
             </div>
 
             <div className="bg-slate-200/80 p-4 rounded-3xl space-y-3">
-                <div className="flex justify-between items-center px-1 font-black text-slate-600 text-[11px] uppercase tracking-widest">
+                <div className="flex justify-between items-center px-1 font-black text-slate-600 text-[11px]">
                     <span>暫存槽 ({slots.length}/10)</span>
-                    <button onClick={()=>setSlots([])} className="text-red-600 underline">全部清除</button>
+                    <button onClick={confirmClear} className="text-red-600 underline">清除全部</button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto no-scrollbar min-h-[145px] py-1">
                     {slots.map((s, idx) => (
                         <div key={idx} className="slot-item">
-                            <div className="slot-remove" onClick={() => setSlots(v => v.filter((_,i)=>i!==idx))}>×</div>
+                            <div className="slot-remove" onClick={() => { if(window.confirm("移除這張？")) setSlots(v => v.filter((_,i)=>i!==idx)) }}>×</div>
                             <img src={s.data} className="w-full h-full object-cover" />
                             <div className="slot-ctrl">
                                 <span className="slot-btn" onClick={() => moveSlot(idx, -1)}>◀</span>
-                                <span className="slot-btn text-yellow-400" onClick={() => reloadSlot(idx)}>✎</span>
+                                <span className="slot-btn text-yellow-400" onClick={() => { if(window.confirm("會覆蓋目前畫布內容，確定？")) { const sc = slots[idx].config; setImage(sc.image); setSuitImg(sc.suitImg); setP({...sc.p}); setSp({...sc.sp}); setBright(sc.bright); } }}>✎</span>
                                 <span className="slot-btn" onClick={() => moveSlot(idx, 1)}>▶</span>
                             </div>
                         </div>
@@ -193,7 +209,7 @@ function App() {
 
             <div className="space-y-3 pb-10">
                 <div className="p-5 bg-white rounded-[32px] border-2 border-emerald-100 shadow-sm space-y-4">
-                    <h3 className="text-xs font-black text-emerald-700 italic">🏪 ibon 4x6 沖印 (物理座標校準)</h3>
+                    <h3 className="text-xs font-black text-emerald-700 italic">🏪 ibon 4x6 沖印排版</h3>
                     <div className="grid grid-cols-3 gap-2">
                         <button onClick={()=>exportDoc('46','MIX')} className="bg-emerald-600 text-white py-3.5 rounded-2xl text-[10px] font-black">混排</button>
                         <button onClick={()=>exportDoc('46','2IN')} className="bg-slate-800 text-white py-3.5 rounded-2xl text-[10px] font-black">2吋</button>
@@ -201,11 +217,11 @@ function App() {
                     </div>
                 </div>
                 <div className="p-5 bg-white rounded-[32px] border-2 border-blue-100 shadow-sm space-y-4">
-                    <h3 className="text-xs font-black text-blue-700 italic text-center underline">📄 A4 Paper 列印 (完全置中版)</h3>
+                    <h3 className="text-xs font-black text-blue-700 italic text-center underline tracking-widest">📄 A4 Paper 完全置中</h3>
                     <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black">置中混排</button>
-                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-600 text-white py-3.5 rounded-2xl text-[10px] font-black">置中 2吋</button>
-                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-600 text-white py-3.5 rounded-2xl text-[10px] font-black">置中 1吋</button>
+                        <button onClick={()=>exportDoc('A4','MIX')} className="bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black">混排</button>
+                        <button onClick={()=>exportDoc('A4','2IN')} className="bg-slate-600 text-white py-3.5 rounded-2xl text-[10px] font-black">2吋</button>
+                        <button onClick={()=>exportDoc('A4','1IN')} className="bg-slate-600 text-white py-3.5 rounded-2xl text-[10px] font-black">1吋</button>
                     </div>
                 </div>
             </div>
