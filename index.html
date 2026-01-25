@@ -1,32 +1,223 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EzID v15.3 企業穩定版</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-.canvas-container{position:relative;width:340px;height:437px;margin:10px auto;background:#fff;border:4px solid #0f172a;border-radius:24px;overflow:hidden;touch-action:none;cursor:grab;box-shadow:0 25px 50px-12px rgba(0,0,0,.25)}
-.canvas-container:active{cursor:grabbing}
-.preview-overlay{position:fixed;inset:0;background:rgba(15,23,42,.98);z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
-.no-scrollbar::-webkit-scrollbar{display:none}
-.tab-active{background:#fff!important;box-shadow:0 4px 12px rgba(0,0,0,.15)!important;transform:scale(1.02)}
-.loading-spinner{width:16px;height:16px;border:2px solid #e5e7eb;border-top:2px solid #3b82f6;border-radius:50%;animation:spin 1s linear infinite}
-@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EzID Taiwan v16.0 FINAL</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display:none; }
+        .canvas-container { 
+            position:relative; width:340px; height:437px; margin:10px auto; 
+            background:#fff; border:4px solid #0f172a; border-radius:24px; overflow:hidden; 
+            touch-action: none; cursor: grab; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+        .canvas-container:active { cursor: grabbing; }
+        .preview-overlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.98); z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+        }
+        .btn-active { transform: scale(0.95); opacity: 0.8; }
+    </style>
 </head>
-<body class="bg-slate-100 p-4 pb-24">
-<div id="root"></div>
+<body class="bg-slate-100 pb-20 font-sans select-none">
+    <div id="root"></div>
+
 <script type="text/babel">
-const{useState,useRef,useEffect,useCallback,useLayoutEffect}=React;
-const SUITS={male:['male/m1.png','male/m2.png','male/m3.png','male/m4.png','male/m5.png'],female:['female/f1.png','female/f2.png','female/f3.png','female/f4.png','female/f5.png']};
-const validateImageFile=file=>file&&file.size<8388608&&file.type.startsWith('image/');
-function useCanvas(canvasRef,image,suitImg,photoT,suitT,config){const draw=useCallback(()=>{const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext('2d'),{bright,guide}=config;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,350,450);if(image?.complete){ctx.save();ctx.filter=`brightness(${bright}%)`;ctx.translate(175+photoT.x,225+photoT.y);ctx.rotate(photoT.r*Math.PI/180);ctx.scale(photoT.s*photoT.f,photoT.s);ctx.imageSmoothingQuality='high';ctx.drawImage(image,-image.width/2,-image.height/2);ctx.restore()}if(suitImg?.complete){ctx.save();ctx.translate(175+suitT.x,225+suitT.y);ctx.rotate(suitT.r*Math.PI/180);ctx.scale(suitT.s,suitT.s);ctx.imageSmoothingQuality='high';ctx.drawImage(suitImg,-suitImg.width/2,-suitImg.height/2);ctx.restore()}if(guide>0){ctx.save();ctx.globalAlpha=guide;ctx.strokeStyle=Math.abs(photoT.x)<5&&Math.abs(photoT.y+20)<5?'#10b981':'#ef4444';ctx.setLineDash([5,5]);ctx.lineWidth=2;ctx.lineCap='round';ctx.beginPath();ctx.ellipse(175,203,108,160,0,0,Math.PI*2);ctx.stroke();ctx.restore()}},[image?.complete,suitImg?.complete,photoT,suitT,config]);useLayoutEffect(()=>draw(),[draw])}
-function App(){const[image,setImage]=useState(null),[suitImg,setSuitImg]=useState(null),[suitIndex,setSuitIndex]=useState(-1),[genderTab,setGenderTab]=useState('male'),[clothesLoaded,setClothesLoaded]=useState(0),[photoTransform,setPhotoTransform]=useState({x:0,y:-20,s:.45,r:0,f:1}),[suitTransform,setSuitTransform]=useState({x:0,y:80,s:1,r:0}),[config,setConfig]=useState({bright:100,guide:.7,name:'EzID'}),[slots,setSlots]=useState([]),[target,setTarget]=useState('PHOTO'),[preImg,setPreImg]=useState(null),[uiState,setUiState]=useState({isDragging:false,isLoadingSuit:false});const canvasRef=useRef(),dragRef=useRef({x:0,y:0}),revokeRef=useRef(new Set()),clothesCache=useRef({});useEffect(()=>()=>revokeRef.current.forEach(URL.revokeObjectURL),[]);const preloadClothes=useCallback(()=>{let count=0;SUITS.male.concat(SUITS.female).forEach((path,i)=>{if(clothesCache.current[i]){count++;setClothesLoaded(count);return}const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=img.width;c.height=img.height;c.getContext('2d').drawImage(img,0,0);clothesCache.current[i]=c.toDataURL('image/png',.9);count++;setClothesLoaded(Math.min(count,10))};img.onerror=()=>{clothesCache.current[i]=path;count++;setClothesLoaded(Math.min(count,10))};img.src=`clothes/${path}`})},[]);useEffect(()=>{preloadClothes()},[preloadClothes]);const handleDragStart=e=>{e.preventDefault();setUiState(s=>({...s,isDragging:true}));const rect=canvasRef.current?.getBoundingClientRect();if(!rect)return;const x=e.touches?.[0]?.clientX||e.clientX,y=e.touches?.[0]?.clientY||e.clientY;dragRef.current={x:x-rect.left,y:y-rect.top}};const handleDragMove=e=>{if(!uiState.isDragging)return;e.preventDefault();const rect=canvasRef.current?.getBoundingClientRect();if(!rect)return;const x=e.touches?.[0]?.clientX||e.clientX,y=e.touches?.[0]?.clientY||e.clientY,dx=(x-rect.left-dragRef.current.x)*.5,dy=(y-rect.top-dragRef.current.y)*.5;dragRef.current={x:x-rect.left,y:y-rect.top};target==='PHOTO'?setPhotoTransform(p=>({...p,x:Math.max(-180,Math.min(180,p.x+dx)),y:Math.max(-140,Math.min(240,p.y+dy))})):setSuitTransform(s=>({...s,x:Math.max(-180,Math.min(180,s.x+dx)),y:Math.max(-140,Math.min(240,s.y+dy))}))};const handleDragEnd=()=>{setUiState(s=>({...s,isDragging:false}))};const handleFileUpload=e=>{const file=e.target.files[0];if(!validateImageFile(file)){alert('請上傳8MB以內圖片');e.target.value='';return}const url=URL.createObjectURL(file);revokeRef.current.add(url);const img=new Image();img.onload=()=>{setImage(img);setTarget('PHOTO');setPhotoTransform({x:0,y:-20,s:.45,r:0,f:1})};img.onerror=()=>{alert('圖片載入失敗');URL.revokeObjectURL(url);revokeRef.current.delete(url)};img.src=url};const loadSuit=i=>{if(suitIndex===i||uiState.isLoadingSuit)return;setUiState(s=>({...s,isLoadingSuit:true}));setSuitIndex(i);const src=clothesCache.current[i]||`clothes/${SUITS[genderTab][i%5]}`;const img=new Image();img.onload=()=>{setSuitImg(img);setTarget('SUIT');setUiState(s=>({...s,isLoadingSuit:false}))};img.onerror=()=>{setUiState(s=>({...s,isLoadingSuit:false}));alert('衣服載入失敗')};img.src=src};const saveToSlot=()=>{if(!canvasRef.current)return;const c=document.createElement('canvas');c.width=350;c.height=450;c.getContext('2d').drawImage(canvasRef.current,0,0);setSlots(p=>[c.toDataURL('image/png',.92),...p.slice(0,9)])};const exportA4=async()=>{if(!slots.length){alert('請先存槽位');return}const c=document.createElement('canvas');c.width=2480;c.height=3508;const ctx=c.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,2480,3508);const imgs=await Promise.all(slots.slice(0,20).map(src=>new Promise(r=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})));for(let i=0;i<imgs.length;i++){const img=imgs[i];if(img){const x=205+(i%4)*520,y=300+Math.floor(i/4)*600;ctx.drawImage(img,x,y,413,531);ctx.strokeStyle='#e5e7eb';ctx.lineWidth=3;ctx.strokeRect(x,y,413,531)}}setPreImg(c.toDataURL('image/png',.95))};const getFullFileName=()=>{const d=new Date();return`${config.name}_${d.toISOString().slice(2,16).replace(/[:-]/g,'')}.png`};useCanvas(canvasRef,image,suitImg,photoTransform,suitTransform,config);return React.createElement('div',{className:'max-w-md mx-auto p-4 space-y-4 pb-24'},React.createElement('div',{className:'fixed top-4 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm px-4 py-2 rounded-2xl shadow-xl z-50 border'},clothesLoaded===10?React.createElement('span',{className:'text-emerald-600 font-bold text-sm flex items-center gap-2'},'✅ 準備完成！'):React.createElement('span',{className:'text-blue-600 font-bold text-sm flex items-center gap-2'},'⏳ 載入中 ',clothesLoaded,'/10',React.createElement('div',{className:'loading-spinner'}))),React.createElement('div',{className:'bg-white/90 p-5 rounded-3xl shadow-xl border'},React.createElement('div',{className:'flex justify-between items-center mb-3'},React.createElement('h1',{className:'text-xl font-black text-slate-800'},'EzID v15.3'),React.createElement('div',{className:'flex gap-1'},React.createElement('input',{value:config.name,onChange:e=>setConfig(c=>({...c,name:e.target.value.slice(0,20)})),className:'w-20 px-2 py-1 bg-slate-100 rounded text-sm font-bold border',maxLength:20}),React.createElement('button',{onClick:()=>setPhotoTransform(p=>({...p,f:p.f*-1})),className:'px-2 py-1 bg-slate-700 text-white rounded text-xs font-bold hover:bg-slate-800 ml-1'},'🔄'),React.createElement('button',{onClick:()=>{setPhotoTransform({x:0,y:-20,s:.45,r:0,f:1});setSuitTransform({x:0,y:80,s:1,r:0})},className:'px-2 py-1 bg-emerald-500 text-white rounded text-xs font-bold hover:bg-emerald-600 ml-1'},'↺')))),React.createElement('div',{className:`canvas-container ${uiState.isDragging?'grabbing':''}`,onPointerDown:handleDragStart,onPointerMove:handleDragMove,onPointerUp:handleDragEnd,onPointerLeave:handleDragEnd,onTouchStart:handleDragStart,onTouchMove:handleDragMove,onTouchEnd:handleDragEnd},React.createElement('canvas',{ref:canvasRef,width:350,height:450,className:'w-full h-full'})),React.createElement('div',{className:'bg-white p-4 rounded-3xl shadow-xl border'},React.createElement('div',{className:'flex mb-4'},React.createElement('button',{onClick:()=>setGenderTab('male'),className:`flex-1 py-3 px-4 font-bold rounded-2xl mr-2 ${genderTab==='male'?'tab-active text-blue-600 bg-gradient-to-r from-blue-400 to-blue-500 text-white':'bg-slate-200 hover:bg-slate-300 text-slate-700'}`},'👨 男裝'),React.createElement('button',{onClick:()=>setGenderTab('female'),className:`flex-1 py-3 px-4 font-bold rounded-2xl ${genderTab==='female'?'tab-active text-pink-600 bg-gradient-to-r from-pink-400 to-pink-500 text-white':'bg-slate-200 hover:bg-slate-300 text-slate-700'}`},'👩 女裝')),React.createElement('div',{className:'flex gap-2 overflow-x-auto no-scrollbar pb-2 -mb-2'},React.createElement('button',{onClick:()=>{setSuitImg(null);setSuitIndex(-1);setTarget('PHOTO')},className:'w-16 h-16 rounded-2xl border-2 border-dashed border-red-300 bg-red-50 flex items-center justify-center hover:bg-red-100 active:scale-95'},'🚫'),SUITS[genderTab].map((suit,i)=>React.createElement('button',{key:i,onClick:()=>loadSuit(i),disabled:uiState.isLoadingSuit,className:`w-16 h-16 rounded-2xl border-2 overflow-hidden ${suitIndex===i?'border-blue-500 ring-2 ring-blue-200 scale-105 shadow-lg':'border-slate-200 hover:border-blue-400 hover:scale-105'} ${uiState.isLoadingSuit?'opacity-50':''}`},React.createElement('img',{src:clothesCache.current[i]||`clothes/${suit}`,className:'w-full h-full object-cover'})))))),React.createElement('div',{className:'bg-white p-6 rounded-3xl shadow-xl border space-y-4'},React.createElement('div',{className:'flex bg-slate-200 p-1 rounded-2xl'},React.createElement('button',{onClick:()=>setTarget('PHOTO'),className:`flex-1 py-3 text-sm font-bold rounded-xl ${target==='PHOTO'?'bg-white shadow-md text-blue-600':'text-slate-500 hover:bg-white/50'}`},'👤 人像'),React.createElement('button',{onClick:()=>setTarget('SUIT'),className:`flex-1 py-3 text-sm font-bold rounded-xl ${target==='SUIT'?'bg-white shadow-md text-blue-600':'text-slate-500 hover:bg-white/50'}`},'👕 衣服')),React.createElement('div',{className:'space-y-3'},[React.createElement('div',{className:'flex items-center gap-3',key:'size'},React.createElement('span',{className:'text-xs font-bold text-slate-500 w-12'},'SIZE'),React.createElement('input',{type:'range',min:.1,max:2.5,step:.01,value:target==='PHOTO'?photoTransform.s:suitTransform.s,onChange:e=>target==='PHOTO'?setPhotoTransform(p=>({...p,s:+e.target.value})):setSuitTransform(s=>({...s,s:+e.target.value})),className:'flex-1 h-2 bg-slate-200 rounded-lg accent-blue-500'}),React.createElement('span',{className:'text-sm font-mono w-12 text-right font-bold'},(target==='PHOTO'?photoTransform.s:suitTransform.s).toFixed(2))),React.createElement('div',{className:'flex items-center gap-3',key:'rotate'},React.createElement('span',{className:'text-xs font-bold text-slate-500 w-12'},'ROTATE'),React.createElement('input',{type:'range',min:-60,max:60,step:1,value:target==='PHOTO'?photoTransform.r:suitTransform.r,onChange:e=>target==='PHOTO'?setPhotoTransform(p=>({...p,r:+e.target.value})):setSuitTransform(s=>({...s,r:+e.target.value})),className:'flex-1 h-2 bg-slate-200 rounded-lg accent-emerald-500'}),React.createElement('span',{className:'text-sm font-mono w-12 text-right font-bold'},target==='PHOTO'?photoTransform.r:suitTransform.r,'°')),React.createElement('div',{className:'flex items-center gap-3',key:'bright'},React.createElement('span',{className:'text-xs font-bold text-slate-500 w-12'},'BRIGHT'),React.createElement('input',{type:'range',min:50,max:150,step:1,value:config.bright,onChange:e=>setConfig(c=>({...c,bright:+e.target.value})),className:'flex-1 h-2 bg-slate-200 rounded-lg accent-amber-500'}),React.createElement('span',{className:'text-sm font-mono w-12 text-right font-bold'},config.bright,'%')),React.createElement('div',{className:'flex items-center gap-3',key:'guide'},React.createElement('span',{className:'text-xs font-bold text-slate-500 w-12'},'GUIDE'),React.createElement('input',{type:'range',min:0,max:1,step:.1,value:config.guide,onChange:e=>setConfig(c=>({...c,guide:+e.target.value})),className:'flex-1 h-2 bg-slate-200 rounded-lg accent-slate-400'}),React.createElement('span',{className:'text-sm font-mono w-12 text-right font-bold'},Math.round(config.guide*100),'%'))])),React.createElement('div',{className:'grid grid-cols-2 gap-4'},React.createElement('label',{className:'bg-gradient-to-r from-slate-800 to-slate-900 text-white py-5 rounded-3xl text-center font-black shadow-xl hover:shadow-2xl cursor-pointer block'},'📸 上傳照片',React.createElement('input',{type:'file',accept:'image/*',hidden:true,onChange:handleFileUpload})),React.createElement('button',{onClick:saveToSlot,className:'bg-gradient-to-r from-blue-600 to-blue-700 text-white py-5 rounded-3xl font-black shadow-xl hover:shadow-2xl'},'📥 存槽位 (',slots.length,'/10)')),React.createElement('div',{className:'bg-slate-100 p-4 rounded-3xl flex gap-3 overflow-x-auto no-scrollbar min-h-[140px]'},slots.map((slot,i)=>React.createElement('div',{key:i,className:'relative w-24 h-32 bg-white rounded-2xl shadow-md flex-shrink-0 border hover:shadow-xl overflow-hidden'},React.createElement('img',{src:slot,className:'w-full h-full object-cover'}),React.createElement('button',{className:'absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full text-xs font-bold hover:bg-red-600',onClick:()=>setSlots(p=>p.filter((_,idx)=>idx!==i))},'×')))),React.createElement('div',{className:'bg-gradient-to-r from-emerald-600 to-emerald-700 text-white p-6 rounded-3xl shadow-xl hover:shadow-2xl cursor-pointer'},React.createElement('button',{onClick:exportA4,className:'w-full font-black text-lg'},'🖨️ A4專業排版')),preImg&&React.createElement('div',{className:'preview-overlay',onClick:e=>e.target===e.currentTarget&&setPreImg(null)},React.createElement('div',{className:'bg-white p-6 rounded-3xl max-w-[95vw] max-h-[80vh] overflow-auto shadow-2xl',onClick:e=>e.stopPropagation()},React.createElement('img',{src:preImg,className:'w-full h-auto rounded-2xl mb-6'}),React.createElement('div',{className:'flex gap-4'},React.createElement('button',{onClick:()=>setPreImg(null),className:'flex-1 py-3 bg-slate-700 hover:bg-slate-800 text-white rounded-2xl font-bold'},'返回'),React.createElement('a',{href:preImg,download:getFullFileName(),className:'flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-center'},'💾 下載'))))))}
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+const { useState, useRef, useEffect, useCallback } = React;
+const SUITS = {
+    male: ['male/m1.png','male/m2.png','male/m3.png','male/m4.png','male/m5.png'],
+    female: ['female/f1.png','female/f2.png','female/f3.png','female/f4.png','female/f5.png']
+};
+
+function App() {
+    const canvasRef = useRef(null);
+    const dragPos = useRef({ x: 0, y: 0, isDown: false });
+    const [image, setImage] = useState(null);
+    const [suitImg, setSuitImg] = useState(null);
+    const [gender, setGender] = useState('male');
+    const [target, setTarget] = useState("PHOTO");
+    const [p, setP] = useState({ x: 0, y: -20, s: 0.45, r: 0, f: 1 });
+    const [sp, setSp] = useState({ x: 0, y: 80, s: 1.0, r: 0 });
+    const [cfg, setCfg] = useState({ bright: 100, guide: 0.8, name: "EzID" });
+    const [slots, setSlots] = useState([]);
+    const [preImg, setPreImg] = useState(null);
+
+    // 🎨 高效能畫布渲染 (修正 ellipse 與 filter)
+    const draw = useCallback(() => {
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 350, 450);
+        if (image) {
+            ctx.save(); ctx.filter = `brightness(${cfg.bright}%)`;
+            ctx.translate(175 + p.x, 225 + p.y); ctx.rotate(p.r * Math.PI / 180);
+            ctx.scale(p.s * p.f, p.s); ctx.drawImage(image, -image.width/2, -image.height/2); ctx.restore();
+        }
+        if (suitImg) {
+            ctx.save(); ctx.translate(175 + sp.x, 225 + sp.y); ctx.rotate(sp.r * Math.PI / 180);
+            ctx.scale(sp.s, sp.s); ctx.drawImage(suitImg, -suitImg.width/2, -suitImg.height/2); ctx.restore();
+        }
+        if (cfg.guide > 0) {
+            ctx.save(); ctx.globalAlpha = cfg.guide; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+            const isCentered = (Math.abs(p.x) < 5 && Math.abs(p.y+20) < 5);
+            ctx.strokeStyle = isCentered ? "#10b981" : "#ef4444"; 
+            ctx.beginPath(); ctx.ellipse(175, 203, 108, 160, 0, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        }
+    }, [image, suitImg, p, sp, cfg]);
+
+    useEffect(() => {
+        let frame = requestAnimationFrame(function loop(){ draw(); frame = requestAnimationFrame(loop); });
+        return () => cancelAnimationFrame(frame);
+    }, [draw]);
+
+    // 🎯 座標限制拖曳 (Clamping)
+    const handlePointer = (e, type) => {
+        if (type === 'start') {
+            dragPos.current = { x: e.clientX, y: e.clientY, isDown: true };
+        } else if (type === 'move' && dragPos.current.isDown) {
+            const dx = (e.clientX - dragPos.current.x) * 0.8;
+            const dy = (e.clientY - dragPos.current.y) * 0.8;
+            if (target === "PHOTO") {
+                setP(v => ({ x: Math.max(-180, Math.min(180, v.x + dx)), y: Math.max(-140, Math.min(240, v.y + dy)), s: v.s, r: v.r, f: v.f }));
+            } else {
+                setSp(v => ({ x: Math.max(-180, Math.min(180, v.x + dx)), y: Math.max(-140, Math.min(240, v.y + dy)), s: v.s, r: v.r }));
+            }
+            dragPos.current = { x: e.clientX, y: e.clientY, isDown: true };
+        } else if (type === 'end') { dragPos.current.isDown = false; }
+    };
+
+    // 💾 槽位存檔 (包含截圖與參數)
+    const saveToSlot = () => {
+        const temp = document.createElement("canvas"); temp.width = 350; temp.height = 450;
+        const tctx = temp.getContext("2d"); tctx.drawImage(canvasRef.current, 0, 0);
+        const newSlot = {
+            snap: temp.toDataURL("image/png"),
+            data: { image, suitImg, p: {...p}, sp: {...sp}, cfg: {...cfg} }
+        };
+        setSlots([newSlot, ...slots].slice(0, 10));
+    };
+
+    // 🖨️ 完整排版引擎 (補齊 4x6, 1吋, MIX)
+    const exportDoc = async (type, mode) => {
+        if (!slots.length) return alert("請先存入槽位");
+        const isA4 = type === 'A4';
+        const W = isA4 ? 2480 : 1800, H = isA4 ? 3508 : 1200;
+        const pc = document.createElement("canvas"); pc.width = W; pc.height = H;
+        const ctx = pc.getContext("2d"); ctx.fillStyle = "white"; ctx.fillRect(0, 0, W, H);
+        
+        const imgs = await Promise.all(slots.map(s => new Promise(res => {
+            const i = new Image(); i.onload = () => res(i); i.src = s.snap;
+        })));
+
+        const put = (img, x, y, sw, sh) => {
+            ctx.drawImage(img, x, y, sw, sh);
+            ctx.strokeStyle = "#e0e0e0"; ctx.lineWidth = 2; ctx.strokeRect(x, y, sw, sh);
+        };
+
+        if (isA4) {
+            if (mode === '2IN') for(let i=0; i<20; i++) put(imgs[i%imgs.length], 205+(i%4)*520, 300+Math.floor(i/4)*600, 413, 531);
+            else if (mode === '1IN') for(let i=0; i<42; i++) put(imgs[i%imgs.length], 215+(i%6)*350, 250+Math.floor(i/6)*480, 295, 413);
+            else { // MIX
+                for(let i=0; i<12; i++) put(imgs[i%imgs.length], 205+(i%4)*520, 300+Math.floor(i/4)*600, 413, 531);
+                for(let i=0; i<18; i++) put(imgs[i%imgs.length], 215+(i%6)*350, 2200+Math.floor(i/6)*480, 295, 413);
+            }
+        } else { // 4x6
+            if (mode === 'MIX') {
+                for(let i=0; i<4; i++) put(imgs[i%imgs.length], 90+i*410, 80, 413, 531);
+                for(let i=0; i<5; i++) put(imgs[i%imgs.length], 90+i*325, 660, 295, 413);
+            } else if (mode === '2IN') for(let i=0; i<8; i++) put(imgs[i%imgs.length], 90+(i%4)*410, 70+Math.floor(i/4)*540, 413, 531);
+            else for(let i=0; i<10; i++) put(imgs[i%imgs.length], 150+(i%5)*310, 160+Math.floor(i/5)*460, 295, 413);
+        }
+        setPreImg(pc.toDataURL("image/png"));
+    };
+
+    return (
+        <div className="max-w-md mx-auto p-4 space-y-4">
+            <header className="flex justify-between items-center p-4 bg-white rounded-2xl shadow-sm border border-slate-200">
+                <h1 className="text-xl font-black italic">EzID <span className="text-blue-600">v16.0</span></h1>
+                <div className="flex gap-2">
+                    <button onClick={()=>setP(v=>({...v, f:v.f*-1}))} className="px-3 py-1 bg-slate-800 text-white rounded-lg text-[10px] font-bold">鏡像</button>
+                    <button onClick={()=>{setP({x:0,y:-20,s:0.45,r:0,f:1}); setSp({x:0,y:80,s:1.0,r:0});}} className="px-3 py-1 bg-emerald-500 text-white rounded-lg text-[10px] font-bold">歸位</button>
+                </div>
+            </header>
+
+            <div className="canvas-container" onPointerDown={e=>handlePointer(e,'start')} onPointerMove={e=>handlePointer(e,'move')} onPointerUp={()=>handlePointer(null,'end')}>
+                <canvas ref={canvasRef} width="350" height="450" className="w-full h-full" />
+            </div>
+
+            {/* 性別分選與衣服清單 */}
+            <div className="bg-white p-4 rounded-3xl shadow-xl space-y-3 border border-slate-200">
+                <div className="flex bg-slate-100 p-1 rounded-2xl">
+                    <button onClick={()=>setGender('male')} className={`flex-1 py-2 text-xs font-bold rounded-xl ${gender==='male'?'bg-white shadow text-blue-600':'text-slate-400'}`}>👨 男裝</button>
+                    <button onClick={()=>setGender('female')} className={`flex-1 py-2 text-xs font-bold rounded-xl ${gender==='female'?'bg-white shadow text-pink-600':'text-slate-400'}`}>👩 女裝</button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                    <button onClick={()=>{setSuitImg(null); setTarget("PHOTO")}} className="w-14 h-14 flex-shrink-0 bg-red-50 border-2 border-dashed border-red-200 rounded-xl text-xl">🚫</button>
+                    {SUITS[gender].map((s, idx) => (
+                        <img key={idx} src={`clothes/${s}`} onClick={()=>{const i=new Image(); i.src=`clothes/${s}`; i.onload=()=>{setSuitImg(i); setTarget("SUIT")}} } className="w-14 h-14 flex-shrink-0 p-1 border-2 border-slate-100 rounded-xl bg-slate-50 active:scale-90 cursor-pointer" />
+                    ))}
+                </div>
+            </div>
+
+            {/* 控制區 */}
+            <div className="bg-white p-5 rounded-[2.5rem] shadow-xl space-y-4 border border-slate-200">
+                <nav className="flex bg-slate-100 p-1 rounded-2xl">
+                    <button onClick={()=>setTarget("PHOTO")} className={`flex-1 py-2 text-xs font-black rounded-xl ${target==='PHOTO'?'bg-white shadow text-blue-600':'text-slate-400'}`}>編輯人像</button>
+                    <button onClick={()=>setTarget("SUIT")} className={`flex-1 py-2 text-xs font-black rounded-xl ${target==='SUIT'?'bg-white shadow text-blue-600':'text-slate-400'}`}>編輯衣服</button>
+                </nav>
+                <div className="space-y-3">
+                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400">
+                        <span className="w-12">SIZE</span>
+                        <input type="range" min="0.1" max="2" step="0.01" value={target==="PHOTO"?p.s:sp.s} onChange={e=>target==="PHOTO"?setP({...p,s:+e.target.value}):setSp({...sp,s:+e.target.value})} className="flex-1 accent-blue-600" />
+                    </div>
+                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400">
+                        <span className="w-12">ROTATE</span>
+                        <input type="range" min="-45" max="45" value={target==="PHOTO"?p.r:sp.r} onChange={e=>target==="PHOTO"?setP({...p,r:+e.target.value}):setSp({...sp,r:+e.target.value})} className="flex-1 accent-emerald-500" />
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <label className="bg-slate-900 text-white py-4 rounded-3xl text-center font-black cursor-pointer shadow-lg active:btn-active">📸 上傳 <input type="file" hidden onChange={e=>{const f=e.target.files[0]; if(f){const i=new Image(); i.src=URL.createObjectURL(f); i.onload=()=>{setImage(i); setTarget("PHOTO")}} }} /></label>
+                <button onClick={saveToSlot} className="bg-blue-600 text-white py-4 rounded-3xl font-black shadow-lg active:btn-active">📥 存入槽位</button>
+            </div>
+
+            {/* 槽位還原區 */}
+            <div className="flex gap-3 overflow-x-auto no-scrollbar p-1">
+                {slots.map((s, i) => (
+                    <div key={i} className="relative w-20 h-28 bg-white rounded-xl shadow-md flex-shrink-0 overflow-hidden group">
+                        <img src={s.snap} className="w-full h-full object-cover" />
+                        <button onClick={()=>setSlots(slots.filter((_,idx)=>idx!==i))} className="absolute top-0 right-0 bg-red-500 text-white w-5 h-5 text-[10px]">✕</button>
+                        <div onClick={()=>{const d=s.data; setImage(d.image); setSuitImg(d.suitImg); setP(d.p); setSp(d.sp); setCfg(d.cfg)}} className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[8px] py-1 text-center cursor-pointer">載入</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* 最終補齊的排版按鈕 */}
+            <div className="bg-white p-5 rounded-3xl shadow-xl border border-slate-200">
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                    {['MIX','2IN','1IN'].map(m => <button key={m} onClick={()=>exportDoc('A4',m)} className="bg-slate-800 text-white py-3 rounded-xl text-[9px] font-black">A4 {m}</button>)}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    {['MIX','2IN','1IN'].map(m => <button key={m} onClick={()=>exportDoc('46',m)} className="bg-emerald-600 text-white py-3 rounded-xl text-[9px] font-black">4x6 {m}</button>)}
+                </div>
+            </div>
+
+            {preImg && (
+                <div className="preview-overlay" onClick={()=>setPreImg(null)}>
+                    <img src={preImg} className="max-w-[90vw] max-h-[70vh] rounded-lg shadow-2xl mb-6" />
+                    <div className="flex gap-4 w-full max-w-xs">
+                        <button onClick={()=>setPreImg(null)} className="flex-1 py-4 bg-slate-700 text-white rounded-2xl font-bold">返回</button>
+                        <a href={preImg} download={`${cfg.name}_export.png`} className="flex-1 py-4 bg-blue-500 text-white rounded-2xl font-bold text-center">下載</a>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
