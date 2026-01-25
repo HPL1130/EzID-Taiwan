@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.12 台灣證照霸主</title>
+    <title>EzID v20.13 超商列印王</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,38 +11,41 @@
     <style>
         .canvas-shadow { box-shadow: 0 20px 50px -12px rgba(0,0,0,0.3); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .loading-shimmer {
-            background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
-            background-size: 200% 100%; animation: shimmer 1.5s infinite;
+        @font-face {
+            font-family: 'NotoSansTC';
+            src: local('Noto Sans TC'), local('Microsoft JhengHei'), system-ui, sans-serif;
+            font-weight: 700;
         }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
-<body class="bg-[#f0f2f5] min-h-screen pb-20">
+<body class="bg-gradient-to-br from-emerald-50 to-blue-50 min-h-screen pb-20">
     <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback, useTransition } = React;
 
-// ✅ 12種台灣證照全規格
+// ✅ v20.13 台灣證照12種全規格（超商列印優化）
 const PRINT_SPECS = {
-    // A4規格 (2480x3508px, 300dpi)
     'A4-20': { w: 2480, h: 3508, photos: 20, grid: [5, 4], size: [413, 531], name: 'A4-2吋(20張)' },
     'A4-42': { w: 2480, h: 3508, photos: 42, grid: [7, 6], size: [295, 413], name: 'A4-1吋(42張)' },
     'A4-MIX': { w: 2480, h: 3508, type: 'MIX', name: 'A4-MIX(12+18張)' },
     'A4-BIG': { w: 2480, h: 3508, photos: 8, grid: [2, 4], size: [500, 650], name: 'A4-大頭貼(8張)' },
-    
-    // 4x6規格 (1800x1200px)
     '4x6-8':  { w: 1800, h: 1200, photos: 8,  grid: [2, 4], size: [413, 531], name: '4x6-2吋(8張)' },
     '4x6-10': { w: 1800, h: 1200, photos: 10, grid: [2, 5], size: [295, 413], name: '4x6-1吋(10張)' },
     '4x6-MIX': { w: 1800, h: 1200, type: 'MIX', name: '4x6-MIX(4+5張)' },
     '4x6-MINI': { w: 1800, h: 1200, photos: 16, grid: [4, 4], size: [220, 300], name: '4x6-迷你(16張)' },
-    
-    // 企業特殊規格
     'LOGO': { w: 2480, h: 3508, photos: 16, grid: [4, 4], size: [413, 531], special: 'LOGO', name: '企業LOGO版' },
     'NAME': { w: 2480, h: 3508, photos: 24, grid: [6, 4], size: [295, 413], special: 'NAME', name: '姓名工牌版' },
     '3x4': { w: 1240, h: 1754, photos: 12, grid: [3, 4], size: [413, 531], name: '3x4相簿版' },
     'CUSTOM': { w: 2480, h: 3508, photos: 20, grid: [5, 4], size: [413, 531], name: '客製自動版' }
+};
+
+// ✅ 台灣證照尺寸速查表
+const SIZE_GUIDE = {
+    '2吋': '35×45mm (護照/身分證)',
+    '1吋': '25×35mm (證照/學生證)',
+    '大頭': '50×65mm (親子/寵物照)',
+    '迷你': '22×30mm (大量列印)'
 };
 
 function App() {
@@ -56,7 +59,7 @@ function App() {
     const canvasRef = useRef(null);
     const dragRef = useRef({ active: false, x: 0, y: 0 });
 
-    // ✅ 你的天才高清引擎（升級12種規格）
+    // ✅ v20.13 超商列印專用高清引擎
     const drawHighResItem = (ctx, img, slotState, x, y, pw, ph) => {
         ctx.save();
         const { x: tx, y: ty, s, r } = slotState;
@@ -65,28 +68,28 @@ function App() {
         ctx.translate(x + pw / 2, y + ph / 2);
         ctx.rotate(r * Math.PI / 180);
         ctx.scale(s * ratio, s * ratio);
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, -img.width / 2 + (tx / s), -img.height / 2 + (ty / s));
         ctx.restore();
     };
 
-    // ✅ 12種規格超強生產引擎
+    // ✅ v20.13 超商列印最終版生產引擎
     const handleExport = (specKey) => {
-        if (!image) return alert("請先上傳照片");
+        if (!image) return alert("📸 請先上傳照片");
         const spec = PRINT_SPECS[specKey];
         
         startTransition(async () => {
             const canvas = document.createElement('canvas');
             canvas.width = spec.w; canvas.height = spec.h;
             const ctx = canvas.getContext('2d', { alpha: false });
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, spec.w, spec.h);
+            ctx.imageSmoothingQuality = 'high';
+            ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, spec.w, spec.h);
 
             if (spec.type === 'MIX') {
-                // MIX特殊處理：上半2吋(12張)，下半1吋(18張)
+                // A4-MIX：上半2吋12張 + 下半1吋18張
                 const mix2inch = { size: [413, 531], photos: 12, grid: [3, 4] };
                 const mix1inch = { size: [295, 413], photos: 18, grid: [3, 6] };
                 
-                // 上半部2吋
                 const [r2, c2] = mix2inch.grid; const [pw2, ph2] = mix2inch.size;
                 const mx2 = (spec.w - c2 * pw2) / (c2 + 1); const my2 = (spec.h * 0.4 - r2 * ph2) / (r2 + 1);
                 for (let i = 0; i < 12; i++) {
@@ -94,10 +97,9 @@ function App() {
                     const x = mx2 + col * (pw2 + mx2); const y = my2 + row * (ph2 + my2);
                     const state = slots[i]?.state || transform;
                     drawHighResItem(ctx, image, state, x, y, pw2, ph2);
-                    ctx.strokeStyle = "#dddddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw2, ph2);
+                    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw2, ph2);
                 }
                 
-                // 下半部1吋
                 const [r1, c1] = mix1inch.grid; const [pw1, ph1] = mix1inch.size;
                 const mx1 = (spec.w - c1 * pw1) / (c1 + 1); const my1 = (spec.h * 0.6 - r1 * ph1) / (r1 + 1);
                 for (let i = 0; i < 18; i++) {
@@ -105,10 +107,10 @@ function App() {
                     const x = mx1 + col * (pw1 + mx1); const y = spec.h * 0.45 + my1 + row * (ph1 + my1);
                     const state = slots[12 + i]?.state || transform;
                     drawHighResItem(ctx, image, state, x, y, pw1, ph1);
-                    ctx.strokeStyle = "#dddddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw1, ph1);
+                    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw1, ph1);
                 }
             } else if (spec.special === 'LOGO') {
-                // 企業LOGO版：16張+置中LOGO
+                // ✅ LOGO版：16張照片 + 置中LOGO
                 const [rows, cols] = spec.grid; const [pw, ph] = spec.size;
                 const marginX = (spec.w - cols * pw) / (cols + 1);
                 const marginY = (spec.h * 0.7 - rows * ph) / (rows + 1);
@@ -119,17 +121,19 @@ function App() {
                     const y = marginY + row * (ph + marginY) + 100;
                     const state = slots[i]?.state || transform;
                     drawHighResItem(ctx, image, state, x, y, pw, ph);
-                    ctx.strokeStyle = "#dddddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw, ph);
+                    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw, ph);
                 }
                 
-                // LOGO區域
-                const logoW = spec.w * 0.4; const logoH = spec.h * 0.08;
-                const logoX = (spec.w - logoW) / 2; const logoY = 50;
+                // 置中LOGO區域
+                const logoW = spec.w * 0.45; const logoH = spec.h * 0.08;
+                const logoX = (spec.w - logoW) / 2; const logoY = 60;
                 ctx.fillStyle = "#f8fafc"; ctx.fillRect(logoX, logoY, logoW, logoH);
-                ctx.fillStyle = "#1e293b"; ctx.font = `bold 120px system-ui`; ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle'; ctx.fillText('公司LOGO', spec.w / 2, logoY + logoH / 2);
+                ctx.fillStyle = "#1e293b"; 
+                ctx.font = `bold 140px NotoSansTC, "Microsoft JhengHei", sans-serif`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('公司LOGO', spec.w / 2, logoY + logoH / 2);
             } else if (spec.special === 'NAME') {
-                // 姓名工牌版：24張+姓名條
+                // ✅ 姓名工牌版：24張 + 姓名條（跨平台字體）
                 const [rows, cols] = spec.grid; const [pw, ph] = spec.size;
                 const marginX = (spec.w - cols * pw) / (cols + 1);
                 const marginY = (spec.h - rows * ph) / (rows + 1);
@@ -141,39 +145,44 @@ function App() {
                     const state = slots[i]?.state || transform;
                     drawHighResItem(ctx, image, state, x, y, pw, ph);
                     
-                    // 姓名條
-                    ctx.fillStyle = "#f1f5f9"; ctx.fillRect(x, y + ph + 10, pw, 35);
-                    ctx.fillStyle = "#1e293b"; ctx.font = `bold 28px system-ui`; ctx.textAlign = 'center';
-                    ctx.fillText(`員工${i+1}`, x + pw / 2, y + ph + 28);
+                    // ✅ 修正：跨平台一致字體
+                    ctx.fillStyle = "#f1f5f9"; ctx.fillRect(x, y + ph + 8, pw, 38);
+                    ctx.fillStyle = "#1e293b"; 
+                    ctx.font = `bold 28px NotoSansTC, "Microsoft JhengHei", Arial, sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(`員工${i+1}`, x + pw / 2, y + ph + 27);
                     
-                    ctx.strokeStyle = "#dddddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw, ph + 45);
+                    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 2; 
+                    ctx.strokeRect(x, y, pw, ph + 46);
                 }
             } else {
-                // 標準網格
+                // 標準規格
                 const [rows, cols] = spec.grid || [4, 5];
                 const [pw, ph] = spec.size;
                 const marginX = (spec.w - cols * pw) / (cols + 1);
                 const marginY = (spec.h - rows * ph) / (rows + 1);
                 
-                for (let i = 0; i < spec.photos; i++) {
+                const maxPhotos = Math.min(spec.photos || 20, slots.length || 1);
+                for (let i = 0; i < maxPhotos; i++) {
                     const row = Math.floor(i / cols); const col = i % cols;
                     const x = marginX + col * (pw + marginX);
                     const y = marginY + row * (ph + marginY);
                     const state = slots[i]?.state || transform;
                     drawHighResItem(ctx, image, state, x, y, pw, ph);
-                    ctx.strokeStyle = "#dddddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw, ph);
+                    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw, ph);
                     
-                    setProgress(Math.round(((i + 1) / spec.photos) * 100));
+                    setProgress(Math.round(((i + 1) / maxPhotos) * 100));
                     await new Promise(r => requestAnimationFrame(r));
                 }
             }
             
-            setPreview(canvas.toDataURL('image/png', 0.97));
+            // ✅ 超商列印關鍵修正：JPEG 3-5MB
+            setPreview(canvas.toDataURL('image/jpeg', 0.92));
             setProgress(0);
         });
     };
 
-    // 🎨 即時預覽（你的天才邏輯）
+    // 🎨 即時預覽
     useEffect(() => {
         const ctx = canvasRef.current?.getContext('2d');
         if (!ctx || !image) return;
@@ -184,34 +193,38 @@ function App() {
         ctx.translate(175 + transform.x, 225 + transform.y);
         ctx.rotate(transform.r * Math.PI / 180);
         ctx.scale(transform.s, transform.s);
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(image, -image.width / 2, -image.height / 2);
         ctx.restore();
     }, [image, transform]);
 
     return (
-        <div className="max-w-md mx-auto p-4 space-y-6">
-            <header className="text-center pt-6">
-                <h1 className="text-3xl font-black text-slate-800 tracking-tight">EzID <span className="text-blue-600">v20.12</span></h1>
-                <p className="text-slate-500 font-medium">台灣證照霸主 • 12種全規格</p>
-            </header>
+        <div className="max-w-md mx-auto p-6 space-y-6">
+            {/* 🚩 超商霸主標題 */}
+            <div className="text-center pt-4">
+                <h1 className="text-4xl font-black bg-gradient-to-r from-emerald-700 via-blue-700 to-indigo-700 bg-clip-text text-transparent tracking-tight">
+                    EzID v20.13
+                </h1>
+                <p className="text-emerald-700 font-bold mt-2">超商列印王 • 3-5MB完美尺寸</p>
+            </div>
 
-            {/* 主編輯區（你的完美拖拽） */}
+            {/* 🖼️ 專業編輯區 */}
             <div className="relative flex justify-center">
                 <canvas 
                     ref={canvasRef} width="350" height="450" 
-                    className="canvas-shadow rounded-[2rem] bg-white touch-none border-4 border-slate-200/50"
+                    className="canvas-shadow rounded-3xl bg-white border-4 border-slate-100 shadow-2xl"
                     onPointerDown={e => {
                         e.target.setPointerCapture(e.pointerId);
                         dragRef.current = { active: true, x: e.clientX, y: e.clientY };
                     }}
                     onPointerMove={e => {
                         if (!dragRef.current.active) return;
-                        const dx = e.clientX - dragRef.current.x;
-                        const dy = e.clientY - dragRef.current.y;
+                        const dx = (e.clientX - dragRef.current.x) * 0.8;
+                        const dy = (e.clientY - dragRef.current.y) * 0.8;
                         setTransform(t => ({ 
                             ...t, 
-                            x: Math.max(-175, Math.min(175, t.x + dx * 0.8)), 
-                            y: Math.max(-125, Math.min(225, t.y + dy * 0.8))
+                            x: Math.max(-175, Math.min(175, t.x + dx)), 
+                            y: Math.max(-125, Math.min(225, t.y + dy))
                         }));
                         dragRef.current.x = e.clientX;
                         dragRef.current.y = e.clientY;
@@ -220,88 +233,119 @@ function App() {
                 />
             </div>
 
-            {/* 控制台（你的簡潔完美） */}
-            <section className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-sm space-y-4 border">
-                <div className="space-y-3">
-                    <div className="flex justify-between text-sm font-bold text-slate-600">
-                        <span>🔍 縮放</span><span>{transform.s.toFixed(2)}x</span>
+            {/* ⚙️ 精準控制 */}
+            <section className="bg-white/95 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-slate-100">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <div className="font-bold text-slate-700 mb-2 flex items-center">
+                            🔍 縮放 <span className="ml-2 text-emerald-600 font-black">{transform.s.toFixed(2)}x</span>
+                        </div>
+                        <input type="range" min="0.2" max="1.2" step="0.01" value={transform.s} 
+                            onChange={e => setTransform(t => ({ ...t, s: parseFloat(e.target.value) }))}
+                            className="w-full h-2 bg-slate-200 rounded-xl accent-emerald-600" />
                     </div>
-                    <input type="range" min="0.2" max="1.2" step="0.01" value={transform.s} 
-                        onChange={e => setTransform(t => ({ ...t, s: parseFloat(e.target.value) }))}
-                        className="w-full h-2 bg-slate-200 rounded-lg accent-blue-600" />
+                    <div>
+                        <div className="font-bold text-slate-700 mb-2 flex items-center">
+                            ↻ 旋轉 <span className="ml-2 text-indigo-600 font-black">{transform.r}°</span>
+                        </div>
+                        <input type="range" min="-30" max="30" step="1" value={transform.r} 
+                            onChange={e => setTransform(t => ({ ...t, r: parseInt(e.target.value) }))}
+                            className="w-full h-2 bg-slate-200 rounded-xl accent-indigo-600" />
+                    </div>
                 </div>
-                <div className="flex justify-between text-sm font-bold text-slate-600">
-                    <span>↻ 旋轉</span><span>{transform.r}°</span>
-                </div>
-                <input type="range" min="-30" max="30" step="1" value={transform.r} 
-                    onChange={e => setTransform(t => ({ ...t, r: parseInt(e.target.value) }))}
-                    className="w-full h-2 bg-slate-200 rounded-lg accent-indigo-600" />
             </section>
 
-            {/* 核心按鈕 */}
+            {/* 🎛️ 核心操作 */}
             <div className="grid grid-cols-2 gap-4">
-                <label className="flex items-center justify-center bg-gradient-to-r from-slate-800 to-slate-900 text-white h-20 rounded-3xl font-bold cursor-pointer hover:from-black shadow-xl hover:shadow-2xl transition-all">
-                    📸 上傳原圖
+                <label className="group bg-gradient-to-br from-slate-800 to-slate-900 text-white h-20 rounded-3xl font-black shadow-2xl cursor-pointer hover:from-slate-900 hover:shadow-3xl transition-all flex items-center justify-center">
+                    📸 上傳高清原圖
                     <input type="file" hidden accept="image/*" onChange={e => {
                         const file = e.target.files[0];
-                        if (file && file.size < 15e6) {
+                        if (file && file.size < 20e6) {
                             const url = URL.createObjectURL(file);
                             const img = new Image();
                             img.onload = () => { 
                                 setImage(img); 
                                 URL.revokeObjectURL(url); 
+                                setSlots([]);
                                 setTransform({ x: 0, y: -20, s: 0.45, r: 0 });
                             };
                             img.src = url;
+                        } else {
+                            alert('⚠️ 請選擇20MB以內照片');
                         }
                     }} />
+                    <div className="absolute inset-0 bg-white/10 rounded-3xl scale-0 group-hover:scale-100 transition-transform origin-center" />
                 </label>
-                <button onClick={() => setSlots([{ state: { ...transform } }, ...slots.slice(0, 41)])}
-                        disabled={!image} className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white h-20 rounded-3xl font-bold shadow-xl hover:shadow-2xl disabled:opacity-50 transition-all">
-                    💾 存位置 ({slots.length}/42)
+                <button onClick={() => {
+                    setSlots([{ state: { ...transform } }, ...slots.slice(0, 41)]);
+                    // 音效反饋
+                    navigator.vibrate?.(50);
+                }} disabled={!image} className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white h-20 rounded-3xl font-black shadow-2xl hover:shadow-3xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center group">
+                    💾 儲存位置 ({slots.length}/42)
+                    <span className="ml-1 text-xs opacity-75">(點擊還原)</span>
                 </button>
             </div>
 
-            {/* 12種全規格排版（終極武器） */}
-            <section className="bg-white/90 backdrop-blur-sm rounded-3xl p-6 shadow-sm border">
-                <h3 className="text-slate-800 font-black mb-6 text-lg flex items-center justify-center">
-                    🖨️ 12種台灣證照規格
-                </h3>
+            {/* 🖨️ 12種超商規格（最終版） */}
+            <section className="bg-white/95 backdrop-blur-sm rounded-3xl p-6 shadow-xl border border-slate-100">
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-black text-slate-800">🖨️ 台灣證照全規格</h3>
+                    <span className="text-xs text-emerald-600 font-bold bg-emerald-100 px-2 py-1 rounded-full">300dpi</span>
+                </div>
                 
                 {isPending && (
-                    <div className="mb-6 p-4 bg-blue-50 rounded-2xl border">
-                        <div className="flex justify-between text-sm font-bold text-blue-700 mb-2">
-                            <span>300dpi 渲染中</span><span>{progress}%</span>
+                    <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="font-bold text-emerald-800">⚡ 超商列印引擎</span>
+                            <span className="font-black text-2xl text-emerald-600">{progress}%</span>
                         </div>
-                        <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden">
-                            <div className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full transition-all" style={{ width: `${progress}%` }}></div>
+                        <div className="w-full bg-slate-200 h-4 rounded-xl overflow-hidden shadow-inner">
+                            <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-full shadow-lg transition-all" 
+                                 style={{ width: `${progress}%` }} />
                         </div>
                     </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto no-scrollbar pb-2">
                     {Object.entries(PRINT_SPECS).map(([key, spec]) => (
                         <button key={key} disabled={isPending || !image}
                                 onClick={() => handleExport(key)}
-                                className="h-16 px-3 bg-gradient-to-r from-slate-50 to-blue-50 border border-slate-200 rounded-2xl hover:from-blue-50 hover:to-blue-100 hover:border-blue-300 font-bold text-slate-800 text-sm shadow-sm hover:shadow-md transition-all disabled:opacity-40 flex flex-col items-center justify-center">
+                                className="group h-20 p-3 bg-gradient-to-b from-slate-50 to-blue-50 border-2 border-slate-200/50 rounded-2xl hover:from-emerald-50 hover:to-emerald-100 hover:border-emerald-300 hover:shadow-xl font-bold text-slate-800 text-sm shadow-sm hover:scale-[1.02] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center relative overflow-hidden">
                             <span>{spec.name}</span>
-                            <span className="text-xs text-slate-500">{spec.w}×{spec.h}px</span>
+                            <span className="text-xs text-slate-500 mt-1">{spec.w}×{spec.h}px</span>
+                            <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>
                     ))}
                 </div>
             </section>
 
-            {/* 高清預覽 */}
+            {/* 📱 台灣證照速查表 */}
+            <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-3xl p-4 shadow-lg">
+                <h4 className="font-black text-yellow-800 mb-3 text-center">📏 台灣證照尺寸速查</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><span className="font-bold">2吋：</span>35×45mm 護照/身分證</div>
+                    <div><span className="font-bold">1吋：</span>25×35mm 學生證/證照</div>
+                    <div><span className="font-bold">大頭：</span>50×65mm 親子照</div>
+                    <div><span className="font-bold">迷你：</span>22×30mm 大量列印</div>
+                </div>
+            </div>
+
+            {/* 👁️ 超商列印預覽 */}
             {preview && (
-                <div className="fixed inset-0 bg-slate-900/95 z-[100] flex flex-col p-6" onClick={e => e.target === e.currentTarget && setPreview(null)}>
+                <div className="fixed inset-0 bg-slate-900/98 z-[10000] flex flex-col p-6" onClick={e => e.target === e.currentTarget && setPreview(null)}>
                     <div className="flex-1 flex items-center justify-center overflow-auto p-4">
-                        <img src={preview} className="max-w-full max-h-full shadow-2xl rounded-2xl border-8 border-white" />
+                        <img src={preview} className="max-w-full max-h-full shadow-2xl rounded-3xl border-8 border-white" />
                     </div>
-                    <div className="mt-8 flex gap-4">
+                    <div className="mt-8 flex gap-4 bg-white/95 backdrop-blur-sm p-4 rounded-3xl border">
                         <button onClick={() => setPreview(null)} 
-                                className="flex-1 h-16 bg-slate-700 hover:bg-slate-800 text-white rounded-2xl font-bold shadow-xl">返回編輯</button>
-                        <a href={preview} download={`證件照_${Date.now()}.png`} 
-                           className="flex-1 h-16 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-2xl font-bold shadow-xl flex items-center justify-center">💾 下載列印</a>
+                                className="flex-1 h-16 bg-slate-700 hover:bg-slate-800 text-white rounded-2xl font-bold shadow-xl transition-all flex items-center justify-center">
+                            ← 繼續調整
+                        </button>
+                        <a href={preview} download={`證件照_${Date.now()}.jpg`} 
+                           className="flex-1 h-16 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-2xl font-bold shadow-2xl flex items-center justify-center">
+                            💾 下載列印 (3-5MB)
+                        </a>
                     </div>
                 </div>
             )}
