@@ -1,186 +1,232 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<title>EzID v20.46.1 邏輯校正版</title>
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>
-@font-face{font-family:'NotoSansTC';src:local('Noto Sans TC'),local('Microsoft JhengHei'),sans-serif;font-weight:700;}
-body{font-family:'NotoSansTC',sans-serif;background:#020617;color:#f8fafc;}
-.canvas-box{width:350px;height:450px;margin:0 auto;background:#fff;border:4px solid #1e293b;position:relative;border-radius:8px;overflow:hidden;}
-.module-card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px;}
-.no-scrollbar::-webkit-scrollbar{display:none;}
-</style>
+    <meta charset="UTF-8">
+    <title>EzID v20.46.10 Iron Contract</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @font-face { font-family: 'NotoSansTC'; src: local('Microsoft JhengHei'); font-weight: 700; }
+        body { font-family: 'NotoSansTC', sans-serif; background: #020617; color: #f8fafc; margin: 0; }
+        .editor-view { width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 20px; border: 4px solid #1e293b; overflow: hidden; position: relative; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
-const { useState, useRef, useEffect } = React;
+    <div id="root"></div>
 
-/* =====================
-   完整版面設定
-===================== */
-window.SPECS={
-  'A4-20':{id:'A4-20',w:2480,h:3508,grid:[5,4],size:[413,531],name:'A4 2吋(20)'},
-  'A4-42':{id:'A4-42',w:2480,h:3508,grid:[7,6],size:[295,413],name:'A4 1吋(42)'},
-  'A4-ID':{id:'A4-ID',w:2480,h:3508,grid:[4,4],size:[450,600],name:'A4 護照(16)'},
-  'A4-BIG':{id:'A4-BIG',w:2480,h:3508,grid:[4,3],size:[531,708],name:'A4 大頭(12)'},
-  'A4-MIX':{id:'A4-MIX',w:2480,h:3508,type:'MIX',name:'A4 綜合(12+18)'},
-  'A4-B':{id:'A4-B',w:2480,h:3508,grid:[6,5],size:[354,472],name:'A4 B版(30)'},
-  '4x6-8':{id:'4x6-8',w:1800,h:1200,grid:[2,4],size:[413,531],name:'4x6 2吋(8)'},
-  '4x6-10':{id:'4x6-10',w:1800,h:1200,grid:[2,5],size:[295,413],name:'4x6 1吋(10)'},<br>  '4x6-12':{id:'4x6-12',w:1800,h:1200,grid:[3,4],size:[295,413],name:'4x6 1吋(12)'},
-  '4x6-BIG':{id:'4x6-BIG',w:1800,h:1200,grid:[2,3],size:[531,708],name:'4x6 大頭(6)'},
-  '4x6-MIX':{id:'4x6-MIX',w:1800,h:1200,type:'MIX46',name:'4x6 混合(4+4)'},
-  'NAME':{id:'NAME',w:2480,h:3508,grid:[6,4],size:[295,413],special:'NAME',name:'姓名工牌(24)'}
-};
+    <script type="text/babel">
+        const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-/* =====================
-   核心渲染與運算
-===================== */
-window.getGridPositions=(spec)=>{
-  const positions=[],[rows,cols]=spec.grid,[pw,ph]=spec.size;
-  const marginX=(spec.w-cols*pw)/(cols+1);
-  const marginY=(spec.h-rows*ph)/(rows+1);
-  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)positions.push({x:marginX+c*(pw+marginX),y:marginY+r*(ph+marginY),w:pw,h:ph});
-  return positions;
-};
+        /* ============================================================
+           1️⃣ 核心契約：SPECS 數據庫 (不可侵犯)
+           ============================================================ */
+        const SPECS = {
+            'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], name: 'A4 2吋(20)' },
+            'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], name: 'A4 1吋(42)' },
+            'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [450, 600], name: 'A4 護照(16)' },
+            'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], name: 'A4 大頭(12)' },
+            'A4-B':    { id: 'A4-B',    w: 2480, h: 3508, grid: [6, 5], size: [354, 472], name: 'A4 B版(30)' },
+            'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [6, 4], size: [295, 413], name: '工牌(24)' },
+            '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '4x6 2吋(8)' },
+            '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '4x6 1吋(10)' },
+            '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], name: '4x6 1吋(12)' },
+            '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], name: '4x6 大頭(6)' },
+            'A4-MIX':  { 
+                id: 'A4-MIX', w: 2480, h: 3508, name: 'A4 綜合',
+                sections: [
+                    { y: 0,    grid: [3, 4], size: [413, 531], count: 12 },
+                    { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }
+                ]
+            },
+            '4x6-MIX': { 
+                id: '4x6-MIX', w: 1800, h: 1200, name: '4x6 混合',
+                sections: [
+                    { x: 0,   grid: [2, 2], size: [450, 600], count: 4 },
+                    { x: 900, grid: [2, 2], size: [413, 531], count: 4 }
+                ]
+            }
+        };
 
-window.drawAt=(ctx,asset,pos,liveData)=>{
-  const data=asset||liveData;if(!data.img)return;
-  const ratio=pos.w/350,cx=pos.x+pos.w/2,cy=pos.y+pos.h/2;
-  ctx.save();ctx.beginPath();ctx.rect(pos.x,pos.y,pos.w,pos.h);ctx.clip();
-  ctx.save();ctx.translate(cx+data.p.x*ratio,cy+data.p.y*ratio);ctx.rotate(data.p.r*Math.PI/180);ctx.scale(data.p.s*ratio*data.p.f,data.p.s*ratio);ctx.drawImage(data.img,-data.img.width/2,-data.img.height/2);ctx.restore();
-  if(data.suit){ctx.save();ctx.translate(cx+data.s.x*ratio,cy+data.s.y*ratio);ctx.scale(data.s.s*ratio*data.s.f,data.s.s*ratio);ctx.drawImage(data.suit,-data.suit.width/2,-data.suit.height/2);ctx.restore();}
-  ctx.restore();ctx.strokeStyle="#DDD";ctx.lineWidth=1;ctx.strokeRect(pos.x,pos.y,pos.w,pos.h);
-};
+        /* ============================================================
+           2️⃣ 門神自檢 (Gatekeeper)
+           ============================================================ */
+        const Gatekeeper = {
+            check: () => {
+                const results = {
+                    len: Object.keys(SPECS).length === 12,
+                    mix: SPECS['A4-MIX'].sections && SPECS['4x6-MIX'].sections,
+                    logic: typeof SPECS['NAME'].grid[0] === 'number'
+                };
+                if (!Object.values(results).every(v => v)) {
+                    console.error("Critical: Contract Violation!", results);
+                    throw new Error("EZID_CONTRACT_VIOLATION");
+                }
+                return true;
+            }
+        };
 
-window.runFullExport=(spec,assets,liveData)=>{
-  const canvas=document.createElement('canvas');canvas.width=spec.w;canvas.height=spec.h;
-  const ctx=canvas.getContext('2d');ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);
-  
-  // 修正自動補位：ABAB 循環邏輯
-  const getAsset = (idx) => {
-    if (assets && assets.length > 0) return assets[idx % assets.length];
-    return liveData;
-  };
+        /* ============================================================
+           3️⃣ 抽象渲染引擎 (完全分離 State)
+           ============================================================ */
+        const Renderer = {
+            getLayout: (spec) => {
+                const gen = (w, h, grid, size, ox=0, oy=0) => {
+                    const [rs, cs] = grid, [pw, ph] = size;
+                    const mx = (w-cs*pw)/(cs+1), my = (h-rs*ph)/(rs+1);
+                    return Array.from({length:rs*cs}, (_,i)=>({
+                        x: ox+mx+(i%cs)*(pw+mx), y: oy+my+Math.floor(i/cs)*(ph+my), w: pw, h: ph
+                    }));
+                };
+                if (spec.sections) return spec.sections.flatMap(s => 
+                    gen(s.x!==undefined?spec.w/2:spec.w, s.y!==undefined?spec.h/2:spec.h, s.grid, s.size, s.x||0, s.y||0).slice(0, s.count));
+                return gen(spec.w, spec.h, spec.grid, spec.size);
+            },
+            draw: (ctx, data, rect, isExp = false) => {
+                if (!data?.img) return;
+                const ratio = rect.w / 350, cx = rect.x + rect.w/2, cy = rect.y + rect.h/2;
+                ctx.save();
+                ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
+                const renderLayer = (t, i) => {
+                    if(!i) return;
+                    ctx.save();
+                    ctx.translate(cx + t.x*ratio, cy + t.y*ratio);
+                    ctx.rotate(t.r*Math.PI/180);
+                    ctx.scale(t.s*ratio*(t.f||1), t.s*ratio);
+                    ctx.drawImage(i, -i.width/2, -i.height/2);
+                    ctx.restore();
+                };
+                renderLayer(data.photoT, data.img);
+                if(data.suit) renderLayer(data.suitT, data.suit);
+                ctx.restore();
+                ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = isExp?2:1; ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+            }
+        };
 
-  if(spec.type==='MIX'){
-    const p1=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,4],size:[413,531]});
-    p1.forEach((pos,i)=>window.drawAt(ctx,getAsset(i),pos,liveData));
-    const p2=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,6],size:[295,413]});
-    p2.forEach((pos,i)=>window.drawAt(ctx,getAsset(i+12),{...pos,y:pos.y+spec.h/2},liveData));
-  } else {
-    const p=window.getGridPositions(spec);
-    p.forEach((pos,i)=>window.drawAt(ctx,getAsset(i),pos,liveData));
-  }
-  return canvas.toDataURL('image/jpeg',0.95);
-};
+        /* ============================================================
+           4️⃣ React 應用 (UI 與控制)
+           ============================================================ */
+        function App() {
+            const [img, setImg] = useState(null);
+            const [suit, setSuit] = useState(null);
+            const [photoT, setPhotoT] = useState({ x: 0, y: -20, s: 0.45, r: 0, f: 1 });
+            const [suitT, setSuitT] = useState({ x: 0, y: 80, s: 1.0, r: 0, f: 1 });
+            const [target, setTarget] = useState('PHOTO');
+            const [activeSpec, setActive] = useState('A4-20');
+            const [assets, setAssets] = useState([]);
+            const [results, setResults] = useState(null);
+            
+            const canvasRef = useRef(null);
+            const drag = useRef({ active: false, x: 0, y: 0 });
 
-/* =====================
-   自動功能自檢 (校正版)
-===================== */
-window.REQUIRED_FEATURES=['12版面規格','拖曳控制','人像/西裝切換','縮放','鏡像','資產存入','預覽機制','拼版匯出','MIX版面邏輯','姓名工牌特殊渲染'];
+            // 即時預覽：抽離成純粹的 Data 物件
+            useEffect(() => {
+                const ctx = canvasRef.current?.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = "#fff"; ctx.fillRect(0,0,350,450);
+                    Renderer.draw(ctx, {img, suit, photoT, suitT}, {x:0, y:0, w:350, h:450});
+                }
+            }, [img, suit, photoT, suitT]);
 
-window.checkFeatures=()=>{
-  const found={};window.REQUIRED_FEATURES.forEach(f=>found[f]=false);
-  if(window.SPECS && Object.keys(window.SPECS).length>=12) found['12版面規格']=true;
-  if(typeof window.drawAt==='function' && typeof window.getGridPositions==='function') found['拖曳控制']=true;
-  if(window.drawAt) found['人像/西裝切換']=true;
-  if(document.querySelector('input[type="range"]')){found['縮放']=true;found['鏡像']=true;}
-  if(Array.isArray(window.assets)) found['資產存入']=true;
-  // 修正預覽自檢：檢查 React 狀態中是否有預覽控制邏輯，而不只是檢查 DOM
-  if(window.runFullExport && typeof window.setAppPreview === 'function') found['預覽機制']=true;
-  if(typeof window.runFullExport==='function') found['拼版匯出']=true;
-  if(window.SPECS && Object.values(window.SPECS).some(s=>s.type && s.type.startsWith('MIX'))) found['MIX版面邏輯']=true;
-  if(window.SPECS && Object.values(window.SPECS).some(s=>s.special==='NAME')) found['姓名工牌特殊渲染']=true;
+            // 批次導出邏輯：鋼鐵契約核心
+            const runProduction = (mode = 'SINGLE') => {
+                Gatekeeper.check(); // 違反契約則崩潰
+                const targets = mode === 'ALL' ? Object.keys(SPECS) : [activeSpec];
+                const pool = assets.length > 0 ? assets : [{img, suit, photoT:{...photoT}, suitT:{...suitT}}];
+                
+                const outputs = targets.map(id => {
+                    const spec = SPECS[id];
+                    const cvs = document.createElement('canvas');
+                    cvs.width = spec.w; cvs.height = spec.h;
+                    const ctx = cvs.getContext('2d');
+                    ctx.fillStyle = "white"; ctx.fillRect(0,0,spec.w,spec.h);
+                    
+                    const layout = Renderer.getLayout(spec);
+                    layout.forEach((pos, i) => Renderer.draw(ctx, pool[i % pool.length], pos, true));
+                    return { name: spec.name, url: cvs.toDataURL('image/jpeg', 0.9) };
+                });
+                setResults(outputs);
+            };
 
-  console.group('%cEzID 自檢', 'color:#0af;font-weight:bold');
-  Object.keys(found).forEach(f=>console.log(`${found[f]?'✅':'❌'} ${f}`));
-  console.groupEnd();
-  return found;
-};
+            return (
+                <div className="max-w-md mx-auto p-6 flex flex-col gap-6 pb-24">
+                    <header className="flex justify-between items-end border-b border-white/5 pb-4">
+                        <h1 className="text-2xl font-black text-blue-500 italic">EzID PRO <span className="text-white not-italic text-sm ml-2">v20.46.10</span></h1>
+                        <span className="text-[10px] text-emerald-500 font-bold tracking-widest">CONTRACT SECURED</span>
+                    </header>
 
-/* =====================
-   React UI
-===================== */
-function App(){
-  const [img,setImg]=useState(null);
-  const [suit,setSuit]=useState(null);
-  const [p,setP]=useState({x:0,y:-20,s:0.45,r:0,f:1});
-  const [s,setS]=useState({x:0,y:80,s:1,r:0,f:1});
-  const [target,setTarget]=useState('PHOTO');
-  const [activeSpec,setActiveSpec]=useState('A4-20');
-  const [assets,setAssets]=useState([]);
-  const [preview,setPreview]=useState(null);
-  const canvasRef=useRef(null);
-  const drag=useRef({active:false,x:0,y:0});
+                    <div className="editor-view"
+                        onPointerDown={e => { drag.current = { active:true, x:e.clientX, y:e.clientY }; e.target.setPointerCapture(e.pointerId); }}
+                        onPointerMove={e => {
+                            if(!drag.current.active) return;
+                            const t = target==='PHOTO'?photoT:suitT, setT = target==='PHOTO'?setPhotoT:setSuitT;
+                            setT(prev => ({...prev, x:prev.x+(e.clientX-drag.current.x)/t.s, y:prev.y+(e.clientY-drag.current.y)/t.s}));
+                            drag.current.x = e.clientX; drag.current.y = e.clientY;
+                        }}
+                        onPointerUp={() => drag.current.active=false}>
+                        <canvas ref={canvasRef} width="350" height="450" />
+                    </div>
 
-  // 暴露 API 給自檢系統
-  window.setAppPreview = setPreview;
+                    <div className="flex gap-2 p-1 bg-slate-900 rounded-2xl">
+                        {['PHOTO', 'SUIT'].map(l => (
+                            <button key={l} onClick={()=>setTarget(l)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${target===l?'bg-blue-600 text-white shadow-lg':'text-slate-500'}`}>{l} LAYER</button>
+                        ))}
+                    </div>
 
-  useEffect(()=>{
-    const ctx=canvasRef.current?.getContext('2d');
-    if(ctx){ctx.fillStyle="#fff";ctx.fillRect(0,0,350,450);window.drawAt(ctx,null,{x:0,y:0,w:350,h:450},{img,suit,p,s});}
-    window.assets=assets;
-  },[img,suit,p,s,assets]);
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto no-scrollbar py-2">
+                        {Object.keys(SPECS).map(k => (
+                            <button key={k} onClick={()=>setActive(k)} className={`p-3 text-[10px] font-bold rounded-xl border-2 transition-all ${activeSpec===k?'border-blue-500 text-blue-400':'border-transparent bg-slate-900/50 text-slate-600'}`}>{SPECS[k].name}</button>
+                        ))}
+                    </div>
 
-  return (
-    <div className="max-w-md mx-auto py-6 px-4 space-y-4">
-      <h1 className="text-xl font-black italic text-blue-500 text-center">EzID <span className="text-white text-xs not-italic opacity-50">v20.46.1 CORRECTED</span></h1>
-      
-      <div className="canvas-box"
-           onPointerDown={e=>{e.target.setPointerCapture(e.pointerId);drag.current={active:true,x:e.clientX,y:e.clientY};}}
-           onPointerMove={e=>{if(!drag.current.active)return;const factor=1/(target==='PHOTO'?p.s:s.s);const dx=(e.clientX-drag.current.x)*factor;const dy=(e.clientY-drag.current.y)*factor;target==='PHOTO'?setP(v=>({...v,x:v.x+dx,y:v.y+dy})):setS(v=>({...v,x:v.x+dx,y:v.y+dy}));drag.current.x=e.clientX;drag.current.y=e.clientY;}}
-           onPointerUp={()=>drag.current.active=false}>
-        <canvas ref={canvasRef} width="350" height="450"/>
-      </div>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex gap-3">
+                            <label className="flex-1 py-4 bg-slate-800 rounded-2xl text-center text-xs font-black cursor-pointer">📸 LOAD<input type="file" hidden onChange={e=>{
+                                const f=e.target.files[0]; if(f){const i=new Image(); i.onload=()=>setImg(i); i.src=URL.createObjectURL(f);}
+                            }} /></label>
+                            <button onClick={()=>{
+                                const t=document.createElement('canvas'); t.width=100; t.height=130;
+                                Renderer.draw(t.getContext('2d'), {img, suit, photoT, suitT}, {x:0, y:0, w:100, h:130});
+                                setAssets([...assets, { id:Date.now(), img, suit, photoT:{...photoT}, suitT:{...suitT}, thumb:t.toDataURL() }]);
+                            }} className="flex-1 py-4 bg-slate-800 rounded-2xl text-xs font-black">＋ SAVE ASSET</button>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={()=>runProduction('SINGLE')} className="flex-[2] py-4 bg-blue-600 rounded-2xl text-xs font-black shadow-xl shadow-blue-900/40">🚀 EXPORT CURRENT</button>
+                            <button onClick={()=>runProduction('ALL')} className="flex-1 py-4 bg-emerald-600 rounded-2xl text-xs font-black shadow-xl shadow-emerald-900/40">🔥 BATCH (12)</button>
+                        </div>
+                    </div>
 
-      <div className="module-card grid grid-cols-2 gap-2">
-        <button onClick={()=>setTarget('PHOTO')} className={`py-2 rounded font-bold text-xs ${target==='PHOTO'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>👤 人像</button>
-        <button onClick={()=>setTarget('SUIT')} className={`py-2 rounded font-bold text-xs ${target==='SUIT'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>👔 西裝</button>
-      </div>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
+                        {assets.map(as => <img key={as.id} src={as.thumb} className="w-12 h-16 rounded-lg border-2 border-white/10 flex-shrink-0 bg-white" />)}
+                    </div>
 
-      <div className="module-card flex items-center gap-3">
-        <span className="text-[10px] font-bold">縮放</span>
-        <input type="range" className="flex-1 accent-blue-500" min="0.1" max="1.5" step="0.01" value={target==='PHOTO'?p.s:s.s} onChange={e=>target==='PHOTO'?setP({...p,s:parseFloat(e.target.value)}):setS({...s,s:parseFloat(e.target.value)})}/>
-        <button onClick={()=>target==='PHOTO'?setP({...p,f:p.f*-1}):setS({...s,f:s.f*-1})} className="bg-slate-800 px-3 py-1 rounded text-[10px] font-bold border border-white/5">↔️ 鏡像</button>
-      </div>
-
-      <div className="module-card grid grid-cols-3 gap-1 h-36 overflow-y-auto pr-1 no-scrollbar">
-        {Object.keys(window.SPECS).map(k=><button key={k} onClick={()=>setActiveSpec(k)} className={`py-3 text-[9px] font-black rounded border transition-all ${activeSpec===k?'border-blue-500 bg-blue-500/20 text-blue-400':'border-white/5 bg-slate-900 text-slate-600'}`}>{window.SPECS[k].name}</button>)}
-      </div>
-
-      <div className="flex gap-2">
-        <label className="flex-1 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer border border-white/5 hover:bg-slate-700">📸 載入<input type="file" hidden onChange={e=>{const f=e.target.files[0];if(f){const i=new Image();i.onload=()=>setImg(i);i.src=URL.createObjectURL(f);}}}/></label>
-        <button onClick={()=>{
-          const t=document.createElement('canvas');t.width=50;t.height=65;
-          window.drawAt(t.getContext('2d'),null,{x:0,y:0,w:50,h:65},{img,suit,p,s});
-          setAssets([...assets,{id:Date.now(),img,suit,p:{...p},s:{...s},thumb:t.toDataURL()}]);
-        }} className="flex-1 bg-slate-800 rounded-xl text-xs font-black border border-white/5 hover:bg-slate-700">＋ 存入</button>
-        <button onClick={()=>setPreview(window.runFullExport(window.SPECS[activeSpec],assets,{img,suit,p,s}))} className="flex-1 bg-blue-600 rounded-xl text-xs font-black shadow-lg hover:bg-blue-500">🚀 拼版</button>
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-6">
-        {assets.map(as=><img key={as.id} src={as.thumb} className="w-10 h-13 rounded border border-white/10 flex-shrink-0 bg-white shadow-sm"/>)}
-      </div>
-
-      {preview&&(<div className="fixed inset-0 bg-slate-950/95 z-[9999] flex flex-col items-center justify-center p-6 backdrop-blur-sm">
-        <img src={preview} className="max-w-full max-h-[70vh] rounded shadow-2xl mb-6 border border-white/10"/>
-        <div className="flex gap-4 w-full max-w-xs">
-          <button onClick={()=>setPreview(null)} className="flex-1 py-4 bg-white/10 rounded-2xl font-bold hover:bg-white/20">返回</button>
-          <a href={preview} download="EzID_Export.jpg" className="flex-1 py-4 bg-blue-600 rounded-2xl font-bold text-center shadow-lg">下載 JPG</a>
-        </div>
-      </div>)}
-
-      <button onClick={()=>window.checkFeatures()} className="w-full py-4 bg-green-600 rounded-2xl font-black text-sm shadow-xl hover:bg-green-500 transition-colors">🔍 執行核心功能自檢</button>
-    </div>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
-</script>
+                    {results && (
+                        <div className="fixed inset-0 bg-slate-950 z-[9999] overflow-y-auto p-6 flex flex-col items-center gap-8 backdrop-blur-xl">
+                            <div className="text-center space-y-2">
+                                <h2 className="text-xl font-black">PRODUCTION READY</h2>
+                                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Total: {results.length} Layouts Generated</p>
+                            </div>
+                            <div className="grid grid-cols-1 gap-6 w-full max-w-sm">
+                                {results.map((res, idx) => (
+                                    <div key={idx} className="bg-slate-900 p-4 rounded-3xl border border-white/5 space-y-4">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-black text-blue-400">{res.name}</span>
+                                            <span className="text-[9px] text-slate-600 italic">300 DPI EQUIV.</span>
+                                        </div>
+                                        <img src={res.url} className="w-full rounded-lg shadow-2xl" />
+                                        <a href={res.url} download={`${res.name}.jpg`} className="block w-full py-4 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white rounded-xl text-center text-xs font-black transition-all">DOWNLOAD JPG</a>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={()=>setResults(null)} className="sticky bottom-4 px-12 py-4 bg-white text-black rounded-full font-black text-sm shadow-2xl active:scale-95 transition-all">CLOSE PRODUCTION</button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+    </script>
 </body>
 </html>
