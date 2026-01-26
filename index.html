@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.30 穩定最終版</title>
+    <title>EzID v20.31 全軸解鎖版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @font-face { font-family: 'NotoSansTC'; src: local('Noto Sans TC'), local('Microsoft JhengHei'), sans-serif; font-weight: 700; }
-        body { font-family: 'NotoSansTC', sans-serif; background: #f8fafc; overflow-y: scroll; -webkit-overflow-scrolling: touch; }
-        .canvas-area { touch-action: none; position: relative; width: 350px; height: 450px; margin: 0 auto; border-radius: 40px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.1); border: 4px solid white; }
-        .tab-active { background: #2563eb !important; color: white !important; box-shadow: 0 4px 12px rgba(37,99,235,0.4); }
-        .custom-slider { -webkit-appearance: none; width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; outline: none; }
-        .custom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: #2563eb; border: 3px solid white; border-radius: 50%; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        body { font-family: 'NotoSansTC', sans-serif; background: #f1f5f9; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .canvas-container { touch-action: none; position: relative; width: 350px; height: 450px; margin: 0 auto; border-radius: 40px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.2); border: 4px solid white; background: white; }
+        .tab-active { background: #2563eb !important; color: white !important; box-shadow: 0 4px 10px rgba(37,99,235,0.3); }
+        .slider-ui { -webkit-appearance: none; width: 100%; height: 8px; background: #e2e8f0; border-radius: 10px; margin: 12px 0; }
+        .slider-ui::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 24px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; cursor: pointer; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="py-8 px-4">
+<body class="py-6 px-4 pb-20">
     <div id="root"></div>
 
 <script type="text/babel">
@@ -30,11 +30,7 @@ const SPECS = {
     'A4-MIX': { w: 2480, h: 3508, type: 'MIX', name: 'A4 綜合(12+18)' },
     'A4-BIG': { w: 2480, h: 3508, photos: 12, grid: [4, 3], size: [531, 708], name: 'A4 大頭(12張)' },
     'A4-ID':  { w: 2480, h: 3508, photos: 16, grid: [4, 4], size: [450, 600], name: 'A4 證件(16張)' },
-    'A4-B':   { w: 2480, h: 3508, photos: 30, grid: [6, 5], size: [354, 472], name: 'A4 混合B版' },
     '4x6-8':  { w: 1800, h: 1200, photos: 8,  grid: [2, 4], size: [413, 531], name: '4x6 2吋(8張)' },
-    '4x6-10': { w: 1800, h: 1200, photos: 10, grid: [2, 5], size: [295, 413], name: '4x6 1吋(10張)' },
-    '4x6-BIG':{ w: 1800, h: 1200, photos: 6,  grid: [2, 3], size: [531, 708], name: '4x6 大頭照(6張)' },
-    '4x6-12': { w: 1800, h: 1200, photos: 12, grid: [3, 4], size: [295, 413], name: '4x6 1吋(12張)' },
     '4x6-MIX':{ w: 1800, h: 1200, type: 'MIX46', name: '4x6 混合(4+4)' },
     'NAME':   { w: 2480, h: 3508, photos: 24, grid: [6, 4], size: [295, 413], special: 'NAME', name: '👨‍💼 姓名工牌版' }
 };
@@ -45,17 +41,14 @@ function App() {
     const [suit, setSuit] = useState(null);
     const [target, setTarget] = useState('PHOTO');
     const [gender, setGender] = useState('male');
-    
-    // 獨立控制：人像(p) 與 西裝(s)
     const [p, setP] = useState({ x: 0, y: -20, s: 0.45, r: 0, f: 1 });
     const [s, setS] = useState({ x: 0, y: 80, s: 1.0, r: 0, f: 1 });
-    
     const [slots, setSlots] = useState([]);
     const [preview, setPreview] = useState(null);
     const canvasRef = useRef(null);
     const drag = useRef({ active: false, x: 0, y: 0 });
 
-    const drawSingle = (ctx, isExp = false, data = null, cName = '', iX=0, iY=0, iW=350, iH=450) => {
+    const draw = (ctx, isExp = false, data = null, cName = '', iX=0, iY=0, iW=350, iH=450) => {
         const ratio = isExp ? iW / 350 : 1;
         const dP = data ? data.p : p;
         const dS = data ? data.s : s;
@@ -68,38 +61,46 @@ function App() {
         if (dImg) {
             ctx.save();
             ctx.translate(iX + iW/2 + dP.x * ratio, iY + iH/2 + dP.y * ratio);
-            ctx.rotate(dP.r * Math.PI / 180); ctx.scale(dP.s * ratio * dP.f, dP.s * ratio);
+            ctx.rotate(dP.r * Math.PI / 180);
+            ctx.scale(dP.s * ratio * dP.f, dP.s * ratio);
             ctx.drawImage(dImg, -dImg.width/2, -dImg.height/2);
             ctx.restore();
         }
         if (dSuit) {
             ctx.save();
             ctx.translate(iX + iW/2 + dS.x * ratio, iY + iH/2 + dS.y * ratio);
-            ctx.rotate(dS.r * Math.PI / 180); ctx.scale(dS.s * ratio * dS.f, dS.s * ratio);
+            ctx.rotate(dS.r * Math.PI / 180);
+            ctx.scale(dS.s * ratio * dS.f, dS.s * ratio);
             ctx.drawImage(dSuit, -dSuit.width/2, -dSuit.height/2);
             ctx.restore();
         }
         if (isExp && cName) {
-            ctx.fillStyle = "white"; ctx.fillRect(iX, iY + iH - 70 * ratio, iW, 70 * ratio);
-            ctx.fillStyle = "#1e293b"; ctx.font = `bold ${Math.floor(25 * ratio)}px sans-serif`;
-            ctx.textAlign = "center"; ctx.fillText(cName, iX + iW/2, iY + iH - 25 * ratio);
+            ctx.fillStyle = "white"; ctx.fillRect(iX, iY + iH - 70*ratio, iW, 70*ratio);
+            ctx.fillStyle = "#1e293b"; ctx.font = `bold ${24*ratio}px sans-serif`;
+            ctx.textAlign = "center"; ctx.fillText(cName, iX+iW/2, iY+iH-25*ratio);
         }
         ctx.restore();
         if (!isExp) {
             ctx.beginPath(); ctx.ellipse(175, 210, 110, 150, 0, 0, Math.PI * 2);
-            ctx.strokeStyle = "rgba(37,99,235,0.3)"; ctx.lineWidth = 2; ctx.setLineDash([5,5]); ctx.stroke();
+            ctx.strokeStyle = "rgba(37,99,235,0.4)"; ctx.lineWidth = 2; ctx.setLineDash([5,5]); ctx.stroke();
         }
     };
 
     useEffect(() => {
         const ctx = canvasRef.current?.getContext('2d');
-        if (ctx) { ctx.fillStyle = "white"; ctx.fillRect(0,0,350,450); drawSingle(ctx); }
-    }, [img, suit, p, s]);
+        if (ctx) { ctx.clearRect(0,0,350,450); ctx.fillStyle="white"; ctx.fillRect(0,0,350,450); draw(ctx); }
+    }, [img, suit, p, s, target]);
+
+    // ✅ 關鍵修復：全軸位移邏輯
+    const updateMove = (dx, dy) => {
+        if (target === 'PHOTO') setP(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
+        else setS(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
+    };
 
     const handleSave = () => {
         if (!img) return;
         const c = document.createElement('canvas'); c.width = 100; c.height = 130;
-        drawSingle(c.getContext('2d'), true, { img, suit, p, s }, '', 0, 0, 100, 130);
+        draw(c.getContext('2d'), true, { img, suit, p, s }, '', 0, 0, 100, 130);
         setSlots([...slots, { img, suit, p: {...p}, s: {...s}, name: `人員${slots.length+1}`, thumb: c.toDataURL() }]);
     };
 
@@ -107,39 +108,37 @@ function App() {
         const spec = SPECS[key];
         startTransition(async () => {
             const canvas = document.createElement('canvas'); canvas.width = spec.w; canvas.height = spec.h;
-            const ctx = canvas.getContext('2d'); ctx.fillStyle = "white"; ctx.fillRect(0,0,spec.w,spec.h);
+            const ctx = canvas.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,spec.w,spec.h);
             const render = async (num, grid, size, yOff = 0) => {
                 const [rows, cols] = grid, [pw, ph] = size;
-                const mx = (spec.w - cols * pw) / (cols + 1), my = (spec.h / (spec.type?2.1:1) - rows * ph) / (rows + 1);
-                for (let i = 0; i < num; i++) {
-                    const r = Math.floor(i / cols), c = i % cols;
-                    const x = mx + c * (pw + mx), y = yOff + my + r * (ph + my);
+                const mx = (spec.w - cols*pw)/(cols+1), my = (spec.h/(spec.type?2.1:1) - rows*ph)/(rows+1);
+                for (let i=0; i<num; i++){
+                    const r = Math.floor(i/cols), c = i%cols, x = mx+c*(pw+mx), y = yOff+my+r*(ph+my);
                     const d = slots[i] || { img, suit, p, s, name: '' };
-                    drawSingle(ctx, true, d, spec.special==='NAME'?d.name:'', x, y, pw, ph);
-                    ctx.strokeStyle = "#eee"; ctx.strokeRect(x,y,pw,ph);
+                    draw(ctx, true, d, spec.special==='NAME'?d.name:'', x, y, pw, ph);
                 }
             };
             if (spec.type === 'MIX') { await render(12, [3,4], [413,531], 0); await render(18, [3,6], [295,413], spec.h*0.48); }
             else if (spec.type === 'MIX46') { await render(4, [1,4], [413,531], 0); await render(4, [1,4], [295,413], spec.h*0.5); }
             else { await render(spec.photos, spec.grid, spec.size, 0); }
-            setPreview(canvas.toDataURL('image/jpeg', 0.9));
+            setPreview(canvas.toDataURL('image/jpeg', 0.95));
         });
     };
 
     const activeObj = target === 'PHOTO' ? p : s;
-    const update = (key, val) => target === 'PHOTO' ? setP({...p, [key]: val}) : setS({...s, [key]: val});
+    const updateVal = (key, val) => target === 'PHOTO' ? setP({...p, [key]: val}) : setS({...s, [key]: val});
 
     return (
         <div className="max-w-md mx-auto space-y-6">
-            <h1 className="text-center text-3xl font-black text-slate-800">EzID <span className="text-blue-600 italic">v30</span></h1>
+            <h1 className="text-center text-3xl font-black text-slate-800 tracking-tighter">EzID <span className="text-blue-600">v31</span></h1>
 
-            <div className="canvas-area">
+            <div className="canvas-container">
                 <canvas ref={canvasRef} width="350" height="450" 
                     onPointerDown={e => { e.target.setPointerCapture(e.pointerId); drag.current = { active: true, x: e.clientX, y: e.clientY }; }}
                     onPointerMove={e => {
                         if (!drag.current.active) return;
                         const dx = e.clientX - drag.current.x, dy = e.clientY - drag.current.y;
-                        update('x', activeObj.x + dx); update('y', activeObj.y + dy);
+                        updateMove(dx, dy); // 🚀 這裡現在會同時更新 X 和 Y
                         drag.current.x = e.clientX; drag.current.y = e.clientY;
                     }}
                     onPointerUp={() => drag.current.active = false} />
@@ -151,26 +150,26 @@ function App() {
             </div>
 
             <div className="bg-white p-5 rounded-3xl shadow-sm border space-y-4">
-                <div className="flex justify-between text-xs font-black text-slate-400"><span>縮放 SCALE</span><span>{activeObj.s.toFixed(2)}x</span></div>
-                <input type="range" className="custom-slider" min="0.1" max="1.5" step="0.01" value={activeObj.s} onChange={e=>update('s', parseFloat(e.target.value))} />
-                <div className="flex justify-between text-xs font-black text-slate-400"><span>旋轉 ROTATE</span><span>{activeObj.r}°</span></div>
-                <input type="range" className="custom-slider" min="-180" max="180" step="1" value={activeObj.r} onChange={e=>update('r', parseInt(e.target.value))} />
+                <div className="flex justify-between text-[10px] font-black text-slate-400"><span>SCALE 縮放</span><span>{activeObj.s.toFixed(2)}x</span></div>
+                <input type="range" className="slider-ui" min="0.1" max="1.5" step="0.01" value={activeObj.s} onChange={e=>updateVal('s', parseFloat(e.target.value))} />
+                <div className="flex justify-between text-[10px] font-black text-slate-400"><span>ROTATE 旋轉</span><span>{activeObj.r}°</span></div>
+                <input type="range" className="slider-ui" min="-180" max="180" step="1" value={activeObj.r} onChange={e=>updateVal('r', parseInt(e.target.value))} />
                 <div className="flex gap-2">
-                    <button onClick={()=>update('f', activeObj.f * -1)} className="flex-1 h-12 bg-slate-800 text-white rounded-xl font-bold">↔️ 水平翻轉</button>
-                    <button onClick={()=>{target==='PHOTO'?setP({x:0,y:-20,s:0.45,r:0,f:1}):setS({x:0,y:80,s:1.0,r:0,f:1})}} className="flex-1 h-12 bg-slate-100 text-slate-400 rounded-xl font-bold text-xs uppercase">🔄 重置</button>
+                    <button onClick={()=>updateVal('f', activeObj.f * -1)} className="flex-1 h-12 bg-slate-800 text-white rounded-xl font-bold">↔️ 水平翻轉</button>
+                    <button onClick={()=>{target==='PHOTO'?setP({x:0,y:-20,s:0.45,r:0,f:1}):setS({x:0,y:80,s:1.0,r:0,f:1})}} className="flex-1 h-12 bg-slate-100 text-slate-400 rounded-xl font-bold text-[10px]">🔄 重置</button>
                 </div>
             </div>
 
             <div className="bg-white p-5 rounded-3xl shadow-sm border space-y-4">
                 <div className="flex gap-2">
                     <button onClick={handleSave} className="flex-1 h-14 bg-blue-600 text-white rounded-xl font-black shadow-lg">💾 存入槽位</button>
-                    <button onClick={()=>setSlots([])} className="px-4 text-red-400 font-bold">清空</button>
+                    <button onClick={()=>setSlots([])} className="px-4 text-red-400 font-bold text-sm">清空</button>
                 </div>
                 <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
                     {slots.map((sl, i) => (
                         <div key={i} className="flex items-center gap-3 p-2 bg-slate-50 rounded-xl border">
-                            <img src={sl.thumb} className="w-10 h-12 rounded object-cover" />
-                            <input value={sl.name} onChange={e=>{const n=[...slots];n[i].name=e.target.value;setSlots(n)}} className="flex-1 bg-transparent border-b font-bold text-sm outline-none" />
+                            <img src={sl.thumb} className="w-10 h-12 rounded object-cover shadow-sm" />
+                            <input value={sl.name} onChange={e=>{const n=[...slots];n[i].name=e.target.value;setSlots(n)}} className="flex-1 bg-transparent border-b border-slate-200 font-bold text-sm outline-none" />
                         </div>
                     ))}
                 </div>
@@ -178,14 +177,14 @@ function App() {
 
             <div className="bg-white p-4 rounded-3xl border space-y-3">
                 <div className="flex gap-2">
-                    <button onClick={()=>setGender('male')} className={`flex-1 py-2 rounded-lg font-bold ${gender==='male'?'bg-slate-700 text-white':'bg-slate-50'}`}>男裝</button>
-                    <button onClick={()=>setGender('female')} className={`flex-1 py-2 rounded-lg font-bold ${gender==='female'?'bg-slate-700 text-white':'bg-slate-50'}`}>女裝</button>
+                    <button onClick={()=>setGender('male')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${gender==='male'?'bg-slate-700 text-white':'bg-slate-50'}`}>男裝庫</button>
+                    <button onClick={()=>setGender('female')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${gender==='female'?'bg-slate-700 text-white':'bg-slate-50'}`}>女裝庫</button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
                     <button onClick={()=>setSuit(null)} className="flex-shrink-0 w-12 h-12 border-2 border-dashed rounded-lg text-red-300">🚫</button>
                     {[1,2,3,4,5].map(n => (
                         <img key={n} src={`clothes/${gender}/${gender[0]}${n}.png`} onClick={()=>{const i=new Image();i.onload=()=>setSuit(i);i.src=`clothes/${gender}/${gender[0]}${n}.png`}} 
-                        className="flex-shrink-0 w-12 h-12 rounded-lg object-cover border cursor-pointer" />
+                        className="flex-shrink-0 w-12 h-12 rounded-lg object-cover border" />
                     ))}
                 </div>
             </div>
@@ -197,11 +196,10 @@ function App() {
                         const f = e.target.files[0]; if(f){ const i=new Image(); i.onload=()=>setImg(i); i.src=URL.createObjectURL(f); }
                     }} />
                 </label>
-                <button onClick={()=>window.location.reload()} className="bg-white border text-slate-300 rounded-2xl font-black">重新載入</button>
+                <button onClick={()=>window.location.reload()} className="bg-white border text-slate-300 rounded-2xl font-black">完全重載</button>
             </div>
 
             <div className="bg-white p-6 rounded-3xl border shadow-sm mb-12">
-                <h3 className="text-center font-bold text-xs text-slate-400 mb-4 tracking-widest uppercase">12種規格輸出</h3>
                 <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar">
                     {Object.keys(SPECS).map(k => (
                         <button key={k} onClick={()=>handleExport(k)} disabled={!img || isPending} className="h-12 bg-slate-50 border rounded-xl font-bold text-[10px] hover:bg-blue-50">
@@ -215,8 +213,8 @@ function App() {
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center p-6 backdrop-blur-md">
                     <img src={preview} className="max-w-full max-h-[70vh] border-4 border-white shadow-2xl mb-8" />
                     <div className="flex gap-4 w-full max-w-sm">
-                        <button onClick={()=>setPreview(null)} className="flex-1 h-14 bg-slate-700 text-white rounded-xl font-bold">返回</button>
-                        <a href={preview} download="EzID_Result.jpg" className="flex-1 h-14 bg-blue-600 text-white rounded-xl font-black flex items-center justify-center shadow-lg">💾 下載</a>
+                        <button onClick={()=>setPreview(null)} className="flex-1 h-14 bg-slate-700 text-white rounded-xl font-bold">返回編輯</button>
+                        <a href={preview} download="EzID_Export.jpg" className="flex-1 h-14 bg-blue-600 text-white rounded-xl font-black flex items-center justify-center">💾 下載</a>
                     </div>
                 </div>
             )}
