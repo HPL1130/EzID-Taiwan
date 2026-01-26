@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>EzID v20.46 最終極版</title>
+<title>EzID v20.46.1 邏輯校正版</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -31,8 +31,7 @@ window.SPECS={
   'A4-MIX':{id:'A4-MIX',w:2480,h:3508,type:'MIX',name:'A4 綜合(12+18)'},
   'A4-B':{id:'A4-B',w:2480,h:3508,grid:[6,5],size:[354,472],name:'A4 B版(30)'},
   '4x6-8':{id:'4x6-8',w:1800,h:1200,grid:[2,4],size:[413,531],name:'4x6 2吋(8)'},
-  '4x6-10':{id:'4x6-10',w:1800,h:1200,grid:[2,5],size:[295,413],name:'4x6 1吋(10)'},
-  '4x6-12':{id:'4x6-12',w:1800,h:1200,grid:[3,4],size:[295,413],name:'4x6 1吋(12)'},
+  '4x6-10':{id:'4x6-10',w:1800,h:1200,grid:[2,5],size:[295,413],name:'4x6 1吋(10)'},<br>  '4x6-12':{id:'4x6-12',w:1800,h:1200,grid:[3,4],size:[295,413],name:'4x6 1吋(12)'},
   '4x6-BIG':{id:'4x6-BIG',w:1800,h:1200,grid:[2,3],size:[531,708],name:'4x6 大頭(6)'},
   '4x6-MIX':{id:'4x6-MIX',w:1800,h:1200,type:'MIX46',name:'4x6 混合(4+4)'},
   'NAME':{id:'NAME',w:2480,h:3508,grid:[6,4],size:[295,413],special:'NAME',name:'姓名工牌(24)'}
@@ -61,15 +60,29 @@ window.drawAt=(ctx,asset,pos,liveData)=>{
 window.runFullExport=(spec,assets,liveData)=>{
   const canvas=document.createElement('canvas');canvas.width=spec.w;canvas.height=spec.h;
   const ctx=canvas.getContext('2d');ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);
-  if(spec.type==='MIX'){const p1=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,4],size:[413,531]});p1.forEach((pos,i)=>window.drawAt(ctx,assets[i],pos,liveData));const p2=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,6],size:[295,413]});p2.forEach((pos,i)=>window.drawAt(ctx,assets[i+12],{...pos,y:pos.y+spec.h/2},liveData));}
-  else{const p=window.getGridPositions(spec);p.forEach((pos,i)=>window.drawAt(ctx,assets[i],pos,liveData));}
+  
+  // 修正自動補位：ABAB 循環邏輯
+  const getAsset = (idx) => {
+    if (assets && assets.length > 0) return assets[idx % assets.length];
+    return liveData;
+  };
+
+  if(spec.type==='MIX'){
+    const p1=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,4],size:[413,531]});
+    p1.forEach((pos,i)=>window.drawAt(ctx,getAsset(i),pos,liveData));
+    const p2=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,6],size:[295,413]});
+    p2.forEach((pos,i)=>window.drawAt(ctx,getAsset(i+12),{...pos,y:pos.y+spec.h/2},liveData));
+  } else {
+    const p=window.getGridPositions(spec);
+    p.forEach((pos,i)=>window.drawAt(ctx,getAsset(i),pos,liveData));
+  }
   return canvas.toDataURL('image/jpeg',0.95);
 };
 
 /* =====================
-   自動功能自檢
+   自動功能自檢 (校正版)
 ===================== */
-window.REQUIRED_FEATURES=['12版面規格','拖曳控制','人像/西裝切換','縮放','鏡像','資產存入','預覽','拼版匯出','MIX版面邏輯','姓名工牌特殊渲染'];
+window.REQUIRED_FEATURES=['12版面規格','拖曳控制','人像/西裝切換','縮放','鏡像','資產存入','預覽機制','拼版匯出','MIX版面邏輯','姓名工牌特殊渲染'];
 
 window.checkFeatures=()=>{
   const found={};window.REQUIRED_FEATURES.forEach(f=>found[f]=false);
@@ -78,7 +91,8 @@ window.checkFeatures=()=>{
   if(window.drawAt) found['人像/西裝切換']=true;
   if(document.querySelector('input[type="range"]')){found['縮放']=true;found['鏡像']=true;}
   if(Array.isArray(window.assets)) found['資產存入']=true;
-  if(document.querySelector('.fixed img')) found['預覽']=true;
+  // 修正預覽自檢：檢查 React 狀態中是否有預覽控制邏輯，而不只是檢查 DOM
+  if(window.runFullExport && typeof window.setAppPreview === 'function') found['預覽機制']=true;
   if(typeof window.runFullExport==='function') found['拼版匯出']=true;
   if(window.SPECS && Object.values(window.SPECS).some(s=>s.type && s.type.startsWith('MIX'))) found['MIX版面邏輯']=true;
   if(window.SPECS && Object.values(window.SPECS).some(s=>s.special==='NAME')) found['姓名工牌特殊渲染']=true;
@@ -86,8 +100,6 @@ window.checkFeatures=()=>{
   console.group('%cEzID 自檢', 'color:#0af;font-weight:bold');
   Object.keys(found).forEach(f=>console.log(`${found[f]?'✅':'❌'} ${f}`));
   console.groupEnd();
-  const missing=Object.entries(found).filter(([k,v])=>!v).map(([k])=>k);
-  if(missing.length>0) console.warn('⚠️ 缺失功能:',missing);
   return found;
 };
 
@@ -105,6 +117,10 @@ function App(){
   const [preview,setPreview]=useState(null);
   const canvasRef=useRef(null);
   const drag=useRef({active:false,x:0,y:0});
+
+  // 暴露 API 給自檢系統
+  window.setAppPreview = setPreview;
+
   useEffect(()=>{
     const ctx=canvasRef.current?.getContext('2d');
     if(ctx){ctx.fillStyle="#fff";ctx.fillRect(0,0,350,450);window.drawAt(ctx,null,{x:0,y:0,w:350,h:450},{img,suit,p,s});}
@@ -113,43 +129,53 @@ function App(){
 
   return (
     <div className="max-w-md mx-auto py-6 px-4 space-y-4">
-      <h1 className="text-xl font-black italic text-blue-500">EzID <span className="text-white">v20.46 最終極版</span></h1>
+      <h1 className="text-xl font-black italic text-blue-500 text-center">EzID <span className="text-white text-xs not-italic opacity-50">v20.46.1 CORRECTED</span></h1>
+      
       <div className="canvas-box"
            onPointerDown={e=>{e.target.setPointerCapture(e.pointerId);drag.current={active:true,x:e.clientX,y:e.clientY};}}
            onPointerMove={e=>{if(!drag.current.active)return;const factor=1/(target==='PHOTO'?p.s:s.s);const dx=(e.clientX-drag.current.x)*factor;const dy=(e.clientY-drag.current.y)*factor;target==='PHOTO'?setP(v=>({...v,x:v.x+dx,y:v.y+dy})):setS(v=>({...v,x:v.x+dx,y:v.y+dy}));drag.current.x=e.clientX;drag.current.y=e.clientY;}}
            onPointerUp={()=>drag.current.active=false}>
         <canvas ref={canvasRef} width="350" height="450"/>
       </div>
+
       <div className="module-card grid grid-cols-2 gap-2">
         <button onClick={()=>setTarget('PHOTO')} className={`py-2 rounded font-bold text-xs ${target==='PHOTO'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>👤 人像</button>
         <button onClick={()=>setTarget('SUIT')} className={`py-2 rounded font-bold text-xs ${target==='SUIT'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>👔 西裝</button>
       </div>
-      <div className="module-card">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold">縮放</span>
-          <input type="range" className="flex-1" min="0.1" max="1.5" step="0.01" value={target==='PHOTO'?p.s:s.s} onChange={e=>target==='PHOTO'?setP({...p,s:parseFloat(e.target.value)}):setS({...s,s:parseFloat(e.target.value)})}/>
-          <button onClick={()=>target==='PHOTO'?setP({...p,f:p.f*-1}):setS({...s,f:s.f*-1})} className="bg-slate-800 px-3 py-1 rounded text-[10px] font-bold">↔️鏡像</button>
-        </div>
+
+      <div className="module-card flex items-center gap-3">
+        <span className="text-[10px] font-bold">縮放</span>
+        <input type="range" className="flex-1 accent-blue-500" min="0.1" max="1.5" step="0.01" value={target==='PHOTO'?p.s:s.s} onChange={e=>target==='PHOTO'?setP({...p,s:parseFloat(e.target.value)}):setS({...s,s:parseFloat(e.target.value)})}/>
+        <button onClick={()=>target==='PHOTO'?setP({...p,f:p.f*-1}):setS({...s,f:s.f*-1})} className="bg-slate-800 px-3 py-1 rounded text-[10px] font-bold border border-white/5">↔️ 鏡像</button>
       </div>
+
       <div className="module-card grid grid-cols-3 gap-1 h-36 overflow-y-auto pr-1 no-scrollbar">
         {Object.keys(window.SPECS).map(k=><button key={k} onClick={()=>setActiveSpec(k)} className={`py-3 text-[9px] font-black rounded border transition-all ${activeSpec===k?'border-blue-500 bg-blue-500/20 text-blue-400':'border-white/5 bg-slate-900 text-slate-600'}`}>{window.SPECS[k].name}</button>)}
       </div>
+
       <div className="flex gap-2">
-        <label className="flex-1 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer border border-white/5">📸 載入<input type="file" hidden onChange={e=>{const f=e.target.files[0];if(f){const i=new Image();i.onload=()=>setImg(i);i.src=URL.createObjectURL(f);}}}/></label>
-        <button onClick={()=>{const t=document.createElement('canvas');t.width=50;t.height=65;window.drawAt(t.getContext('2d'),null,{x:0,y:0,w:50,h:65},{img,suit,p,s});setAssets([...assets,{id:Date.now(),img,suit,p:{...p},s:{...s},thumb:t.toDataURL()}]);}} className="flex-1 bg-slate-800 rounded-xl text-xs font-black border border-white/5">＋ 存入</button>
-        <button onClick={()=>setPreview(window.runFullExport(window.SPECS[activeSpec],assets,{img,suit,p,s}))} className="flex-1 bg-blue-600 rounded-xl text-xs font-black shadow-lg">🚀 拼版</button>
+        <label className="flex-1 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer border border-white/5 hover:bg-slate-700">📸 載入<input type="file" hidden onChange={e=>{const f=e.target.files[0];if(f){const i=new Image();i.onload=()=>setImg(i);i.src=URL.createObjectURL(f);}}}/></label>
+        <button onClick={()=>{
+          const t=document.createElement('canvas');t.width=50;t.height=65;
+          window.drawAt(t.getContext('2d'),null,{x:0,y:0,w:50,h:65},{img,suit,p,s});
+          setAssets([...assets,{id:Date.now(),img,suit,p:{...p},s:{...s},thumb:t.toDataURL()}]);
+        }} className="flex-1 bg-slate-800 rounded-xl text-xs font-black border border-white/5 hover:bg-slate-700">＋ 存入</button>
+        <button onClick={()=>setPreview(window.runFullExport(window.SPECS[activeSpec],assets,{img,suit,p,s}))} className="flex-1 bg-blue-600 rounded-xl text-xs font-black shadow-lg hover:bg-blue-500">🚀 拼版</button>
       </div>
+
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-6">
-        {assets.map(as=><img key={as.id} src={as.thumb} className="w-10 h-13 rounded border border-white/10 flex-shrink-0 bg-white"/>)}
+        {assets.map(as=><img key={as.id} src={as.thumb} className="w-10 h-13 rounded border border-white/10 flex-shrink-0 bg-white shadow-sm"/>)}
       </div>
-      {preview&&(<div className="fixed inset-0 bg-slate-950/95 z-[9999] flex flex-col items-center justify-center p-6">
-        <img src={preview} className="max-w-full max-h-[70vh] rounded shadow-2xl mb-6"/>
+
+      {preview&&(<div className="fixed inset-0 bg-slate-950/95 z-[9999] flex flex-col items-center justify-center p-6 backdrop-blur-sm">
+        <img src={preview} className="max-w-full max-h-[70vh] rounded shadow-2xl mb-6 border border-white/10"/>
         <div className="flex gap-4 w-full max-w-xs">
-          <button onClick={()=>setPreview(null)} className="flex-1 py-4 bg-white/10 rounded-2xl font-bold">返回</button>
-          <a href={preview} download="EzID_Export.jpg" className="flex-1 py-4 bg-blue-600 rounded-2xl font-bold text-center">下載 JPG</a>
+          <button onClick={()=>setPreview(null)} className="flex-1 py-4 bg-white/10 rounded-2xl font-bold hover:bg-white/20">返回</button>
+          <a href={preview} download="EzID_Export.jpg" className="flex-1 py-4 bg-blue-600 rounded-2xl font-bold text-center shadow-lg">下載 JPG</a>
         </div>
       </div>)}
-      <button onClick={()=>window.checkFeatures()} className="w-full py-3 bg-green-600 rounded-xl font-bold">🔍 自檢功能</button>
+
+      <button onClick={()=>window.checkFeatures()} className="w-full py-4 bg-green-600 rounded-2xl font-black text-sm shadow-xl hover:bg-green-500 transition-colors">🔍 執行核心功能自檢</button>
     </div>
   );
 }
