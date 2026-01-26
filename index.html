@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>EzID v20.47.2</title>
+    <title>EzID v20.47.4</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -18,10 +18,10 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useRef, useEffect } = React;
+        const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
         /* ============================================================
-           1️⃣ 核心數據區 (CORE SPECS) - 12 種規格及 MIX 定義
+           1️⃣ 核心數據契約 (Core Contract)
            ============================================================ */
         const SPECS = {
             'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], name: 'A4 2吋(20)' },
@@ -51,180 +51,223 @@
         };
 
         /* ============================================================
-           2️⃣ 繪圖引擎區 (RENDER ENGINE) - 精確座標運算
+           2️⃣ 繪圖引擎封裝 (Render Engine)
            ============================================================ */
-        const Engine = {
-            getLayout: (spec) => {
-                const build = (w, h, grid, size, ox, oy) => {
-                    const [rs, cs] = grid, [pw, ph] = size;
-                    const mx = (w - cs * pw) / (cs + 1), my = (h - rs * ph) / (rs + 1);
-                    return Array.from({length: rs * cs}, (_, i) => ({
-                        x: ox + mx + (i % cs) * (pw + mx), y: oy + my + Math.floor(i / cs) * (ph + my), w: pw, h: ph
+        const Renderer = {
+            // 計算佈局座標，包含 MIX 版面處理
+            calculateLayout: (spec) => {
+                const getGrid = (w, h, grid, size, ox, oy) => {
+                    const [rows, cols] = grid, [pw, ph] = size;
+                    const mx = (w - cols * pw) / (cols + 1), my = (h - rows * ph) / (rows + 1);
+                    return Array.from({ length: rows * cols }, (_, i) => ({
+                        x: ox + mx + (i % cols) * (pw + mx),
+                        y: oy + my + Math.floor(i / cols) * (ph + my),
+                        w: pw, h: ph
                     }));
                 };
-                if (spec.sections) return spec.sections.flatMap(s => build(s.w, s.h, s.grid, s.size, s.x, s.y).slice(0, s.count));
-                return build(spec.w, spec.h, spec.grid, spec.size, 0, 0);
+                return spec.sections 
+                    ? spec.sections.flatMap(s => getGrid(s.w, s.h, s.grid, s.size, s.x, s.y).slice(0, s.count))
+                    : getGrid(spec.w, spec.h, spec.grid, spec.size, 0, 0);
             },
-            drawItem: (ctx, data, rect) => {
-                if (!data?.img) return;
-                const ratio = rect.w / 350;
+
+            // 核心繪製方法，解耦數據與座標
+            drawLayer: (ctx, img, transform, rect, baseWidth = 350) => {
+                if (!img) return;
+                const ratio = rect.w / baseWidth;
+                const { x, y, s, r, f } = transform;
+                
                 ctx.save();
-                ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-                const drawLayer = (t, img) => {
-                    if (!img) return;
-                    ctx.save();
-                    ctx.translate(rect.x + rect.w/2 + t.x * ratio, rect.y + rect.h/2 + t.y * ratio);
-                    ctx.rotate(t.r * Math.PI / 180);
-                    ctx.scale(t.s * ratio * (t.f || 1), t.s * ratio);
-                    ctx.drawImage(img, -img.width/2, -img.height/2);
-                    ctx.restore();
-                };
-                drawLayer(data.photoT, data.img);
-                if (data.suit) drawLayer(data.suitT, data.suit);
+                ctx.translate(rect.x + rect.w / 2 + x * ratio, rect.y + rect.h / 2 + y * ratio);
+                ctx.rotate((r * Math.PI) / 180);
+                // 防呆：防止 f 為 0 導致渲染消失
+                const scaleX = s * ratio * (f === 0 ? 1 : f);
+                const scaleY = s * ratio;
+                ctx.scale(scaleX, scaleY);
+                ctx.drawImage(img, -img.width / 2, -img.height / 2);
                 ctx.restore();
-                ctx.strokeStyle = "rgba(0,0,0,0.1)"; ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
             }
         };
 
         /* ============================================================
-           3️⃣ 主程式與 UI 分區 (MAIN APP)
+           3️⃣ 主應用組件 (Main Application)
            ============================================================ */
         function App() {
-            const [state, setState] = useState({
-                img: null, suit: null,
-                photoT: { x: 0, y: 0, s: 0.5, r: 0, f: 1 },
-                suitT: { x: 0, y: 50, s: 1, r: 0, f: 1 },
-                target: 'PHOTO',
-                assets: [],
-                activeSpec: 'A4-20',
-                progress: 0,
-                results: null
+            // State 分離：將編輯參數與全局資源分開
+            const [params, setParams] = useState({
+                photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 },
+                suit: { x: 0, y: 50, s: 1, r: 0, f: 1 }
             });
+            const [assets, setAssets] = useState({ img: null, suit: null });
+            const [history, setHistory] = useState([]); // 存儲快照
+            const [ui, setUi] = useState({ target: 'photo', activeSpec: 'A4-20', loading: false, results: null });
 
-            const cvsRef = useRef(null);
-            const drag = useRef({ active: false, x: 0, y: 0 });
+            const canvasRef = useRef(null);
+            const dragRef = useRef({ isDragging: false, lastX: 0, lastY: 0 });
+            const requestRef = useRef();
+
+            // 順暢的繪製循環 (RAF)
+            const renderPreview = useCallback(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const rect = { x: 0, y: 0, w: 350, h: 450 };
+                Renderer.drawLayer(ctx, assets.img, params.photo, rect);
+                Renderer.drawLayer(ctx, assets.suit, params.suit, rect);
+                
+                requestRef.current = requestAnimationFrame(renderPreview);
+            }, [assets, params]);
 
             useEffect(() => {
-                const ctx = cvsRef.current?.getContext('2d');
-                if (ctx) {
-                    ctx.fillStyle = "#fff"; ctx.fillRect(0,0,350,450);
-                    Engine.drawItem(ctx, state, {x:0, y:0, w:350, h:450});
-                }
-            }, [state]);
+                requestRef.current = requestAnimationFrame(renderPreview);
+                return () => cancelAnimationFrame(requestRef.current);
+            }, [renderPreview]);
 
-            const handleExport = async (all = false) => {
-                if (!state.img) return;
-                setState(p => ({ ...p, progress: 1 }));
-                const targets = all ? Object.keys(SPECS) : [state.activeSpec];
-                const pool = state.assets.length > 0 ? state.assets : [state];
-                
-                setTimeout(() => {
-                    const outputs = targets.map(id => {
-                        const spec = SPECS[id];
-                        const canvas = document.createElement('canvas');
-                        canvas.width = spec.w; canvas.height = spec.h;
-                        const ctx = canvas.getContext('2d');
-                        ctx.fillStyle = "white"; ctx.fillRect(0,0,spec.w,spec.h);
-                        Engine.getLayout(spec).forEach((pos, i) => Engine.drawItem(ctx, pool[i % pool.length], pos));
-                        return { name: id, url: canvas.toDataURL('image/jpeg', 0.9) };
+            // 批次導出功能 (Chunked Processing)
+            const runExport = async (all = false) => {
+                if (!assets.img) return;
+                setUi(p => ({ ...p, loading: true }));
+
+                const targetSpecs = all ? Object.keys(SPECS) : [ui.activeSpec];
+                const pool = history.length > 0 ? history : [{ assets, params }];
+                const outputs = [];
+
+                for (const specId of targetSpecs) {
+                    const spec = SPECS[specId];
+                    const outCanvas = document.createElement('canvas');
+                    outCanvas.width = spec.w; outCanvas.height = spec.h;
+                    const outCtx = outCanvas.getContext('2d');
+                    outCtx.fillStyle = "white"; outCtx.fillRect(0, 0, spec.w, spec.h);
+
+                    const layout = Renderer.calculateLayout(spec);
+                    layout.forEach((rect, i) => {
+                        const item = pool[i % pool.length];
+                        Renderer.drawLayer(outCtx, item.assets.img, item.params.photo, rect);
+                        Renderer.drawLayer(outCtx, item.assets.suit, item.params.suit, rect);
                     });
-                    setState(p => ({ ...p, results: outputs, progress: 0 }));
-                }, 100);
+
+                    outputs.push({ id: specId, name: spec.name, url: outCanvas.toDataURL('image/jpeg', 0.9) });
+                    await new Promise(r => setTimeout(r, 16)); // 避免阻塞主執行緒
+                }
+
+                setUi(p => ({ ...p, results: outputs, loading: false }));
             };
 
             return (
-                <div className="max-w-md mx-auto p-4 flex flex-col gap-5 select-none pb-10">
-                    <header className="flex justify-between items-center py-2 border-b border-white/10">
-                        <h1 className="text-xl font-black italic text-blue-500">EzID <span className="text-white text-xs not-italic">v20.47.2</span></h1>
-                        <span className="text-[10px] opacity-40 font-mono">MANUAL CONTROL</span>
+                <div className="max-w-md mx-auto p-4 flex flex-col gap-6 select-none min-h-screen">
+                    <header className="flex justify-between items-end py-2 border-b border-white/10">
+                        <h1 className="text-2xl font-black italic text-blue-500 tracking-tighter">EzID <span className="text-white text-xs not-italic">v20.47.4</span></h1>
+                        <span className="text-[10px] opacity-40 font-mono uppercase">Production Architecture</span>
                     </header>
 
+                    {/* 編輯器區域 */}
                     <div className="editor-stage"
-                         onPointerDown={e => { drag.current = { active: true, x: e.clientX, y: e.clientY }; e.target.setPointerCapture(e.pointerId); }}
-                         onPointerMove={e => {
-                             if(!drag.current.active) return;
-                             const k = state.target === 'PHOTO' ? 'photoT' : 'suitT';
-                             const dx = (e.clientX - drag.current.x) / state[k].s;
-                             const dy = (e.clientY - drag.current.y) / state[k].s;
-                             setState(p => ({ ...p, [k]: { ...p[k], x: p[k].x + dx, y: p[k].y + dy } }));
-                             drag.current.x = e.clientX; drag.current.y = e.clientY;
+                         onPointerDown={e => {
+                             dragRef.current = { isDragging: true, lastX: e.clientX, lastY: e.clientY };
+                             e.target.setPointerCapture(e.pointerId);
                          }}
-                         onPointerUp={e => { drag.current.active = false; e.target.releasePointerCapture(e.pointerId); }}>
-                        <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
+                         onPointerMove={e => {
+                             if (!dragRef.current.isDragging) return;
+                             const { lastX, lastY } = dragRef.current;
+                             const currentParam = params[ui.target];
+                             // 動態計算補償：位移量 / 縮放比例 = 實際手感位移
+                             const dx = (e.clientX - lastX) / currentParam.s;
+                             const dy = (e.clientY - lastY) / currentParam.s;
+
+                             setParams(p => ({
+                                 ...p,
+                                 [ui.target]: { ...p[ui.target], x: p[ui.target].x + dx, y: p[ui.target].y + dy }
+                             }));
+                             dragRef.current = { isDragging: true, lastX: e.clientX, lastY: e.clientY };
+                         }}
+                         onPointerUp={e => {
+                             dragRef.current.isDragging = false;
+                             e.target.releasePointerCapture(e.pointerId);
+                         }}>
+                        <canvas ref={canvasRef} width="350" height="450" className="w-full h-full" />
+                        {ui.loading && (
+                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-md z-10">
+                                <div className="text-center">
+                                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                    <p className="text-blue-500 font-bold text-xs uppercase tracking-widest">Processing</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="flex gap-2 p-1 bg-slate-900 rounded-2xl">
-                        {['PHOTO', 'SUIT'].map(t => (
-                            <button key={t} onClick={()=>setState(p=>({...p, target:t}))}
-                                className={`flex-1 py-3 rounded-xl text-[11px] font-bold ${state.target===t?'bg-blue-600 text-white':'text-slate-500'}`}>
-                                {t === 'PHOTO' ? '照片層' : '正裝層'}
-                            </button>
-                        ))}
-                    </div>
+                    {/* 控制面板 */}
+                    <div className="space-y-4">
+                        <div className="flex gap-2 p-1 bg-slate-900 rounded-2xl">
+                            {['photo', 'suit'].map(t => (
+                                <button key={t} onClick={() => setUi(p => ({ ...p, target: t }))}
+                                    className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${ui.target === t ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                                    {t === 'photo' ? '照片層' : '正裝層'}
+                                </button>
+                            ))}
+                        </div>
 
-                    <div className="bg-slate-900/50 p-4 rounded-3xl border border-white/5 space-y-4">
-                        <input type="range" className="w-full" min="0.1" max="1.5" step="0.01" 
-                               value={state[state.target==='PHOTO'?'photoT':'suitT'].s} 
-                               onChange={e => {
-                                   const k = state.target==='PHOTO'?'photoT':'suitT';
-                                   setState(p => ({ ...p, [k]: { ...p[k], s: parseFloat(e.target.value) } }));
-                               }} />
-                        <div className="flex gap-2">
-                            <button onClick={() => {
-                                const k = state.target==='PHOTO'?'photoT':'suitT';
-                                setState(p => ({ ...p, [k]: { ...p[k], r: p[k].r + 90 } }));
-                            }} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-bold">旋轉角度</button>
-                            <button onClick={() => {
-                                const k = state.target==='PHOTO'?'photoT':'suitT';
-                                setState(p => ({ ...p, [k]: { ...p[k], f: p[k].f * -1 } }));
-                            }} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-bold">水平鏡像</button>
+                        <div className="bg-slate-900/50 p-5 rounded-3xl border border-white/5 space-y-4">
+                            <input type="range" className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500" 
+                                   min="0.01" max="3" step="0.01" value={params[ui.target].s}
+                                   onChange={e => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], s: parseFloat(e.target.value) } }))} />
+                            <div className="flex gap-2">
+                                <button onClick={() => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], r: p[ui.target].r + 90 } }))} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-black hover:bg-slate-700 active:scale-95 transition-all">旋轉 90°</button>
+                                <button onClick={() => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], f: p[ui.target].f * -1 } }))} className="flex-1 py-3 bg-slate-800 rounded-xl text-[10px] font-black hover:bg-slate-700 active:scale-95 transition-all">水平鏡像</button>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
+                    {/* 規格選單區 */}
+                    <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-32 no-scrollbar py-1">
                         {Object.keys(SPECS).map(id => (
-                            <button key={id} onClick={()=>setState(p=>({...p, activeSpec:id}))}
-                                className={`py-2 text-[9px] font-bold rounded-lg border ${state.activeSpec===id?'border-blue-500 text-blue-400 bg-blue-500/10':'border-transparent bg-slate-900 text-slate-600'}`}>
+                            <button key={id} onClick={() => setUi(p => ({ ...p, activeSpec: id }))}
+                                className={`py-2 text-[9px] font-black rounded-lg border transition-all ${ui.activeSpec === id ? 'border-blue-500 text-blue-400 bg-blue-500/10' : 'border-transparent bg-slate-900 text-slate-500 hover:bg-slate-800'}`}>
                                 {SPECS[id].name}
                             </button>
                         ))}
                     </div>
 
+                    {/* 底部操作區 */}
                     <div className="flex flex-col gap-3">
                         <div className="flex gap-3">
-                            <label className="flex-1 py-4 bg-slate-800 rounded-2xl text-center text-[11px] font-bold cursor-pointer">📸 載入照片<input type="file" hidden onChange={e=>{
-                                const f=e.target.files[0]; if(f){const i=new Image(); i.onload=()=>setState(p=>({...p, img:i})); i.src=URL.createObjectURL(f);}
+                            <label className="flex-1 py-4 bg-slate-800 rounded-2xl text-center text-[11px] font-black cursor-pointer hover:bg-slate-700 transition-all">📸 載入照片<input type="file" hidden onChange={e => {
+                                const f = e.target.files[0]; if (f) { const i = new Image(); i.onload = () => setAssets(p => ({ ...p, img: i })); i.src = URL.createObjectURL(f); }
                             }} /></label>
                             <button onClick={() => {
-                                if(!state.img) return;
-                                setState(p => ({ ...p, assets: [...p.assets, {...state, id: Date.now()}] }));
-                            }} className="flex-1 py-4 bg-slate-800 rounded-2xl text-[11px] font-bold">💾 暫存快照</button>
+                                if (assets.img) setHistory(p => [...p, { assets: { ...assets }, params: { ...params } }]);
+                            }} className="flex-1 py-4 bg-slate-800 rounded-2xl text-[11px] font-black hover:bg-slate-700 transition-all">💾 存入快照 ({history.length})</button>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={()=>handleExport(false)} className="flex-[2] py-4 bg-blue-600 rounded-2xl text-[11px] font-bold shadow-lg">導出當前</button>
-                            <button onClick={()=>handleExport(true)} className="flex-1 py-4 bg-emerald-600 rounded-2xl text-[11px] font-bold shadow-lg">🔥 批次</button>
+                        <div className="flex gap-3">
+                            <button onClick={() => runExport(false)} className="flex-[2] py-4 bg-blue-600 rounded-2xl text-[11px] font-black shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all">導出當前規格</button>
+                            <button onClick={() => runExport(true)} className="flex-1 py-4 bg-emerald-600 rounded-2xl text-[11px] font-black shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all">🔥 全規格批次</button>
                         </div>
                     </div>
 
-                    {state.results && (
-                        <div className="fixed inset-0 bg-slate-950 z-50 overflow-y-auto p-6">
-                            <div className="max-w-sm mx-auto space-y-6">
-                                <h2 className="text-xl font-black text-center">生產報告</h2>
-                                {state.results.map((res, i) => (
-                                    <div key={i} className="bg-slate-900 p-4 rounded-3xl border border-white/5 space-y-3">
-                                        <p className="text-[10px] font-mono text-blue-500">{res.name}.jpg</p>
-                                        <img src={res.url} className="w-full rounded-xl" />
-                                        <a href={res.url} download={`${res.name}.jpg`} className="block w-full py-3 bg-blue-600 rounded-xl text-center text-xs font-bold">下載</a>
+                    {/* 結果彈窗 */}
+                    {ui.results && (
+                        <div className="fixed inset-0 bg-slate-950/98 z-50 overflow-y-auto p-6 backdrop-blur-lg">
+                            <div className="max-w-sm mx-auto space-y-8 py-10">
+                                <h2 className="text-2xl font-black italic text-center tracking-widest">EXPORT READY</h2>
+                                {ui.results.map((res, i) => (
+                                    <div key={i} className="bg-slate-900 p-5 rounded-3xl border border-white/5 space-y-4">
+                                        <div className="flex justify-between text-[10px] font-mono text-blue-500 uppercase">
+                                            <span>{res.id}</span>
+                                            <span>High-Res JPEG</span>
+                                        </div>
+                                        <img src={res.url} className="w-full rounded-xl shadow-2xl" />
+                                        <a href={res.url} download={`${res.id}.jpg`} className="block w-full py-4 bg-white/5 hover:bg-blue-600 text-blue-400 hover:text-white rounded-xl text-center text-xs font-black transition-all">DOWNLOAD</a>
                                     </div>
                                 ))}
-                                <button onClick={()=>setState(p=>({...p, results:null}))} className="w-full py-4 bg-white text-black rounded-full font-black">返回</button>
+                                <button onClick={() => setUi(p => ({ ...p, results: null }))} className="w-full py-4 bg-white text-black rounded-full font-black text-sm transition-all active:scale-95">CLOSE PREVIEW</button>
                             </div>
                         </div>
                     )}
                 </div>
             );
         }
-        ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
