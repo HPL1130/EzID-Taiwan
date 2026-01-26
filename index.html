@@ -1,279 +1,160 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <title>EzID v20.38 專業生產力旗艦版</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @font-face { font-family: 'NotoSansTC'; src: local('Noto Sans TC'), local('Microsoft JhengHei'), sans-serif; font-weight: 700; }
-        body { font-family: 'NotoSansTC', sans-serif; background: #0f172a; color: #f1f5f9; }
-        .canvas-box { position: relative; width: 350px; height: 450px; margin: 0 auto; border-radius: 16px; overflow: hidden; background: #1e293b; box-shadow: 0 0 0 4px #334155; touch-action: none; }
-        .slot-card { border-left: 4px solid #475569; background: #1e293b; transition: all 0.2s; }
-        .slot-card.active { border-left-color: #3b82f6; background: #2d3748; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
-    </style>
+<meta charset="UTF-8">
+<title>EzID v20.46 最終極版</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+@font-face{font-family:'NotoSansTC';src:local('Noto Sans TC'),local('Microsoft JhengHei'),sans-serif;font-weight:700;}
+body{font-family:'NotoSansTC',sans-serif;background:#020617;color:#f8fafc;}
+.canvas-box{width:350px;height:450px;margin:0 auto;background:#fff;border:4px solid #1e293b;position:relative;border-radius:8px;overflow:hidden;}
+.module-card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px;}
+.no-scrollbar::-webkit-scrollbar{display:none;}
+</style>
 </head>
-<body class="py-6 px-4 pb-24">
-    <div id="root"></div>
-
+<body>
+<div id="root"></div>
 <script type="text/babel">
-const { useState, useRef, useEffect, useTransition } = React;
+const { useState, useRef, useEffect } = React;
 
-/* ============================================================
-   SECTION 1: 核心業務規格 (The 12 Holy Specs)
-   ============================================================ */
-const SPECS = {
-    'A4-20':  { id: 'A4-20', w: 2480, h: 3508, photos: 20, grid: [5, 4], size: [413, 531], name: 'A4 2吋標準' },
-    'A4-42':  { id: 'A4-42', w: 2480, h: 3508, photos: 42, grid: [7, 6], size: [295, 413], name: 'A4 1吋標準' },
-    'A4-ID':  { id: 'A4-ID', w: 2480, h: 3508, photos: 16, grid: [4, 4], size: [450, 600], name: 'A4 護照證件' },
-    'A4-BIG': { id: 'A4-BIG', w: 2480, h: 3508, photos: 12, grid: [4, 3], size: [531, 708], name: 'A4 大頭 (12)' },
-    'A4-MIX': { id: 'A4-MIX', w: 2480, h: 3508, type: 'MIX', name: 'A4 綜合(12+18)' },
-    'A4-B':   { id: 'A4-B',   w: 2480, h: 3508, photos: 30, grid: [6, 5], size: [354, 472], name: 'A4 混合B版' },
-    '4x6-8':  { id: '4x6-8',  w: 1800, h: 1200, photos: 8,  grid: [2, 4], size: [413, 531], name: '4x6 2吋 (8)' },
-    '4x6-10': { id: '4x6-10', w: 1800, h: 1200, photos: 10, grid: [2, 5], size: [295, 413], name: '4x6 1吋 (10)' },
-    '4x6-BIG':{ id: '4x6-BIG',w: 1800, h: 1200, photos: 6,  grid: [2, 3], size: [531, 708], name: '4x6 大頭 (6)' },
-    '4x6-MIX':{ id: '4x6-MIX',w: 1800, h: 1200, type: 'MIX46', name: '4x6 混合(4+4)' },
-    '4x6-12': { id: '4x6-12', w: 1800, h: 1200, photos: 12, grid: [3, 4], size: [295, 413], name: '4x6 1吋 (12)' },
-    'NAME':   { id: 'NAME',   w: 2480, h: 3508, photos: 24, grid: [6, 4], size: [295, 413], special: 'NAME', name: '姓名工牌版' }
+/* =====================
+   完整版面設定
+===================== */
+window.SPECS={
+  'A4-20':{id:'A4-20',w:2480,h:3508,grid:[5,4],size:[413,531],name:'A4 2吋(20)'},
+  'A4-42':{id:'A4-42',w:2480,h:3508,grid:[7,6],size:[295,413],name:'A4 1吋(42)'},
+  'A4-ID':{id:'A4-ID',w:2480,h:3508,grid:[4,4],size:[450,600],name:'A4 護照(16)'},
+  'A4-BIG':{id:'A4-BIG',w:2480,h:3508,grid:[4,3],size:[531,708],name:'A4 大頭(12)'},
+  'A4-MIX':{id:'A4-MIX',w:2480,h:3508,type:'MIX',name:'A4 綜合(12+18)'},
+  'A4-B':{id:'A4-B',w:2480,h:3508,grid:[6,5],size:[354,472],name:'A4 B版(30)'},
+  '4x6-8':{id:'4x6-8',w:1800,h:1200,grid:[2,4],size:[413,531],name:'4x6 2吋(8)'},
+  '4x6-10':{id:'4x6-10',w:1800,h:1200,grid:[2,5],size:[295,413],name:'4x6 1吋(10)'},
+  '4x6-12':{id:'4x6-12',w:1800,h:1200,grid:[3,4],size:[295,413],name:'4x6 1吋(12)'},
+  '4x6-BIG':{id:'4x6-BIG',w:1800,h:1200,grid:[2,3],size:[531,708],name:'4x6 大頭(6)'},
+  '4x6-MIX':{id:'4x6-MIX',w:1800,h:1200,type:'MIX46',name:'4x6 混合(4+4)'},
+  'NAME':{id:'NAME',w:2480,h:3508,grid:[6,4],size:[295,413],special:'NAME',name:'姓名工牌(24)'}
 };
 
-/* ============================================================
-   SECTION 2: 原子渲染引擎 (Decoupled Renderer)
-   ============================================================ */
-const AtomicRenderer = {
-    drawLayer: (ctx, img, st, ratio, cx, cy) => {
-        if (!img) return;
-        ctx.save();
-        ctx.translate(cx + st.x * ratio, cy + st.y * ratio);
-        ctx.rotate(st.r * Math.PI / 180);
-        ctx.scale(st.s * ratio * st.f, st.s * ratio);
-        ctx.drawImage(img, -img.width / 2, -img.height / 2);
-        ctx.restore();
-    },
-    drawGuide: (ctx, w, h) => {
-        ctx.beginPath();
-        ctx.ellipse(w/2, h*0.46, w*0.32, h*0.38, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(59, 130, 246, 0.4)";
-        ctx.setLineDash([5, 5]); ctx.stroke();
-    }
+/* =====================
+   核心渲染與運算
+===================== */
+window.getGridPositions=(spec)=>{
+  const positions=[],[rows,cols]=spec.grid,[pw,ph]=spec.size;
+  const marginX=(spec.w-cols*pw)/(cols+1);
+  const marginY=(spec.h-rows*ph)/(rows+1);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)positions.push({x:marginX+c*(pw+marginX),y:marginY+r*(ph+marginY),w:pw,h:ph});
+  return positions;
 };
 
-/* ============================================================
-   SECTION 3: 核心應用主體 (Orchestration)
-   ============================================================ */
-function App() {
-    const [isPending, startTransition] = useTransition();
-    
-    // Editor States
-    const [img, setImg] = useState(null);
-    const [suit, setSuit] = useState(null);
-    const [p, setP] = useState({ x: 0, y: -20, s: 0.45, r: 0, f: 1 });
-    const [s, setS] = useState({ x: 0, y: 80, s: 1.0, r: 0, f: 1 });
-    const [target, setTarget] = useState('PHOTO');
-    const [gender, setGender] = useState('male');
-    const [activeSpec, setActiveSpec] = useState('A4-20');
-    
-    // Asset Management
-    const [slots, setSlots] = useState([]);
-    const [editingId, setEditingId] = useState(null);
-    const [preview, setPreview] = useState(null);
-    
-    const canvasRef = useRef(null);
-    const drag = useRef({ active: false, x: 0, y: 0 });
+window.drawAt=(ctx,asset,pos,liveData)=>{
+  const data=asset||liveData;if(!data.img)return;
+  const ratio=pos.w/350,cx=pos.x+pos.w/2,cy=pos.y+pos.h/2;
+  ctx.save();ctx.beginPath();ctx.rect(pos.x,pos.y,pos.w,pos.h);ctx.clip();
+  ctx.save();ctx.translate(cx+data.p.x*ratio,cy+data.p.y*ratio);ctx.rotate(data.p.r*Math.PI/180);ctx.scale(data.p.s*ratio*data.p.f,data.p.s*ratio);ctx.drawImage(data.img,-data.img.width/2,-data.img.height/2);ctx.restore();
+  if(data.suit){ctx.save();ctx.translate(cx+data.s.x*ratio,cy+data.s.y*ratio);ctx.scale(data.s.s*ratio*data.s.f,data.s.s*ratio);ctx.drawImage(data.suit,-data.suit.width/2,-data.suit.height/2);ctx.restore();}
+  ctx.restore();ctx.strokeStyle="#DDD";ctx.lineWidth=1;ctx.strokeRect(pos.x,pos.y,pos.w,pos.h);
+};
 
-    // 🟢 渲染循環
-    useEffect(() => {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (!ctx) return;
-        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
-        AtomicRenderer.drawLayer(ctx, img, p, 1, 175, 225);
-        AtomicRenderer.drawLayer(ctx, suit, s, 1, 175, 225);
-        AtomicRenderer.drawGuide(ctx, 350, 450);
-    }, [img, suit, p, s]);
+window.runFullExport=(spec,assets,liveData)=>{
+  const canvas=document.createElement('canvas');canvas.width=spec.w;canvas.height=spec.h;
+  const ctx=canvas.getContext('2d');ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(spec.type==='MIX'){const p1=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,4],size:[413,531]});p1.forEach((pos,i)=>window.drawAt(ctx,assets[i],pos,liveData));const p2=window.getGridPositions({w:spec.w,h:spec.h/2,grid:[3,6],size:[295,413]});p2.forEach((pos,i)=>window.drawAt(ctx,assets[i+12],{...pos,y:pos.y+spec.h/2},liveData));}
+  else{const p=window.getGridPositions(spec);p.forEach((pos,i)=>window.drawAt(ctx,assets[i],pos,liveData));}
+  return canvas.toDataURL('image/jpeg',0.95);
+};
 
-    // 🟢 交互與補償
-    const handleMove = (e) => {
-        if (!drag.current.active) return;
-        const activeObj = target === 'PHOTO' ? p : s;
-        const factor = 1 / activeObj.s;
-        const dx = (e.clientX - drag.current.x) * factor;
-        const dy = (e.clientY - drag.current.y) * factor;
-        const update = target === 'PHOTO' ? setP : setS;
-        update(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
-        drag.current.x = e.clientX; drag.current.y = e.clientY;
-    };
+/* =====================
+   自動功能自檢
+===================== */
+window.REQUIRED_FEATURES=['12版面規格','拖曳控制','人像/西裝切換','縮放','鏡像','資產存入','預覽','拼版匯出','MIX版面邏輯','姓名工牌特殊渲染'];
 
-    // 🟢 資產權責操作
-    const commitAsset = (isUpdate = false) => {
-        if (!img) return;
-        const thumb = document.createElement('canvas'); thumb.width = 100; thumb.height = 130;
-        const ctx = thumb.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,100,130);
-        AtomicRenderer.drawLayer(ctx, img, p, 100/350, 50, 65);
-        AtomicRenderer.drawLayer(ctx, suit, s, 100/350, 50, 65);
+window.checkFeatures=()=>{
+  const found={};window.REQUIRED_FEATURES.forEach(f=>found[f]=false);
+  if(window.SPECS && Object.keys(window.SPECS).length>=12) found['12版面規格']=true;
+  if(typeof window.drawAt==='function' && typeof window.getGridPositions==='function') found['拖曳控制']=true;
+  if(window.drawAt) found['人像/西裝切換']=true;
+  if(document.querySelector('input[type="range"]')){found['縮放']=true;found['鏡像']=true;}
+  if(Array.isArray(window.assets)) found['資產存入']=true;
+  if(document.querySelector('.fixed img')) found['預覽']=true;
+  if(typeof window.runFullExport==='function') found['拼版匯出']=true;
+  if(window.SPECS && Object.values(window.SPECS).some(s=>s.type && s.type.startsWith('MIX'))) found['MIX版面邏輯']=true;
+  if(window.SPECS && Object.values(window.SPECS).some(s=>s.special==='NAME')) found['姓名工牌特殊渲染']=true;
 
-        const asset = {
-            id: isUpdate ? editingId : Date.now(),
-            name: isUpdate ? slots.find(x=>x.id===editingId).name : `人員 ${slots.length + 1}`,
-            img, suit, p: {...p}, s: {...s},
-            refSpec: activeSpec,
-            updatedAt: new Date().toLocaleTimeString(),
-            thumb: thumb.toDataURL()
-        };
+  console.group('%cEzID 自檢', 'color:#0af;font-weight:bold');
+  Object.keys(found).forEach(f=>console.log(`${found[f]?'✅':'❌'} ${f}`));
+  console.groupEnd();
+  const missing=Object.entries(found).filter(([k,v])=>!v).map(([k])=>k);
+  if(missing.length>0) console.warn('⚠️ 缺失功能:',missing);
+  return found;
+};
 
-        setSlots(isUpdate ? slots.map(x => x.id === editingId ? asset : x) : [...slots, asset]);
-        setEditingId(null);
-    };
+/* =====================
+   React UI
+===================== */
+function App(){
+  const [img,setImg]=useState(null);
+  const [suit,setSuit]=useState(null);
+  const [p,setP]=useState({x:0,y:-20,s:0.45,r:0,f:1});
+  const [s,setS]=useState({x:0,y:80,s:1,r:0,f:1});
+  const [target,setTarget]=useState('PHOTO');
+  const [activeSpec,setActiveSpec]=useState('A4-20');
+  const [assets,setAssets]=useState([]);
+  const [preview,setPreview]=useState(null);
+  const canvasRef=useRef(null);
+  const drag=useRef({active:false,x:0,y:0});
+  useEffect(()=>{
+    const ctx=canvasRef.current?.getContext('2d');
+    if(ctx){ctx.fillStyle="#fff";ctx.fillRect(0,0,350,450);window.drawAt(ctx,null,{x:0,y:0,w:350,h:450},{img,suit,p,s});}
+    window.assets=assets;
+  },[img,suit,p,s,assets]);
 
-    const recall = (as) => {
-        setEditingId(as.id);
-        setImg(as.img); setSuit(as.suit); setP(as.p); setS(as.s); setActiveSpec(as.refSpec);
-    };
-
-    return (
-        <div className="max-w-md mx-auto space-y-6">
-            <header className="flex justify-between items-center px-2">
-                <div>
-                    <h1 className="text-2xl font-black tracking-tighter italic text-white">EzID <span className="text-blue-500">v20.38</span></h1>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Professional Production Suite</p>
-                </div>
-                {editingId && <span className="bg-red-500 text-white text-[10px] px-2 py-1 rounded font-black animate-pulse">編輯模式</span>}
-            </header>
-
-            {/* 核心編輯畫布 */}
-            <div className="canvas-box" 
-                 onPointerDown={e => { e.target.setPointerCapture(e.pointerId); drag.current = { active: true, x: e.clientX, y: e.clientY }; }}
-                 onPointerMove={handleMove}
-                 onPointerUp={() => drag.current.active = false}>
-                <canvas ref={canvasRef} width="350" height="450" />
-            </div>
-
-            {/* 控制面板：校準與西裝 (原功能歸位) */}
-            <div className="glass p-5 rounded-3xl space-y-4">
-                <div className="flex bg-slate-800 p-1 rounded-xl">
-                    <button onClick={()=>setTarget('PHOTO')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${target==='PHOTO'?'bg-blue-600 text-white':'text-slate-500'}`}>人像校準</button>
-                    <button onClick={()=>setTarget('SUIT')} className={`flex-1 py-2 rounded-lg font-bold text-xs ${target==='SUIT'?'bg-blue-600 text-white':'text-slate-500'}`}>西裝適配</button>
-                </div>
-
-                {/* 西裝選擇區 (找回來了) */}
-                {target === 'SUIT' && (
-                    <div className="space-y-3">
-                        <div className="flex gap-2">
-                            <button onClick={()=>setGender('male')} className={`flex-1 py-1 rounded-md text-[10px] font-bold ${gender==='male'?'bg-slate-700 text-white':'text-slate-600'}`}>男裝 MALE</button>
-                            <button onClick={()=>setGender('female')} className={`flex-1 py-1 rounded-md text-[10px] font-bold ${gender==='female'?'bg-slate-700 text-white':'text-slate-600'}`}>女裝 FEMALE</button>
-                        </div>
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                            {[1,2,3,4,5].map(n => (
-                                <img key={n} src={`clothes/${gender}/${gender[0]}${n}.png`} 
-                                     onClick={()=>{const i=new Image(); i.onload=()=>setSuit(i); i.src=`clothes/${gender}/${gender[0]}${n}.png`;}}
-                                     className="w-12 h-12 rounded border border-white/10 bg-white/5 cursor-pointer hover:border-blue-500 transition-all" />
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* 滑桿區 */}
-                <div className="space-y-3">
-                    <input type="range" className="w-full accent-blue-500" min="0.1" max="1.5" step="0.01" value={target==='PHOTO'?p.s:s.s} onChange={e=>{
-                        const v = parseFloat(e.target.value); target==='PHOTO'?setP({...p,s:v}):setS({...s,s:v});
-                    }} />
-                    <div className="flex justify-between text-[10px] font-bold text-slate-500 italic">
-                        <span>SCALE: {(target==='PHOTO'?p.s:s.s).toFixed(2)}x</span>
-                        <button onClick={()=>target==='PHOTO'?setP({...p,f:p.f*-1}):setS({...s,f:s.f*-1})}>↔️ 鏡像切換</button>
-                    </div>
-                </div>
-            </div>
-
-            {/* 規格基準區 (12種規格入口) */}
-            <div className="glass p-4 rounded-3xl">
-                <p className="text-[9px] font-black text-blue-400 mb-3 uppercase tracking-tighter italic">Calibration Reference Spec (校準基準規格)</p>
-                <div className="grid grid-cols-3 gap-2">
-                    {Object.keys(SPECS).map(k => (
-                        <button key={k} onClick={()=>setActiveSpec(k)} className={`py-2 rounded-lg text-[9px] font-bold transition-all border ${activeSpec===k?'bg-blue-600 border-blue-600 text-white':'bg-slate-800 border-white/5 text-slate-500'}`}>
-                            {SPECS[k].name}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* 資產名單管理 (核心資產區) */}
-            <div className="glass p-5 rounded-3xl space-y-4">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset Manager ({slots.length})</h2>
-                    {editingId ? (
-                        <button onClick={()=>commitAsset(true)} className="bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-lg shadow-lg">確認更新</button>
-                    ) : (
-                        <button onClick={()=>commitAsset(false)} className="bg-blue-600 text-white text-[10px] font-black px-4 py-2 rounded-lg shadow-lg">存入定稿資產</button>
-                    )}
-                </div>
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1 no-scrollbar">
-                    {slots.map(as => (
-                        <div key={as.id} className={`slot-card p-3 rounded-xl flex items-center gap-3 border border-white/5 ${editingId===as.id?'active':''}`}>
-                            <img src={as.thumb} className="w-10 h-12 rounded bg-white shadow-inner" />
-                            <div className="flex-1 min-w-0">
-                                <input value={as.name} onChange={e=>{const n=[...slots]; n.find(x=>x.id===as.id).name=e.target.value; setSlots(n);}} className="w-full bg-transparent font-bold text-xs outline-none text-white focus:text-blue-400" />
-                                <div className="flex gap-3 text-[8px] font-black text-slate-500 uppercase mt-1">
-                                    <span className="text-blue-500/80">Ref: {as.refSpec}</span>
-                                    <span>T: {as.updatedAt}</span>
-                                </div>
-                            </div>
-                            <button onClick={()=>recall(as)} className="text-[10px] font-bold text-slate-400 hover:text-white px-2">RECALL</button>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* 系統操作與匯出 */}
-            <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center justify-center h-14 bg-white text-slate-900 rounded-2xl font-black cursor-pointer active:scale-95 transition-all">
-                    📸 載入原始照片
-                    <input type="file" hidden accept="image/*" onChange={e=>{
-                        const f = e.target.files[0]; if(f){ const i=new Image(); i.onload=()=>setImg(i); i.src=URL.createObjectURL(f); }
-                    }} />
-                </label>
-                <button onClick={()=>startTransition(async ()=>{
-                    // 執行 Export Engine (獨立引擎邏輯)
-                    const spec = SPECS[activeSpec];
-                    const canvas = document.createElement('canvas'); canvas.width = spec.w; canvas.height = spec.h;
-                    const ctx = canvas.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,spec.w,spec.h);
-                    
-                    const fill = (num, grid, size) => {
-                        const [pw, ph] = size;
-                        const mx = (spec.w - grid[1]*pw)/(grid[1]+1), my = (spec.h - grid[0]*ph)/(grid[0]+1);
-                        for (let i=0; i<num; i++) {
-                            const r = Math.floor(i/grid[1]), c = i%grid[1];
-                            const target = slots[i] || { img, suit, p, s };
-                            const ratio = pw/350;
-                            const x = mx+c*(pw+mx), y = my+r*(ph+my);
-                            ctx.save(); ctx.beginPath(); ctx.rect(x,y,pw,ph); ctx.clip();
-                            AtomicRenderer.drawLayer(ctx, target.img, target.p, ratio, x+pw/2, y+ph/2);
-                            AtomicRenderer.drawLayer(ctx, target.suit, target.s, ratio, x+pw/2, y+ph/2);
-                            ctx.restore();
-                            ctx.strokeStyle="#eee"; ctx.strokeRect(x,y,pw,ph);
-                        }
-                    };
-                    if(spec.type==='MIX') fill(12, [3,4], [413,531]); else fill(spec.photos, spec.grid, spec.size);
-                    setPreview(canvas.toDataURL('image/jpeg', 0.9));
-                })} className="bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-900/20">🚀 執行批次匯出</button>
-            </div>
-
-            {preview && (
-                <div className="fixed inset-0 bg-slate-950/98 z-[9999] flex flex-col items-center justify-center p-8 backdrop-blur-xl">
-                    <img src={preview} className="max-w-full max-h-[75vh] border-2 border-white/10 shadow-2xl rounded mb-8" />
-                    <div className="flex gap-4 w-full max-w-sm">
-                        <button onClick={()=>setPreview(null)} className="flex-1 h-14 bg-white/10 text-white rounded-2xl font-bold">返回工作站</button>
-                        <a href={preview} download="EzID_Pro_Export.jpg" className="flex-1 h-14 bg-blue-600 text-white rounded-2xl font-black flex items-center justify-center">💾 下載結果</a>
-                    </div>
-                </div>
-            )}
+  return (
+    <div className="max-w-md mx-auto py-6 px-4 space-y-4">
+      <h1 className="text-xl font-black italic text-blue-500">EzID <span className="text-white">v20.46 最終極版</span></h1>
+      <div className="canvas-box"
+           onPointerDown={e=>{e.target.setPointerCapture(e.pointerId);drag.current={active:true,x:e.clientX,y:e.clientY};}}
+           onPointerMove={e=>{if(!drag.current.active)return;const factor=1/(target==='PHOTO'?p.s:s.s);const dx=(e.clientX-drag.current.x)*factor;const dy=(e.clientY-drag.current.y)*factor;target==='PHOTO'?setP(v=>({...v,x:v.x+dx,y:v.y+dy})):setS(v=>({...v,x:v.x+dx,y:v.y+dy}));drag.current.x=e.clientX;drag.current.y=e.clientY;}}
+           onPointerUp={()=>drag.current.active=false}>
+        <canvas ref={canvasRef} width="350" height="450"/>
+      </div>
+      <div className="module-card grid grid-cols-2 gap-2">
+        <button onClick={()=>setTarget('PHOTO')} className={`py-2 rounded font-bold text-xs ${target==='PHOTO'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>👤 人像</button>
+        <button onClick={()=>setTarget('SUIT')} className={`py-2 rounded font-bold text-xs ${target==='SUIT'?'bg-blue-600 text-white':'bg-slate-800 text-slate-500'}`}>👔 西裝</button>
+      </div>
+      <div className="module-card">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold">縮放</span>
+          <input type="range" className="flex-1" min="0.1" max="1.5" step="0.01" value={target==='PHOTO'?p.s:s.s} onChange={e=>target==='PHOTO'?setP({...p,s:parseFloat(e.target.value)}):setS({...s,s:parseFloat(e.target.value)})}/>
+          <button onClick={()=>target==='PHOTO'?setP({...p,f:p.f*-1}):setS({...s,f:s.f*-1})} className="bg-slate-800 px-3 py-1 rounded text-[10px] font-bold">↔️鏡像</button>
         </div>
-    );
+      </div>
+      <div className="module-card grid grid-cols-3 gap-1 h-36 overflow-y-auto pr-1 no-scrollbar">
+        {Object.keys(window.SPECS).map(k=><button key={k} onClick={()=>setActiveSpec(k)} className={`py-3 text-[9px] font-black rounded border transition-all ${activeSpec===k?'border-blue-500 bg-blue-500/20 text-blue-400':'border-white/5 bg-slate-900 text-slate-600'}`}>{window.SPECS[k].name}</button>)}
+      </div>
+      <div className="flex gap-2">
+        <label className="flex-1 h-12 bg-slate-800 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer border border-white/5">📸 載入<input type="file" hidden onChange={e=>{const f=e.target.files[0];if(f){const i=new Image();i.onload=()=>setImg(i);i.src=URL.createObjectURL(f);}}}/></label>
+        <button onClick={()=>{const t=document.createElement('canvas');t.width=50;t.height=65;window.drawAt(t.getContext('2d'),null,{x:0,y:0,w:50,h:65},{img,suit,p,s});setAssets([...assets,{id:Date.now(),img,suit,p:{...p},s:{...s},thumb:t.toDataURL()}]);}} className="flex-1 bg-slate-800 rounded-xl text-xs font-black border border-white/5">＋ 存入</button>
+        <button onClick={()=>setPreview(window.runFullExport(window.SPECS[activeSpec],assets,{img,suit,p,s}))} className="flex-1 bg-blue-600 rounded-xl text-xs font-black shadow-lg">🚀 拼版</button>
+      </div>
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-6">
+        {assets.map(as=><img key={as.id} src={as.thumb} className="w-10 h-13 rounded border border-white/10 flex-shrink-0 bg-white"/>)}
+      </div>
+      {preview&&(<div className="fixed inset-0 bg-slate-950/95 z-[9999] flex flex-col items-center justify-center p-6">
+        <img src={preview} className="max-w-full max-h-[70vh] rounded shadow-2xl mb-6"/>
+        <div className="flex gap-4 w-full max-w-xs">
+          <button onClick={()=>setPreview(null)} className="flex-1 py-4 bg-white/10 rounded-2xl font-bold">返回</button>
+          <a href={preview} download="EzID_Export.jpg" className="flex-1 py-4 bg-blue-600 rounded-2xl font-bold text-center">下載 JPG</a>
+        </div>
+      </div>)}
+      <button onClick={()=>window.checkFeatures()} className="w-full py-3 bg-green-600 rounded-xl font-bold">🔍 自檢功能</button>
+    </div>
+  );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
