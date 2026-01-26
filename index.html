@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.24</title>
+    <title>EzID v20.47.25</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,9 +14,10 @@
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding-bottom: 50px; }
         .editor-stage { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 32px; overflow: hidden; touch-action: none; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); }
         .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
-        .suit-thumb { flex: 0 0 70px; height: 70px; border-radius: 16px; border: 2px solid #1e293b; background: #fff; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .suit-thumb.active { border-color: #3b82f6; transform: scale(1.1); box-shadow: 0 0 20px rgba(59,130,246,0.4); }
-        .fatal-screen { position: fixed; inset: 0; background: #450a0a; color: #fecaca; z-index: 9999; display: flex; flex-direction: column; items: center; justify-content: center; padding: 40px; text-align: center; }
+        .thumb-box { flex: 0 0 70px; height: 70px; border-radius: 16px; border: 2px solid #1e293b; background: #fff; transition: 0.3s; cursor: pointer; overflow: hidden; position: relative; }
+        .thumb-box.active { border-color: #3b82f6; transform: scale(1.1); box-shadow: 0 0 15px rgba(59,130,246,0.5); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .fatal-msg { position: fixed; inset: 0; background: #450a0a; display: flex; align-items: center; justify-content: center; z-index: 9999; font-weight: 900; }
     </style>
 </head>
 <body>
@@ -25,7 +26,7 @@
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
-/* [區塊 1: 核心契約] ⚠️ 禁止修改數量與 MIX 結構 */
+/* ================= EzID 核心契約 ================= */
 const SPECS = {
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8)', cat: '4x6' },
     '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '1吋(10)', cat: '4x6' },
@@ -84,58 +85,45 @@ const Renderer = {
 
 function App() {
     const canvasRef = useRef(null);
+    const [history, setHistory] = useState([]); // 實體暫存圖庫
     const [params, setParams] = useState({ photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }, suit: { x: 0, y: 80, s: 0.8, r: 0, f: 1 } });
     const [assets, setAssets] = useState({ img: null, suit: null });
-    const [ui, setUi] = useState({ target: 'photo', activeSpec: '4x6-8', gender: 'female', activeSuitUrl: null, loading: false, progress: 0, results: null });
+    const [ui, setUi] = useState({ target: 'photo', activeSpec: '4x6-8', gender: 'female', loading: false, progress: 0, results: null });
     const [fatal, setFatal] = useState(null);
     const dragRef = useRef({ active: false, x: 0, y: 0 });
 
-    /* 🛡️ 硬性自檢：任何 FAIL 直接鎖死 */
+    /* 🛡️ 契約自檢 */
     useEffect(() => {
-        const keys = Object.keys(SPECS);
-        if (keys.length !== 12) setFatal(`數量錯誤: 應為 12, 實為 ${keys.length}`);
-        if (!SPECS['A4-MIX'].sections || !SPECS['4x6-MIX'].sections) setFatal("契約失效: MIX 結構被損毀");
+        if (Object.keys(SPECS).length !== 12) setFatal("規格數量不符 (須為12種)");
+        if (!SPECS['A4-MIX'].sections) setFatal("A4-MIX 結構損壞");
     }, []);
 
-    const renderStage = useCallback(() => {
-        if (!canvasRef.current || fatal) return;
-        const ctx = canvasRef.current.getContext('2d', { alpha: false });
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, 350, 450);
-        if (assets.img) Renderer.drawLayer(ctx, assets.img, params.photo, { x: 0, y: 0, w: 350, h: 450 });
-        if (assets.suit) Renderer.drawLayer(ctx, assets.suit, params.suit, { x: 0, y: 0, w: 350, h: 450 });
+    useEffect(() => {
+        const render = () => {
+            if (!canvasRef.current || fatal) return;
+            const ctx = canvasRef.current.getContext('2d', { alpha: false });
+            ctx.fillStyle = "#fff"; ctx.fillRect(0,0,350,450);
+            if (assets.img) Renderer.drawLayer(ctx, assets.img, params.photo, {x:0, y:0, w:350, h:450});
+            if (assets.suit) Renderer.drawLayer(ctx, assets.suit, params.suit, {x:0, y:0, w:350, h:450});
+            requestAnimationFrame(render);
+        };
+        const id = requestAnimationFrame(render);
+        return () => cancelAnimationFrame(id);
     }, [assets, params, fatal]);
 
-    useEffect(() => {
-        const frame = requestAnimationFrame(renderStage);
-        return () => cancelAnimationFrame(frame);
-    }, [renderStage]);
-
-    /* 📸 修復：穩定載入與暫存保留 */
-    const handlePhoto = (e) => {
+    const handleFile = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
             const img = new Image();
             img.onload = () => {
-                setAssets(prev => ({ ...prev, img }));
-                // 注意：這裡不重置 params，保留使用者之前的調整位置 (暫存)
+                setAssets(a => ({ ...a, img }));
+                setHistory(h => [{ img, params: { ...params.photo } }, ...h].slice(0, 5)); // 僅保留最新 5 張
             };
             img.src = ev.target.result;
         };
         reader.readAsDataURL(file);
-    };
-
-    const handleSuit = (url) => {
-        if (!url) return setAssets(a => ({ ...a, suit: null })), setUi(u => ({ ...u, activeSuitUrl: null }));
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            setAssets(a => ({ ...a, suit: img }));
-            setUi(u => ({ ...u, activeSuitUrl: url }));
-        };
-        img.src = url;
     };
 
     const runExport = async (all = false) => {
@@ -148,26 +136,26 @@ function App() {
             const cvs = document.createElement('canvas');
             cvs.width = spec.w; cvs.height = spec.h;
             const ctx = cvs.getContext('2d', { alpha: false });
-            ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, spec.w, spec.h);
+            ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, spec.w, spec.h);
             Renderer.calculateLayout(spec).forEach(rect => {
                 Renderer.drawLayer(ctx, assets.img, params.photo, rect);
                 Renderer.drawLayer(ctx, assets.suit, params.suit, rect);
             });
             res.push({ ...spec, url: cvs.toDataURL('image/jpeg', 0.8) });
-            cvs.width = 1; cvs.height = 1; // 資源回收
+            cvs.width = 1; cvs.height = 1;
             setUi(u => ({ ...u, progress: Math.round(((i + 1) / list.length) * 100) }));
             await new Promise(r => setTimeout(r, 40));
         }
         setUi(u => ({ ...u, results: res, loading: false }));
     };
 
-    if (fatal) return <div className="fatal-screen"><h1>SYSTEM HALTED</h1><p>{fatal}</p></div>;
+    if (fatal) return <div className="fatal-msg">契約失效: {fatal}</div>;
 
     return (
         <div className="flex flex-col p-6 gap-6">
-            <header className="flex justify-between items-center">
-                <h1 className="text-3xl font-black italic text-blue-500 tracking-tighter">EzID</h1>
-                <div className="text-right"><span className="text-[10px] font-bold text-slate-500">v20.47.24</span><div className="text-[9px] text-emerald-500 font-black">ACTIVE CACHE ON</div></div>
+            <header className="flex justify-between items-end">
+                <h1 className="text-3xl font-black italic text-blue-500">EzID</h1>
+                <div className="text-right text-[10px] text-slate-500 font-bold">V20.47.25<br/><span className="text-emerald-500">HISTORY_UI_ACTIVE</span></div>
             </header>
 
             <div className="editor-stage"
@@ -182,79 +170,89 @@ function App() {
                 onPointerUp={() => dragRef.current.active = false}>
                 <canvas ref={canvasRef} width="350" height="450" className="w-full h-full" />
                 <div className="guide-circle"></div>
-                {ui.loading && <div className="absolute inset-0 bg-slate-950/90 flex items-center justify-center font-black text-blue-500 animate-pulse">EXPORTING {ui.progress}%</div>}
+                {ui.loading && <div className="absolute inset-0 bg-slate-900/90 flex items-center justify-center font-black text-blue-400">BATCH {ui.progress}%</div>}
             </div>
 
-            {/* 衣服選擇區 */}
-            <div className="bg-slate-900/50 p-4 rounded-3xl space-y-3">
+            {/* 📸 實體暫存圖庫區 */}
+            {history.length > 0 && (
+                <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-500 px-1 uppercase tracking-tighter">照片暫存紀錄 (點擊換回)</p>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
+                        {history.map((item, idx) => (
+                            <div key={idx} onClick={() => { setAssets(a => ({ ...a, img: item.img })); setParams(p => ({ ...p, photo: item.params })); }} 
+                                className={`thumb-box flex-shrink-0 ${assets.img === item.img ? 'active' : ''}`}>
+                                <img src={item.img.src} className="w-full h-full object-cover" />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* 衣服區 */}
+            <div className="bg-slate-900/40 p-4 rounded-3xl space-y-3">
                 <div className="flex gap-2">
                     {['female', 'male'].map(g => (
-                        <button key={g} onClick={() => setUi(u => ({ ...u, gender: g }))} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${ui.gender === g ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>{g}</button>
+                        <button key={g} onClick={() => setUi(u => ({ ...u, gender: g }))} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase ${ui.gender === g ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{g}</button>
                     ))}
                 </div>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
-                    <div onClick={() => handleSuit(null)} className="suit-thumb flex-shrink-0 bg-red-500/10 border-red-500/40 text-red-500 font-black">✕</div>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                    <div onClick={() => setAssets(a => ({ ...a, suit: null }))} className="thumb-box flex-shrink-0 bg-red-500/10 border-red-500/30 text-red-500 flex items-center justify-center font-black">✕</div>
                     {SUIT_LIST[ui.gender].map(url => (
-                        <div key={url} onClick={() => handleSuit(url)} className={`suit-thumb flex-shrink-0 ${ui.activeSuitUrl === url ? 'active' : ''}`}><img src={url} className="w-full h-full object-contain p-1" /></div>
+                        <div key={url} onClick={() => {
+                            const i = new Image(); i.crossOrigin = "anonymous";
+                            i.onload = () => setAssets(a => ({ ...a, suit: i }));
+                            i.src = url;
+                        }} className={`thumb-box flex-shrink-0 ${ui.activeSuitUrl === url ? 'active' : ''}`}><img src={url} className="w-full h-full object-contain p-1" /></div>
                     ))}
                 </div>
             </div>
 
-            {/* 控制區 */}
             <div className="grid grid-cols-2 gap-3">
                 {['photo', 'suit'].map(t => (
-                    <button key={t} onClick={() => setUi(u => ({ ...u, target: t }))} className={`py-4 rounded-2xl font-black text-sm transition-all ${ui.target === t ? 'bg-blue-600 ring-4 ring-blue-600/20' : 'bg-slate-800 text-slate-500'}`}>{t === 'photo' ? '調整照片' : '調整衣服'}</button>
+                    <button key={t} onClick={() => setUi(u => ({ ...u, target: t }))} className={`py-4 rounded-2xl font-black ${ui.target === t ? 'bg-blue-600 ring-4 ring-blue-600/20' : 'bg-slate-800 text-slate-500'}`}>{t === 'photo' ? '照片' : '衣服'}</button>
                 ))}
             </div>
 
-            <div className="bg-slate-900/80 p-6 rounded-3xl space-y-4 shadow-inner">
+            <div className="bg-slate-900/60 p-6 rounded-3xl space-y-4">
                 <input type="range" min="0.1" max="2.5" step="0.01" value={params[ui.target].s} onChange={e => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], s: parseFloat(e.target.value) } }))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], r: p[ui.target].r + 90 } }))} className="py-3 bg-slate-800 rounded-xl text-xs font-bold active:scale-95 transition-transform">旋轉 90°</button>
-                    <button onClick={() => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], f: p[ui.target].f * -1 } }))} className="py-3 bg-slate-800 rounded-xl text-xs font-bold active:scale-95 transition-transform">水平鏡像</button>
+                    <button onClick={() => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], r: p[ui.target].r + 90 } }))} className="py-3 bg-slate-800 rounded-xl text-xs font-bold">旋轉</button>
+                    <button onClick={() => setParams(p => ({ ...p, [ui.target]: { ...p[ui.target], f: p[ui.target].f * -1 } }))} className="py-3 bg-slate-800 rounded-xl text-xs font-bold">鏡像</button>
                 </div>
             </div>
 
-            {/* 版面 */}
             <div className="space-y-4">
                 {['4x6', 'A4'].map(cat => (
                     <div key={cat} className="space-y-2">
-                        <p className="text-[10px] font-black text-slate-600 px-1 tracking-tighter uppercase">{cat} PRINT SIZE</p>
+                        <p className="text-[10px] font-black text-slate-600 px-1 uppercase tracking-widest">{cat} 版面</p>
                         <div className="flex flex-wrap gap-2">
                             {Object.values(SPECS).filter(s => s.cat === cat).map(s => (
-                                <button key={s.id} onClick={() => setUi(u => ({ ...u, activeSpec: s.id }))} className={`px-3 py-3 rounded-xl text-[10px] font-bold flex-1 min-w-[85px] border border-white/5 ${ui.activeSpec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{s.name}</button>
+                                <button key={s.id} onClick={() => setUi(u => ({ ...u, activeSpec: s.id }))} className={`px-3 py-3 rounded-xl text-[10px] font-bold flex-1 min-w-[85px] ${ui.activeSpec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{s.name}</button>
                             ))}
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* 動作 */}
-            <div className="flex flex-col gap-3 pt-4">
-                <label className="w-full py-5 bg-slate-200 text-slate-950 rounded-3xl text-center text-sm font-black cursor-pointer shadow-xl hover:bg-white transition-colors">📸 選取照片 (保留當前位置)<input type="file" hidden accept="image/*" onChange={handlePhoto}/></label>
+            <div className="flex flex-col gap-3">
+                <label className="w-full py-5 bg-white text-black rounded-3xl text-center text-sm font-black cursor-pointer shadow-xl">📸 載入新照片<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
                 <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => runExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black shadow-lg">單張導出</button>
-                    <button onClick={() => runExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black shadow-lg">全規格(12)導出</button>
+                    <button onClick={() => runExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black shadow-lg">12 種全出</button>
                 </div>
             </div>
 
-            {/* 結果 */}
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-6 animate-in fade-in duration-300">
-                    <div className="max-w-sm mx-auto space-y-8 pb-20">
-                        {['4x6', 'A4'].map(cat => (
-                            <div key={cat} className="space-y-6">
-                                <div className="sticky top-0 bg-slate-950/80 backdrop-blur-md py-2 z-10 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest">{cat} OUTPUT</div>
-                                {ui.results.filter(r => r.cat === cat).map((res, i) => (
-                                    <div key={i} className="bg-slate-900 p-4 rounded-3xl border border-white/5 space-y-4 shadow-2xl transition-transform active:scale-[0.98]">
-                                        <div className="flex justify-between items-center px-1"><p className="text-[11px] font-black text-blue-400">{res.name}</p><span className="text-[9px] text-slate-600">{res.w} x {res.h}</span></div>
-                                        <img src={res.url} className="w-full rounded-2xl border border-white/5 shadow-inner" loading="lazy" />
-                                        <a href={res.url} download={`EzID_${res.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs shadow-lg active:bg-blue-700">下載此張</a>
-                                    </div>
-                                ))}
+                    <div className="max-w-sm mx-auto space-y-10 pb-20">
+                        {ui.results.map((res, i) => (
+                            <div key={i} className="bg-slate-900 p-4 rounded-3xl border border-white/5 space-y-4 shadow-2xl">
+                                <div className="flex justify-between items-center"><p className="text-[11px] font-black text-blue-400">{res.name}</p></div>
+                                <img src={res.url} className="w-full rounded-2xl border border-white/5 shadow-inner" />
+                                <a href={res.url} download={`EzID_${res.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs">DOWNLOAD</a>
                             </div>
                         ))}
-                        <button onClick={() => setUi(u => ({ ...u, results: null }))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-64 py-5 bg-white text-black rounded-full font-black shadow-2xl active:scale-95 transition-all">關閉預覽</button>
+                        <button onClick={() => setUi(u => ({ ...u, results: null }))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-64 py-5 bg-white text-black rounded-full font-black shadow-2xl">返回</button>
                     </div>
                 </div>
             )}
