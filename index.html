@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.17</title>
+    <title>EzID v20.47.18</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -15,8 +15,9 @@
         .editor-stage { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 24px; overflow: hidden; touch-action: none; }
         .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .suit-thumb { flex: 0 0 65px; height: 65px; border-radius: 14px; border: 2px solid #334155; background: #fff; transition: 0.2s; cursor: pointer; }
+        .suit-thumb { flex: 0 0 65px; height: 65px; border-radius: 14px; border: 2px solid #334155; background: #fff; transition: 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .suit-thumb.active { border-color: #3b82f6; transform: scale(1.1); box-shadow: 0 0 15px rgba(59,130,246,0.3); }
+        .remove-btn { background: #ef4444 !important; border-color: #ef4444 !important; color: white; font-weight: 900; font-size: 20px; }
     </style>
 </head>
 <body>
@@ -87,7 +88,6 @@ const Renderer = {
 
 function App() {
     const canvasRef = useRef(null);
-    // 🚀 參數鎖定：更換內容不影響座標
     const [params, setParams] = useState({ photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }, suit: { x: 0, y: 80, s: 0.8, r: 0, f: 1 } });
     const [assets, setAssets] = useState({ img: null, suit: null });
     const [ui, setUi] = useState({ target: 'photo', activeSpec: 'A4-20', gender: 'female', activeSuitUrl: null, loading: false, results: null });
@@ -112,6 +112,11 @@ function App() {
     }, [assets, params]);
 
     const changeSuit = (url) => {
+        if (url === null) {
+            setAssets(a => ({ ...a, suit: null }));
+            setUi(u => ({ ...u, activeSuitUrl: null }));
+            return;
+        }
         const i = new Image(); i.crossOrigin = "anonymous";
         i.onload = () => { setAssets(a => ({...a, suit: i})); setUi(u => ({...u, activeSuitUrl: url})); };
         i.src = url;
@@ -132,7 +137,7 @@ function App() {
                 Renderer.drawLayer(ctx, assets.suit, params.suit, rect);
             });
             outputs.push({ id, name: spec.name, url: cvs.toDataURL('image/jpeg', 0.85) });
-            cvs.width = 0; cvs.height = 0; // 釋放記憶體
+            cvs.width = 0; cvs.height = 0;
             await new Promise(r => setTimeout(r, 50));
         }
         setUi(p => ({ ...p, results: outputs, loading: false }));
@@ -140,7 +145,7 @@ function App() {
 
     return (
         <div className="flex flex-col p-6 gap-6">
-            <header className="flex justify-between items-end"><h1 className="text-3xl font-black italic text-blue-500">EzID</h1><span className="text-[10px] text-slate-500 font-bold border border-slate-700 px-2 py-1 rounded">V20.47.17</span></header>
+            <header className="flex justify-between items-end"><h1 className="text-3xl font-black italic text-blue-500">EzID</h1><span className="text-[10px] text-slate-500 font-bold border border-slate-700 px-2 py-1 rounded">V20.47.18</span></header>
 
             <div className="editor-stage"
                 onPointerDown={e => { dragRef.current = { active: true, x: e.clientX, y: e.clientY }; e.target.setPointerCapture(e.pointerId); }}
@@ -157,14 +162,17 @@ function App() {
                 {ui.loading && <div className="absolute inset-0 bg-slate-900/90 flex items-center justify-center font-black">EXPORTING...</div>}
             </div>
 
-            {/* 衣服選單 */}
+            {/* 衣服選單 + 移除按鈕 */}
             <div className="flex flex-col gap-3 bg-slate-800/40 p-4 rounded-3xl">
                 <div className="flex gap-2">
                     {['female', 'male'].map(g => (
                         <button key={g} onClick={() => setUi(u => ({...u, gender: g}))} className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${ui.gender === g ? 'bg-blue-600' : 'bg-slate-700 text-slate-400'}`}>{g}</button>
                     ))}
                 </div>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                <div className="flex gap-3 overflow-x-auto no-scrollbar py-1 items-center">
+                    {/* 🔥 移除衣服按鈕 */}
+                    <div onClick={() => changeSuit(null)} className="suit-thumb flex-shrink-0 remove-btn active:scale-95">✕</div>
+                    
                     {SUIT_LIST[ui.gender].map(url => (
                         <div key={url} onClick={() => changeSuit(url)} className={`suit-thumb flex-shrink-0 ${ui.activeSuitUrl === url ? 'active' : ''}`}><img src={url} className="w-full h-full object-contain p-1" /></div>
                     ))}
@@ -173,7 +181,7 @@ function App() {
 
             <div className="grid grid-cols-2 gap-3">
                 {['photo', 'suit'].map(t => (
-                    <button key={t} onClick={() => setUi(p => ({ ...p, target: t }))} className={`py-4 rounded-2xl font-black ${ui.target === t ? 'bg-blue-600 shadow-lg shadow-blue-900/40' : 'bg-slate-800 text-slate-500'}`}>{t === 'photo' ? '調整照片' : '調整衣服'}</button>
+                    <button key={t} onClick={() => setUi(p => ({ ...p, target: t }))} className={`py-4 rounded-2xl font-black ${ui.target === t ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{t === 'photo' ? '調整照片' : '調整衣服'}</button>
                 ))}
             </div>
 
@@ -196,8 +204,8 @@ function App() {
                     const f = e.target.files[0]; if(f){ const i = new Image(); i.onload = () => setAssets(a => ({...a, img: i})); i.src = URL.createObjectURL(f); }
                 }}/></label>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => runExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black shadow-lg">導出目前</button>
-                    <button onClick={() => runExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black shadow-lg">全規格導出</button>
+                    <button onClick={() => runExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black">導出目前</button>
+                    <button onClick={() => runExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black">全規格導出</button>
                 </div>
             </div>
 
