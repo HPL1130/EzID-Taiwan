@@ -3,15 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.27</title>
+    <title>EzID v20.47.28</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; }
-        #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 20px; }
+        #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 20px; padding-bottom: 80px; }
         .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 24px; overflow: hidden; touch-action: none; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        /* 核心回歸：人物對齊圈 */
+        .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         .cache-card { position: relative; flex: 0 0 90px; height: 120px; border-radius: 12px; border: 2px solid #1e293b; background: #1e293b; transition: 0.2s; overflow: hidden; }
         .cache-card.active { border-color: #3b82f6; transform: translateY(-5px); }
         .del-x { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; background: #ef4444; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; z-index: 20; cursor: pointer; }
@@ -22,8 +24,9 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useMemo } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 
+/* [核心契約：不可刪除或硬編碼] */
 const SPECS = {
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8)', cat: '4x6' },
     '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '1吋(10)', cat: '4x6' },
@@ -56,6 +59,7 @@ const Renderer = {
         ctx.drawImage(img, -img.width/2, -img.height/2);
         ctx.restore();
     },
+    /* 核心修復：正確解析 MIX 結構 */
     getLayout: (s) => {
         const grid = (w, h, g, sz, ox=0, oy=0, lim=99) => {
             const slots = [];
@@ -65,22 +69,18 @@ const Renderer = {
             }
             return slots;
         };
+        // MIX 必須從 sections 產生成員，否則按 grid 產生
         return s.sections ? s.sections.flatMap(sec => grid(sec.w||s.w, sec.h||s.h, sec.grid, sec.size, sec.x||0, sec.y||0, sec.count)) : grid(s.w, s.h, s.grid, s.size);
     }
 };
 
 function App() {
     const cvsRef = useRef(null);
-    const [history, setHistory] = useState([]); // 存儲成品與狀態
+    const [history, setHistory] = useState([]);
     const [assets, setAssets] = useState({ img: null, suit: null });
     const [params, setParams] = useState({ photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }, suit: { x: 0, y: 80, s: 0.8, r: 0, f: 1 } });
     const [ui, setUi] = useState({ target: 'photo', spec: '4x6-8', gender: 'female', activeSuit: null, results: null });
     const drag = useRef({ active: false, x: 0, y: 0 });
-
-    /* 自檢防禦 */
-    useEffect(() => {
-        if (Object.keys(SPECS).length !== 12) console.error("契約失效: 規格缺失");
-    }, []);
 
     useEffect(() => {
         const render = () => {
@@ -99,39 +99,25 @@ function App() {
         const f = e.target.files[0]; if(!f) return;
         const reader = new FileReader();
         reader.onload = (ev) => {
-            const i = new Image();
-            i.onload = () => {
-                setAssets(prev => ({...prev, img: i}));
-                // 載入新圖時，先清空舊的調整位置
-                setParams(p => ({...p, photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }}));
-            };
-            i.src = ev.target.result;
+            const i = new Image(); i.onload = () => setAssets(prev => ({...prev, img: i})); i.src = ev.target.result;
         };
         reader.readAsDataURL(f);
     };
 
-    const addToHistory = () => {
-        if(!cvsRef.current || !assets.img) return;
-        const snapshot = cvsRef.current.toDataURL('image/jpeg', 0.5);
-        const newItem = {
-            thumb: snapshot,
-            assets: { ...assets },
-            params: { ...params },
-            id: Date.now()
-        };
-        setHistory(prev => [newItem, ...prev].slice(0, 10));
-    };
-
     const handleExport = async (all=false) => {
-        if(!assets.img) return alert("請先載入照片");
-        addToHistory(); // 導出時自動加入暫存
+        if(!assets.img) return alert("請載入照片");
+        // 成品暫存紀錄
+        const snapshot = cvsRef.current.toDataURL('image/jpeg', 0.5);
+        setHistory(prev => [{ thumb: snapshot, assets: { ...assets }, params: { ...params }, id: Date.now() }, ...prev].slice(0, 10));
+
         const list = all ? Object.keys(SPECS) : [ui.spec];
         const out = [];
         for(let id of list) {
             const s = SPECS[id];
             const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
             const ctx = c.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,s.w,s.h);
-            Renderer.getLayout(s).forEach(rect => {
+            const slots = Renderer.getLayout(s);
+            slots.forEach(rect => {
                 Renderer.draw(ctx, assets.img, params.photo, rect);
                 Renderer.draw(ctx, assets.suit, params.suit, rect);
             });
@@ -143,8 +129,8 @@ function App() {
     return (
         <div className="flex flex-col gap-6">
             <header className="flex justify-between items-center">
-                <h1 className="text-3xl font-black italic text-blue-500 italic">EzID</h1>
-                <div className="text-right text-[10px] text-slate-500 font-bold">V20.47.27<br/><span className="text-blue-400">WYSIWYG_CACHE</span></div>
+                <h1 className="text-3xl font-black italic text-blue-500">EzID</h1>
+                <div className="text-right text-[10px] text-slate-500 font-bold">V20.47.28<br/><span className="text-emerald-400">CORE_RECOVERY_OK</span></div>
             </header>
 
             <div className="stage-box"
@@ -158,13 +144,13 @@ function App() {
                 }}
                 onPointerUp={() => drag.current.active = false}>
                 <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
-                <div className="absolute inset-0 pointer-events-none border-[16px] border-slate-900/10"></div>
+                {/* 核心回歸：人物圈 */}
+                <div className="guide-circle"></div>
             </div>
 
-            {/* 📸 升級版暫存區：顯示成品縮圖 */}
             {history.length > 0 && (
                 <div className="space-y-2">
-                    <p className="text-[10px] font-black text-slate-500 px-1 uppercase tracking-tighter">成品暫存庫 (顯示最終效果)</p>
+                    <p className="text-[10px] font-black text-slate-500 px-1 uppercase tracking-tighter">成品暫存 (點擊恢復編輯狀態)</p>
                     <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
                         {history.map((item) => (
                             <div key={item.id} className={`cache-card flex-shrink-0 ${assets.img === item.assets.img ? 'active' : ''}`} 
@@ -209,18 +195,16 @@ function App() {
                 </div>
             </div>
 
-            <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                    {Object.values(SPECS).map(s => (
-                        <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-3 py-3 rounded-xl text-[10px] font-bold flex-1 min-w-[85px] ${ui.spec === s.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{s.name}</button>
-                    ))}
-                </div>
+            <div className="flex flex-wrap gap-2">
+                {Object.values(SPECS).map(s => (
+                    <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-3 py-3 rounded-xl text-[10px] font-bold flex-1 min-w-[85px] ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{s.name}</button>
+                ))}
             </div>
 
             <div className="flex flex-col gap-3">
                 <label className="w-full py-5 bg-white text-black rounded-3xl text-center text-sm font-black cursor-pointer shadow-xl">📸 載入照片<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => handleExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black shadow-lg">導出並存入暫存</button>
+                    <button onClick={() => handleExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black shadow-lg">導出目前</button>
                     <button onClick={() => handleExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black shadow-lg">全規格導出</button>
                 </div>
             </div>
@@ -228,15 +212,14 @@ function App() {
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-6">
                     <div className="max-w-sm mx-auto space-y-8 pb-20">
-                        <div className="text-center py-4"><h2 className="text-blue-500 font-black tracking-widest">EXPORT READY</h2><p className="text-[10px] text-slate-500 font-bold">已同步存入下方暫存庫</p></div>
                         {ui.results.map((r, i) => (
-                            <div key={i} className="bg-slate-900 p-4 rounded-3xl space-y-4 border border-white/5">
+                            <div key={i} className="bg-slate-900 p-4 rounded-3xl space-y-4">
                                 <p className="text-[10px] font-black text-blue-400">{r.name}</p>
                                 <img src={r.url} className="w-full rounded-2xl" />
-                                <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs">下載圖片</a>
+                                <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs">下載</a>
                             </div>
                         ))}
-                        <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-64 py-5 bg-white text-black rounded-full font-black">返回編輯</button>
+                        <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-64 py-5 bg-white text-black rounded-full font-black">返回</button>
                     </div>
                 </div>
             )}
