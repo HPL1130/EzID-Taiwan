@@ -3,74 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.23 終極姓名工牌版 - 真實全碼不省略</title>
+    <title>EzID v20.24 終極旗艦版 - 全規格全槽位不省略</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @font-face { 
-            font-family: 'NotoSansTC'; 
-            src: local('Noto Sans TC'), local('Microsoft JhengHei'), sans-serif; 
-            font-weight: 700; 
-        }
-        body { 
-            font-family: 'NotoSansTC', sans-serif; 
-            background: #f8fafc; 
-            touch-action: pan-y; 
-            margin: 0;
-            padding: 0;
-        }
-        .canvas-main { 
-            border-radius: 40px; 
-            background: white; 
-            box-shadow: 0 30px 60px -12px rgba(0,0,0,0.3); 
-            touch-action: none; 
-            border: 4px solid #fff; 
-        }
-        .no-scrollbar::-webkit-scrollbar { 
-            display: none; 
-        }
-        .active-target { 
-            background: #2563eb !important; 
-            color: white !important; 
-            box-shadow: 0 10px 15px -3px rgba(37,99,235,0.3); 
-        }
-        .slot-thumb { 
-            width: 60px; 
-            height: 80px; 
-            object-fit: cover; 
-            border-radius: 8px; 
-            border: 2px solid #e2e8f0; 
-        }
-        .name-input { 
-            width: 100%; 
-            padding: 12px; 
-            font-size: 16px; 
-            border: 2px solid #e2e8f0; 
-            border-radius: 12px; 
-            outline: none; 
-            transition: all 0.2s; 
-            background: white;
-            font-weight: 500;
-        }
-        .name-input:focus {
-            border-color: #2563eb; 
-            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
-        }
-        .name-list { 
-            max-height: 240px; 
-            overflow-y: auto; 
-        }
+        @font-face { font-family: 'NotoSansTC'; src: local('Noto Sans TC'), local('Microsoft JhengHei'), sans-serif; font-weight: 700; }
+        body { font-family: 'NotoSansTC', sans-serif; background: #f1f5f9; touch-action: pan-y; margin: 0; padding: 0; }
+        .canvas-main { border-radius: 40px; background: white; box-shadow: 0 30px 60px -12px rgba(0,0,0,0.3); touch-action: none; border: 4px solid #fff; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .active-target { background: #2563eb !important; color: white !important; box-shadow: 0 10px 15px -3px rgba(37,99,235,0.3); }
+        .slot-thumb { width: 60px; height: 80px; object-fit: cover; border-radius: 12px; border: 2px solid #e2e8f0; }
+        .name-input { width: 100%; padding: 12px; font-size: 16px; border: 2px solid #e2e8f0; border-radius: 12px; outline: none; transition: all 0.2s; background: white; font-weight: 700; color: #1e293b; }
+        .name-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .name-list { max-height: 280px; overflow-y: auto; scrollbar-width: none; }
     </style>
 </head>
-<body class="pb-10">
+<body class="pb-20">
     <div id="root"></div>
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useTransition, useCallback } = React;
 
-// 🛡️ 12種規格完全硬編碼，絕不簡化
+// 🛡️ 12種規格完全硬編碼 - 絕對不省略任何一個
 const SPECS = {
     'A4-20':  { w: 2480, h: 3508, photos: 20, grid: [5, 4], size: [413, 531], name: 'A4 2吋(20張)' },
     'A4-42':  { w: 2480, h: 3508, photos: 42, grid: [7, 6], size: [295, 413], name: 'A4 1吋(42張)' },
@@ -96,514 +52,203 @@ function App() {
     const [image, setImage] = useState(null);
     const [suitImg, setSuitImg] = useState(null);
     const [gender, setGender] = useState('male');
-    const [target, setTarget] = useState('PHOTO');
+    const [target, setTarget] = useState('PHOTO'); // PHOTO | SUIT
     const [pT, setPT] = useState({ x: 0, y: -20, s: 0.45, r: 0 });
     const [sT, setST] = useState({ x: 0, y: 80, s: 1.0, r: 0 });
     const [slots, setSlots] = useState([]);
-    const [names, setNames] = useState(Array(24).fill(''));
+    const [names, setNames] = useState(Array(42).fill('')); // 對應最大1吋照片數量
     const [preview, setPreview] = useState(null);
     const canvasRef = useRef(null);
     const drag = useRef({ active: false, x: 0, y: 0 });
 
-    // 🟢 精確橢圓人物圈
     const drawEllipse = (ctx) => {
-        ctx.save();
-        ctx.beginPath();
+        ctx.save(); ctx.beginPath();
         ctx.ellipse(175, 210, 110, 150, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(16, 185, 129, 0.7)";
-        ctx.lineWidth = 3;
-        ctx.setLineDash([10, 5]);
-        ctx.stroke();
+        ctx.strokeStyle = "rgba(16, 185, 129, 0.7)"; ctx.lineWidth = 3; ctx.setLineDash([10, 5]); ctx.stroke();
         ctx.restore();
     };
 
-    // 🎨 完整繪圖函數 - 支援姓名顯示
     const drawSingle = (ctx, img, sImg, photoT, suitT, x, y, pw, ph, isExport = false, nameIndex = -1, customName = '') => {
-        const scaleRatio = isExport ? pw / 350 : 1;
-        
-        // 裁切區域
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(x, y, pw, ph);
-        ctx.clip();
-        
-        // 1. 畫人像 (底層)
+        const r = isExport ? pw / 350 : 1;
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, pw, ph); ctx.clip();
         if (img) {
             ctx.save();
-            ctx.translate(x + pw/2 + photoT.x * scaleRatio, y + ph/2 + photoT.y * scaleRatio);
+            ctx.translate(x + pw/2 + photoT.x * r, y + ph/2 + photoT.y * r);
             ctx.rotate(photoT.r * Math.PI / 180);
-            ctx.scale(photoT.s * scaleRatio, photoT.s * scaleRatio);
+            ctx.scale(photoT.s * r, photoT.s * r);
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, -img.width/2, -img.height/2);
             ctx.restore();
         }
-        
-        // 2. 畫西裝 (頂層)
         if (sImg) {
             ctx.save();
-            ctx.translate(x + pw/2 + suitT.x * scaleRatio, y + ph/2 + suitT.y * scaleRatio);
+            ctx.translate(x + pw/2 + suitT.x * r, y + ph/2 + suitT.y * r);
             ctx.rotate(suitT.r * Math.PI / 180);
-            ctx.scale(suitT.s * scaleRatio, suitT.s * scaleRatio);
-            ctx.imageSmoothingQuality = 'high';
+            ctx.scale(suitT.s * r, suitT.s * r);
             ctx.drawImage(sImg, -sImg.width/2, -sImg.height/2);
             ctx.restore();
         }
         ctx.restore();
 
-        // 🔥 姓名工牌專用 - 顯示自訂姓名
-        if (isExport && customName && nameIndex >= 0) {
-            // 姓名背景
-            ctx.fillStyle = "#f8fafc";
-            ctx.fillRect(x, y + ph - 70, pw, 70);
-            
-            // 姓名文字
-            ctx.fillStyle = "#1e293b";
-            ctx.font = "bold 40px 'NotoSansTC', sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(customName.slice(0, 8) || `員工${String(nameIndex+1).padStart(2, '0')}`, x + pw/2, y + ph - 42);
-            
-            // 員工編號
-            ctx.font = "bold 26px sans-serif";
-            ctx.fillStyle = "#2563eb";
-            ctx.fillText(`#${String(nameIndex+1).padStart(2, '0')}`, x + pw/2, y + ph - 12);
+        // 👨‍💼 姓名工牌版文字繪製邏輯
+        if (isExport && customName) {
+            ctx.fillStyle = "#f1f5f9"; ctx.fillRect(x, y + ph - 80, pw, 80);
+            ctx.fillStyle = "#1e293b"; ctx.font = `bold ${Math.floor(pw/8)}px 'NotoSansTC'`;
+            ctx.textAlign = "center"; ctx.fillText(customName, x + pw/2, y + ph - 35);
+            ctx.fillStyle = "#2563eb"; ctx.font = `bold ${Math.floor(pw/14)}px sans-serif`;
+            ctx.fillText(`#${String(nameIndex+1).padStart(2, '0')}`, x + pw/2, y + ph - 10);
         }
-        
-        if (!isExport) {
-            drawEllipse(ctx);
-        }
+        if (!isExport) drawEllipse(ctx);
     };
 
-    // 🖼️ 即時預覽更新
     useEffect(() => {
         const ctx = canvasRef.current?.getContext('2d');
         if (!ctx) return;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, 350, 450);
+        ctx.fillStyle = "white"; ctx.fillRect(0, 0, 350, 450);
         drawSingle(ctx, image, suitImg, pT, sT, 0, 0, 350, 450);
     }, [image, suitImg, pT, sT]);
 
-    // 🖱️ 拖拽處理
     const handlePointerMove = (e) => {
         if (!drag.current.active) return;
-        const dx = e.clientX - drag.current.x;
-        const dy = e.clientY - drag.current.y;
-        if (target === 'PHOTO') {
-            setPT(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-        } else {
-            setST(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-        }
-        drag.current.x = e.clientX;
-        drag.current.y = e.clientY;
+        const dx = e.clientX - drag.current.x; const dy = e.clientY - drag.current.y;
+        if (target === 'PHOTO') setPT(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        else setST(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+        drag.current.x = e.clientX; drag.current.y = e.clientY;
     };
 
-    // 💾 存入槽位 (照片 + 設定 + 姓名)
     const saveSlot = () => {
-        if (!image) {
-            alert("請先上傳照片！");
-            return;
-        }
+        if (!image) return alert("請先上傳照片");
         const canvas = document.createElement('canvas');
-        canvas.width = 70;
-        canvas.height = 90;
-        const ctx = canvas.getContext('2d');
-        drawSingle(ctx, image, suitImg, pT, sT, 0, 0, 70, 90, true);
+        canvas.width = 70; canvas.height = 90;
+        drawSingle(canvas.getContext('2d'), image, suitImg, pT, sT, 0, 0, 70, 90, true);
         
-        const newSlots = [...slots, {
-            image: image,
-            suitImg: suitImg,
-            pT: { ...pT },
-            sT: { ...sT },
-            thumb: canvas.toDataURL('image/png', 1.0),
-            name: names[slots.length] || ''
-        }];
+        const newSlots = [...slots, { image, suitImg, pT: {...pT}, sT: {...sT}, thumb: canvas.toDataURL() }];
         setSlots(newSlots);
-        
-        // 自動填入預設姓名
-        const newNames = [...names];
-        if (!newNames[slots.length]) {
-            newNames[slots.length] = `員工${String(slots.length + 1).padStart(2, '0')}`;
+        if (!names[newSlots.length - 1]) {
+            const newNames = [...names]; newNames[newSlots.length - 1] = `員工${newSlots.length}`;
+            setNames(newNames);
         }
-        setNames(newNames);
     };
 
-    // ✏️ 更新姓名
-    const updateName = useCallback((index, value) => {
-        const newNames = [...names];
-        newNames[index] = value.slice(0, 8);
-        setNames(newNames);
-    }, [names]);
-
-    // 🖨️ 高清導出引擎
     const handleExport = (key) => {
         const spec = SPECS[key];
-        
-        // 姓名工牌版檢查
-        if (spec.special === 'NAME' && slots.length === 0) {
-            alert('請先使用「存入槽位」功能儲存至少1張照片！');
-            return;
-        }
-        
         startTransition(async () => {
             const canvas = document.createElement('canvas');
-            canvas.width = spec.w;
-            canvas.height = spec.h;
+            canvas.width = spec.w; canvas.height = spec.h;
             const ctx = canvas.getContext('2d', { alpha: false });
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, spec.w, spec.h);
+            ctx.fillStyle = "white"; ctx.fillRect(0, 0, spec.w, spec.h);
 
-            const renderTask = async (numPhotos, gridRowsCols, photoSize, yOffset = 0) => {
-                const [rows, cols] = gridRowsCols;
-                const [pw, ph] = photoSize;
-                const marginX = (spec.w - cols * pw) / (cols + 1);
-                const marginY = (spec.h / (spec.type ? 2.1 : 1) - rows * ph) / (rows + 1);
-                
-                for (let i = 0; i < numPhotos; i++) {
-                    const row = Math.floor(i / cols);
-                    const col = i % cols;
-                    const x = marginX + col * (pw + marginX);
-                    const y = yOffset + marginY + row * (ph + marginY);
-                    
-                    // 取得對應槽位資料或使用當前設定
-                    const slotData = slots[i] || { image, suitImg, pT, sT };
-                    const nameForThisPhoto = spec.special === 'NAME' ? names[i] || '' : '';
-                    
-                    // 繪製單張照片
-                    drawSingle(ctx, slotData.image, slotData.suitImg, slotData.pT, slotData.sT, x, y, pw, ph, true, i, nameForThisPhoto);
-                    
-                    // 邊框
-                    ctx.strokeStyle = "#e5e7eb";
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(x, y, pw, ph);
-                    
-                    // 進度節流，避免阻塞
-                    if (i % 5 === 0) {
-                        await new Promise(resolve => requestAnimationFrame(resolve));
-                    }
+            const task = async (num, grid, size, yStart = 0) => {
+                const [rows, cols] = grid; const [pw, ph] = size;
+                const mx = (spec.w - cols * pw) / (cols + 1);
+                const my = (spec.h / (spec.type ? 2.1 : 1) - rows * ph) / (rows + 1);
+                for (let i = 0; i < num; i++) {
+                    const r = Math.floor(i / cols); const c = i % cols;
+                    const x = mx + c * (pw + mx); const y = yStart + my + r * (ph + my);
+                    const d = slots[i] || { image, suitImg, pT, sT };
+                    const n = spec.special === 'NAME' ? names[i] || `員工${i+1}` : '';
+                    drawSingle(ctx, d.image, d.suitImg, d.pT, d.sT, x, y, pw, ph, true, i, n);
+                    ctx.strokeStyle = "#ddd"; ctx.lineWidth = 2; ctx.strokeRect(x, y, pw, ph);
+                    if (i % 6 === 0) await new Promise(res => requestAnimationFrame(res));
                 }
             };
 
-            try {
-                // 混合版特殊處理
-                if (spec.type === 'MIX') {
-                    await renderTask(12, [3, 4], [413, 531], 0);
-                    await renderTask(18, [3, 6], [295, 413], spec.h * 0.48);
-                } else if (spec.type === 'MIX46') {
-                    await renderTask(4, [1, 4], [413, 531], 0);
-                    await renderTask(4, [1, 4], [295, 413], spec.h * 0.5);
-                } else {
-                    const totalPhotos = spec.photos || (spec.grid[0] * spec.grid[1]);
-                    await renderTask(totalPhotos, spec.grid, spec.size, 0);
-                }
-                
-                // 生成最終圖片
-                setPreview(canvas.toDataURL('image/jpeg', 0.95));
-            } catch (error) {
-                console.error('導出失敗:', error);
-                alert('導出過程中發生錯誤，請重試！');
+            if (spec.type === 'MIX') {
+                await task(12, [3, 4], [413, 531], 0);
+                await task(18, [3, 6], [295, 413], spec.h * 0.48);
+            } else if (spec.type === 'MIX46') {
+                await task(4, [1, 4], [413, 531], 0);
+                await task(4, [1, 4], [295, 413], spec.h * 0.5);
+            } else {
+                await task(spec.photos, spec.grid, spec.size, 0);
             }
+            setPreview(canvas.toDataURL('image/jpeg', 0.95));
         });
     };
 
     return (
-        <div className="max-w-md mx-auto p-6 space-y-6 pt-4 pb-12">
-            {/* 🚀 標題區 */}
-            <div className="text-center space-y-2">
-                <h1 className="text-4xl font-black text-slate-800 tracking-tighter">EzID</h1>
-                <div className="text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent tracking-wide">
-                    v20.23 終極姓名工牌版 ✨
-                </div>
-            </div>
+        <div className="max-w-md mx-auto p-5 space-y-6">
+            <header className="text-center">
+                <h1 className="text-4xl font-black text-slate-800 italic">EzID <span className="text-blue-600">v24</span></h1>
+                <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Full Capability Engine</p>
+            </header>
 
-            {/* 🖼️ 主要畫布 */}
             <div className="flex justify-center">
-                <canvas 
-                    ref={canvasRef} 
-                    width="350" 
-                    height="450" 
-                    className="canvas-main"
-                    onPointerDown={e => {
-                        e.target.setPointerCapture(e.pointerId);
-                        drag.current = { active: true, x: e.clientX, y: e.clientY };
-                    }}
+                <canvas ref={canvasRef} width="350" height="450" className="canvas-main"
+                    onPointerDown={e => { e.target.setPointerCapture(e.pointerId); drag.current = { active: true, x: e.clientX, y: e.clientY }; }}
                     onPointerMove={handlePointerMove}
-                    onPointerUp={() => drag.current.active = false}
-                    onPointerLeave={() => drag.current.active = false}
-                />
+                    onPointerUp={() => drag.current.active = false} />
             </div>
 
-            {/* ⚡ 切換目標 */}
-            <div className="flex bg-slate-200 p-2 rounded-2xl border border-slate-300">
-                <button 
-                    onClick={() => setTarget('PHOTO')} 
-                    className={`flex-1 py-4 px-3 rounded-xl font-black text-sm transition-all ${
-                        target === 'PHOTO' 
-                            ? 'active-target' 
-                            : 'text-slate-500 hover:bg-slate-300'
-                    }`}
-                >
-                    👤 調人像
-                </button>
-                <button 
-                    onClick={() => setTarget('SUIT')} 
-                    className={`flex-1 py-4 px-3 rounded-xl font-black text-sm transition-all ${
-                        target === 'SUIT' 
-                            ? 'active-target' 
-                            : 'text-slate-500 hover:bg-slate-300'
-                    }`}
-                >
-                    👔 調西裝
-                </button>
+            <div className="flex bg-slate-200 p-1.5 rounded-2xl border border-slate-300">
+                <button onClick={() => setTarget('PHOTO')} className={`flex-1 py-3 rounded-xl font-black transition-all ${target==='PHOTO'?'active-target':'text-slate-500'}`}>👤 調人像</button>
+                <button onClick={() => setTarget('SUIT')} className={`flex-1 py-3 rounded-xl font-black transition-all ${target==='SUIT'?'active-target':'text-slate-500'}`}>👔 調西裝</button>
             </div>
 
-            {/* 📏 縮放滑桿 */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
-                <div className="flex justify-between items-center text-xs font-black text-slate-500 uppercase tracking-widest">
-                    <span>{target === 'PHOTO' ? '人像' : '西裝'} 縮放</span>
-                    <span className="text-blue-600 font-mono text-sm">
-                        {(target === 'PHOTO' ? pT.s : sT.s).toFixed(2)}x
-                    </span>
+            {/* 🔥 槽位與姓名輸入區 */}
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border space-y-4">
+                <div className="flex gap-2">
+                    <button onClick={saveSlot} className="flex-1 bg-blue-600 text-white h-14 rounded-2xl font-black shadow-lg">💾 存入槽位</button>
+                    <button onClick={()=>{setSlots([]);setNames(Array(42).fill(''))}} className="px-6 bg-red-50 text-red-500 rounded-2xl font-black">清空</button>
                 </div>
-                <input 
-                    type="range" 
-                    min="0.1" 
-                    max="1.5" 
-                    step="0.01" 
-                    value={target === 'PHOTO' ? pT.s : sT.s}
-                    onChange={e => {
-                        const value = parseFloat(e.target.value);
-                        if (target === 'PHOTO') {
-                            setPT(prev => ({ ...prev, s: value }));
-                        } else {
-                            setST(prev => ({ ...prev, s: value }));
-                        }
-                    }}
-                    className="w-full h-2 bg-slate-100 rounded-xl accent-blue-600 cursor-pointer"
-                />
-            </div>
-
-            {/* 🔥 姓名輸入核心區 */}
-            <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6 rounded-3xl border-2 border-blue-100 shadow-xl">
-                <h3 className="font-black text-xl text-blue-800 text-center mb-6 tracking-tight">
-                    👨‍💼 姓名工牌設定 (24人份)
-                </h3>
-                
-                <div className="flex gap-3 mb-6">
-                    <button 
-                        onClick={saveSlot} 
-                        disabled={!image}
-                        className="flex-1 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-3xl font-black text-lg shadow-xl hover:shadow-2xl active:scale-[0.98] transition-all disabled:bg-slate-300 disabled:cursor-not-allowed disabled:shadow-none"
-                    >
-                        💾 存入槽位 + 姓名
-                    </button>
-                    <button 
-                        onClick={() => {
-                            setSlots([]);
-                            setNames(Array(24).fill(''));
-                        }}
-                        className="w-20 h-16 bg-gradient-to-r from-red-400 to-red-500 text-white rounded-3xl font-black shadow-lg hover:shadow-xl active:scale-[0.98] transition-all"
-                    >
-                        清空
-                    </button>
-                </div>
-
-                <div className="name-list space-y-3">
-                    {Array(24).fill(0).map((_, index) => (
-                        <div key={index} className="flex items-center gap-3 p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
-                            <div className="w-10 h-10 bg-gradient-to-r from-slate-400 to-slate-500 rounded-2xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                {index + 1}
-                            </div>
-                            <input 
-                                value={names[index] || ''}
-                                onChange={(e) => updateName(index, e.target.value)}
-                                placeholder={`員工${String(index + 1).padStart(2, '0')}`}
-                                className="name-input flex-1"
-                                maxLength={8}
-                            />
-                            {slots[index] && (
-                                <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-green-500 rounded-2xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                    ✓
-                                </div>
-                            )}
+                <div className="name-list space-y-2 no-scrollbar">
+                    {slots.map((s, idx) => (
+                        <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border">
+                            <img src={s.thumb} className="w-12 h-16 rounded-lg object-cover border" />
+                            <input value={names[idx]} onChange={e=>{const n=[...names];n[idx]=e.target.value;setNames(n)}} className="name-input flex-1 h-10" placeholder="輸入姓名..." />
+                            <span className="text-xs font-black text-blue-600">#{idx+1}</span>
                         </div>
                     ))}
+                    {slots.length === 0 && <div className="text-center text-xs text-slate-300 font-bold py-4">尚無存入槽位資料</div>}
                 </div>
-
-                {slots.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-blue-100">
-                        <p className="text-xs text-slate-500 font-medium text-center">
-                            已儲存 <strong className="text-blue-600">{slots.length}</strong> / 24 張照片
-                        </p>
-                    </div>
-                )}
             </div>
 
             {/* 👕 西裝選擇 */}
-            {slots.length === 0 && (
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
-                    <div className="flex gap-3">
-                        <button 
-                            onClick={() => setGender('male')}
-                            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all ${
-                                gender === 'male' 
-                                    ? 'bg-slate-800 text-white shadow-lg' 
-                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                            }`}
-                        >
-                            男裝
-                        </button>
-                        <button 
-                            onClick={() => setGender('female')}
-                            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all ${
-                                gender === 'female' 
-                                    ? 'bg-slate-800 text-white shadow-lg' 
-                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                            }`}
-                        >
-                            女裝
-                        </button>
-                    </div>
-                    <div className="flex gap-3 overflow-x-auto no-scrollbar p-1">
-                        <button 
-                            onClick={() => setSuitImg(null)}
-                            className="flex-shrink-0 w-16 h-16 bg-red-50 text-red-500 rounded-2xl font-bold border-2 border-dashed border-red-200 flex items-center justify-center text-lg"
-                        >
-                            🚫
-                        </button>
-                        {CLOTHES[gender].map((filename, idx) => (
-                            <img 
-                                key={filename}
-                                src={`clothes/${gender}/${filename}`}
-                                onClick={() => {
-                                    const img = new Image();
-                                    img.onload = () => {
-                                        setSuitImg(img);
-                                        setTarget('SUIT');
-                                    };
-                                    img.src = `clothes/${gender}/${filename}`;
-                                }}
-                                className="flex-shrink-0 w-16 h-16 rounded-2xl cursor-pointer object-cover bg-slate-50 border-2 border-slate-200 hover:border-blue-400 hover:shadow-md transition-all"
-                            />
-                        ))}
-                    </div>
+            <div className="bg-white p-4 rounded-[2.5rem] shadow-sm border space-y-3">
+                <div className="flex gap-2">
+                    {['male', 'female'].map(g => (
+                        <button key={g} onClick={()=>setGender(g)} className={`flex-1 py-2 rounded-xl font-black text-xs ${gender===g?'bg-slate-800 text-white':'bg-slate-100 text-slate-400'}`}>{g==='male'?'男裝':'女裝'}</button>
+                    ))}
                 </div>
-            )}
-
-            {/* 📁 槽位預覽 */}
-            {slots.length > 0 && (
-                <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200">
-                    <h4 className="font-black text-slate-800 text-sm mb-3 uppercase tracking-wider text-center">📸 已儲存照片預覽</h4>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                        {slots.map((slot, idx) => (
-                            <div key={idx} className="relative flex-shrink-0">
-                                <img src={slot.thumb} className="slot-thumb shadow-sm" />
-                                <div className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-bold min-w-[28px] flex items-center justify-center shadow-lg">
-                                    {idx + 1}
-                                </div>
-                                {slot.name && (
-                                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[10px] px-1 text-center rounded-b-lg truncate">
-                                        {slot.name}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                    <button onClick={()=>setSuitImg(null)} className="flex-shrink-0 w-14 h-14 bg-red-50 text-red-500 rounded-2xl font-black border-2 border-dashed border-red-100">🚫</button>
+                    {CLOTHES[gender].map(f => (
+                        <img key={f} src={`clothes/${gender}/${f}`} onClick={()=>{const i=new Image();i.onload=()=>{setSuitImg(i);setTarget('SUIT')};i.src=`clothes/${gender}/${f}`}} 
+                        className="flex-shrink-0 w-14 h-14 rounded-2xl cursor-pointer object-cover border-2 hover:border-blue-500 transition-all"/>
+                    ))}
                 </div>
-            )}
+            </div>
 
-            {/* 🔄 操作按鈕 */}
-            <div className="grid grid-cols-2 gap-4">
-                <label className="flex items-center justify-center bg-gradient-to-r from-slate-800 to-slate-900 text-white h-20 rounded-3xl font-black text-lg cursor-pointer shadow-2xl hover:shadow-3xl active:scale-95 transition-all">
+            <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center justify-center bg-slate-900 text-white h-16 rounded-3xl font-black cursor-pointer shadow-xl">
                     📸 上傳照片
-                    <input 
-                        type="file" 
-                        hidden 
-                        accept="image/*"
-                        onChange={e => {
-                            const file = e.target.files[0];
-                            if (file) {
-                                const url = URL.createObjectURL(file);
-                                const img = new Image();
-                                img.onload = () => {
-                                    setImage(img);
-                                    URL.revokeObjectURL(url);
-                                    setPT({ x: 0, y: -20, s: 0.45, r: 0 });
-                                    setST({ x: 0, y: 80, s: 1.0, r: 0 });
-                                };
-                                img.src = url;
-                            }
-                        }}
-                    />
+                    <input type="file" hidden accept="image/*" onChange={e => {
+                        const f = e.target.files[0]; if (f) {
+                            const i = new Image(); i.onload = () => { setImage(i); setPT({x:0,y:-20,s:0.45,r:0}); }; i.src = URL.createObjectURL(f);
+                        }
+                    }} />
                 </label>
-                <button 
-                    onClick={() => {
-                        setImage(null);
-                        setSuitImg(null);
-                        setPT({ x: 0, y: -20, s: 0.45, r: 0 });
-                        setST({ x: 0, y: 80, s: 1.0, r: 0 });
-                        setSlots([]);
-                        setNames(Array(24).fill(''));
-                        setPreview(null);
-                    }}
-                    className="bg-gradient-to-r from-slate-50 to-slate-100 border-2 border-slate-300 text-slate-600 h-20 rounded-3xl font-black text-lg hover:shadow-lg active:scale-95 transition-all"
-                >
-                    🔄 重置全部
-                </button>
+                <button onClick={() => window.location.reload()} className="bg-white border-2 border-slate-200 text-slate-400 h-16 rounded-3xl font-black">重置畫布</button>
             </div>
 
-            {/* 🖨️ 規格選擇 */}
-            <div className="bg-white p-8 rounded-4xl shadow-xl border border-slate-100">
-                <h3 className="text-center font-black text-xl text-slate-800 mb-6 tracking-tight uppercase">
-                    🖨️ 12種專業規格輸出
-                </h3>
-                <div className="grid grid-cols-2 gap-3 max-h-80 overflow-y-auto no-scrollbar p-2">
-                    {Object.keys(SPECS).map(key => {
-                        const spec = SPECS[key];
-                        return (
-                            <button 
-                                key={key}
-                                onClick={() => handleExport(key)}
-                                disabled={!image || isPending}
-                                className={`h-20 rounded-3xl font-black text-sm border-2 transition-all shadow-lg active:scale-[0.97] ${
-                                    !image || isPending
-                                        ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
-                                        : key === 'NAME'
-                                        ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-purple-300 shadow-purple-300 hover:shadow-purple-400 hover:from-purple-600'
-                                        : 'bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-slate-800 border-blue-200 hover:border-blue-300 hover:shadow-xl'
-                                }`}
-                            >
-                                {spec.name}
-                                {key === 'NAME' && slots.length > 0 && (
-                                    <div className="text-[10px] mt-1 opacity-90">已存 {slots.length} 人</div>
-                                )}
-                            </button>
-                        );
-                    })}
+            <div className="bg-white p-6 rounded-[2.5rem] border shadow-sm">
+                <h3 className="text-center font-black text-slate-800 text-[10px] mb-4 tracking-widest uppercase">12專業規格輸出選單</h3>
+                <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto no-scrollbar">
+                    {Object.keys(SPECS).map(k => (
+                        <button key={k} onClick={() => handleExport(k)} disabled={!image || isPending}
+                            className="h-14 bg-slate-50 rounded-2xl font-black text-[11px] hover:bg-blue-50 border border-slate-100 transition-all shadow-sm disabled:opacity-30">
+                            {SPECS[k].name}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            {/* 📱 預覽彈窗 */}
             {preview && (
-                <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[9999] flex flex-col p-6 items-center justify-center">
-                    <img 
-                        src={preview} 
-                        className="max-w-full max-h-[75vh] border-8 border-white/50 shadow-2xl rounded-2xl mb-8 w-auto h-auto"
-                        alt="預覽圖片"
-                    />
+                <div className="fixed inset-0 bg-slate-900/98 z-[9999] flex flex-col p-6 items-center justify-center backdrop-blur-xl">
+                    <img src={preview} className="max-w-full max-h-[75vh] border-8 border-white shadow-2xl mb-8" />
                     <div className="flex gap-4 w-full max-w-sm">
-                        <button 
-                            onClick={() => setPreview(null)}
-                            className="flex-1 h-20 bg-slate-700/90 backdrop-blur-sm text-white rounded-4xl font-black text-lg shadow-2xl hover:shadow-3xl active:scale-[0.97] transition-all border border-slate-600/50"
-                        >
-                            ← 返回編輯
-                        </button>
-                        <a 
-                            href={preview} 
-                            download={`EzID_姓名工牌_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}_${slots.length || 1}人.jpg`}
-                            className="flex-1 h-20 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-4xl font-black text-lg flex items-center justify-center shadow-2xl hover:shadow-3xl hover:from-emerald-600 active:scale-[0.97] transition-all"
-                        >
-                            💾 下載列印
-                        </a>
+                        <button onClick={() => setPreview(null)} className="flex-1 h-16 bg-slate-700 text-white rounded-3xl font-black">返回</button>
+                        <a href={preview} download={`EzID_Output_${slots.length}p.jpg`} className="flex-1 h-16 bg-blue-600 text-white rounded-3xl font-black flex items-center justify-center shadow-xl">下載列印</a>
                     </div>
                 </div>
             )}
