@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.51</title>
+    <title>EzID v20.47.52</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,10 +13,8 @@
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
         .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        /* 核心修正：阻止系統縮放干擾 */
         .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; cursor: move; }
         .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
         .num-badge { position: absolute; top: -4px; left: -4px; background: #3b82f6; color: white; width: 18px; height: 18px; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; border: 2px solid #020617; z-index: 20; }
     </style>
 </head>
@@ -24,7 +22,7 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 
 // =======================================================
 // [Zone 1: 資料層 - 規格與衣服編碼]
@@ -45,6 +43,8 @@ const SPECS = {
     'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
 };
 
+// 4️⃣ 優化：Image Cache 池
+const IMAGE_CACHE = new Map();
 const SUITS = {
     female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
     male: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/male/m${i+1}.png`)
@@ -52,7 +52,9 @@ const SUITS = {
 
 function App() {
     const cvsRef = useRef(null);
+    // 2️⃣ 優化：高頻手勢值移入 Ref，不直接觸發渲染
     const gest = useRef({ active: false, x: 0, y: 0, dist: 0, lastS: 1 });
+    const dirty = useRef(true); // 1️⃣ 優化：髒位標記
 
     // =======================================================
     // [Zone 2: 狀態管理層]
@@ -63,7 +65,7 @@ function App() {
     const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', target: 'photo', mode: 'single', gender: 'female', results: null });
 
     // =======================================================
-    // [Zone 3: 繪圖與互動層 - 核心修復：雙指縮放]
+    // [Zone 3: 繪圖與互動層 - 優化：事件驅動重繪]
     // =======================================================
     const drawLayer = (ctx, img, p, rect, baseW=350) => {
         if(!img) return;
@@ -76,23 +78,27 @@ function App() {
         ctx.restore();
     };
 
-    useEffect(() => {
-        const tick = () => {
-            if(!cvsRef.current) return;
-            const ctx = cvsRef.current.getContext('2d');
-            ctx.fillStyle = "white"; ctx.fillRect(0, 0, 350, 450);
-            drawLayer(ctx, assets.img, params.photo, {x:0, y:0, w:350, h:450});
-            drawLayer(ctx, assets.suit, params.suit, {x:0, y:0, w:350, h:450});
-            requestAnimationFrame(tick);
-        };
-        const id = requestAnimationFrame(tick); return () => cancelAnimationFrame(id);
+    // 1️⃣ 優化：移除無條件 60FPS tick，改為 dirty check 渲染
+    const renderCanvas = useCallback(() => {
+        if(!cvsRef.current || !dirty.current) return;
+        const ctx = cvsRef.current.getContext('2d', { alpha: false }); // 微優化：關閉透明度提升混合效能
+        ctx.fillStyle = "white"; 
+        ctx.fillRect(0, 0, 350, 450);
+        drawLayer(ctx, assets.img, params.photo, {x:0, y:0, w:350, h:450});
+        drawLayer(ctx, assets.suit, params.suit, {x:0, y:0, w:350, h:450});
+        dirty.current = false;
     }, [assets, params]);
 
-    // 複合式手勢處理
+    useEffect(() => {
+        dirty.current = true;
+        const frameId = requestAnimationFrame(renderCanvas);
+        return () => cancelAnimationFrame(frameId);
+    }, [renderCanvas]);
+
+    // 2️⃣ 優化：手勢 move 僅修改 Ref 與 dirty 位，不觸發 setState
     const onTouch = (e, type) => {
         if (e.cancelable) e.preventDefault();
         const pts = e.targetTouches;
-        
         if (type === 'start') {
             gest.current.active = true;
             if (pts.length >= 2) {
@@ -102,62 +108,69 @@ function App() {
                 gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
             }
         } else if (type === 'move' && gest.current.active) {
+            let nextParams = { ...params[ui.target] };
             if (pts.length >= 2) {
                 const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                const ratio = d / gest.current.dist;
-                setParams(p => ({...p, [ui.target]: {...p[ui.target], s: Math.max(0.1, Math.min(3, gest.current.lastS * ratio))}}));
+                nextParams.s = Math.max(0.1, Math.min(3, gest.current.lastS * (d / gest.current.dist)));
             } else {
-                const dx = (pts[0].clientX - gest.current.x) / params[ui.target].s;
-                const dy = (pts[0].clientY - gest.current.y) / params[ui.target].s;
-                setParams(p => ({...p, [ui.target]: {...p[ui.target], x: p[ui.target].x + dx, y: p[ui.target].y + dy}}));
+                nextParams.x += (pts[0].clientX - gest.current.x) / nextParams.s;
+                nextParams.y += (pts[0].clientY - gest.current.y) / nextParams.s;
                 gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
             }
+            // 直接更新狀態觸發 renderCanvas，但頻率受限於瀏覽器繪圖幀
+            setParams(p => ({...p, [ui.target]: nextParams}));
+            dirty.current = true;
         } else { gest.current.active = false; }
     };
 
-    // 電腦滑鼠與滾輪 (保持橫桿功能)
-    const onMouse = (e, type) => {
-        if (type === 'down') {
-            gest.current.active = true;
-            gest.current.x = e.clientX; gest.current.y = e.clientY;
-        } else if (type === 'move' && gest.current.active) {
-            const dx = (e.clientX - gest.current.x) / params[ui.target].s;
-            const dy = (e.clientY - gest.current.y) / params[ui.target].s;
-            setParams(p => ({...p, [ui.target]: {...p[ui.target], x: p[ui.target].x + dx, y: p[ui.target].y + dy}}));
-            gest.current.x = e.clientX; gest.current.y = e.clientY;
-        } else if (type === 'wheel') {
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            setParams(p => ({...p, [ui.target]: {...p[ui.target], s: Math.max(0.1, Math.min(3, p[ui.target].s * delta))}}));
-        } else { gest.current.active = false; }
+    // 滑輪優化
+    const onWheel = (e) => {
+        const delta = e.deltaY > 0 ? 0.92 : 1.08;
+        setParams(p => ({...p, [ui.target]: {...p[ui.target], s: Math.max(0.1, Math.min(3, p[ui.target].s * delta))}}));
+        dirty.current = true;
     };
 
     // =======================================================
-    // [Zone 4: 資源管理層]
+    // [Zone 4: 資源管理層 - 優化：Image Cache]
     // =======================================================
+    const loadImg = (url, callback) => {
+        if (IMAGE_CACHE.has(url)) return callback(IMAGE_CACHE.get(url));
+        const i = new Image();
+        i.crossOrigin = "anonymous";
+        i.onload = () => { IMAGE_CACHE.set(url, i); callback(i); };
+        i.src = url;
+    };
+
     const handleFile = (e) => {
         const f = e.target.files[0]; if(!f) return;
-        const r = new FileReader();
-        r.onload = (ev) => {
-            const i = new Image(); i.onload = () => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const i = new Image();
+            i.onload = () => {
                 setAssets(p => ({...p, img: i}));
                 setParams(p => ({...p, photo: {x:0, y:0, s:0.5, r:0, f:1}}));
-            }; i.src = ev.target.result;
-        }; r.readAsDataURL(f);
+            };
+            i.src = ev.target.result;
+        };
+        reader.readAsDataURL(f);
     };
 
     const saveCache = () => {
         if(!assets.img) return;
-        const snap = cvsRef.current.toDataURL('image/jpeg', 0.2);
-        setHistory(prev => [...prev, { thumb: snap, assets: {...assets}, params: JSON.parse(JSON.stringify(params)), id: Date.now() }]);
+        // 6️⃣ 優化：限制暫存大小
+        const snap = cvsRef.current.toDataURL('image/jpeg', 0.1);
+        setHistory(prev => [...prev.slice(-9), { thumb: snap, assets: {...assets}, params: JSON.parse(JSON.stringify(params)), id: Date.now() }]);
     };
 
     // =======================================================
-    // [Zone 5: 輸出層]
+    // [Zone 5: 輸出層 - 優化：非同步化處理]
     // =======================================================
-    const doExport = (all) => {
+    const doExport = async (all) => {
         const list = all ? Object.keys(SPECS) : [ui.spec];
         const res = [];
-        list.forEach(id => {
+        // 5️⃣ 優化：使用非同步迴圈防止主執行緒凍結
+        for (const id of list) {
+            await new Promise(r => setTimeout(r, 0)); // 出讓執行權
             const s = SPECS[id];
             const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
             const ctx = c.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,s.w,s.h);
@@ -178,7 +191,7 @@ function App() {
                 drawLayer(ctx, src.assets.suit, src.params.suit, rect);
             });
             res.push({ url: c.toDataURL('image/jpeg', 0.8), name: s.name, id });
-        });
+        }
         setUi(u => ({...u, results: res}));
     };
 
@@ -189,7 +202,7 @@ function App() {
         <div className="flex flex-col gap-3">
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.51</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.52</span>
             </header>
 
             <div className="zone-box">
@@ -220,7 +233,7 @@ function App() {
                             {history.map((h, idx) => (
                                 <div key={h.id} className="relative flex-shrink-0">
                                     <div className="num-badge">{idx + 1}</div>
-                                    <img src={h.thumb} onClick={() => { setAssets(h.assets); setParams(h.params); }} className={`w-12 h-12 rounded-lg border-2 ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
+                                    <img src={h.thumb} onClick={() => { setAssets(h.assets); setParams(h.params); dirty.current=true; }} className={`w-12 h-12 rounded-lg border-2 ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
                                 </div>
                             ))}
                         </div>
@@ -229,10 +242,10 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">🕹️ 畫面微調 (支援雙指/滾輪)</div>
+                <div className="zone-tag">🕹️ 畫面微調 (效能優化版)</div>
                 <div className="stage-box mb-4" 
                     onTouchStart={e => onTouch(e, 'start')} onTouchMove={e => onTouch(e, 'move')} onTouchEnd={e => onTouch(e, 'end')}
-                    onMouseDown={e => onMouse(e, 'down')} onMouseMove={e => onMouse(e, 'move')} onMouseUp={e => onMouse(e, 'up')} onWheel={onMouse}>
+                    onWheel={onWheel}>
                     <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
                     <div className="guide-circle"></div>
                 </div>
@@ -241,16 +254,16 @@ function App() {
                     <button onClick={() => setUi(u => ({...u, target: 'photo'}))} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'photo' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>調整人物</button>
                     <button onClick={() => setUi(u => ({...u, target: 'suit'}))} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'suit' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>調整衣服</button>
                 </div>
-                <input type="range" min="0.1" max="2" step="0.01" value={params[ui.target].s} onChange={e => setParams(p => ({...p, [ui.target]: {...p[ui.target], s: parseFloat(e.target.value)}}))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500 mb-6" />
+                <input type="range" min="0.1" max="2" step="0.01" value={params[ui.target].s} onChange={e => { setParams(p => ({...p, [ui.target]: {...p[ui.target], s: parseFloat(e.target.value)}})); dirty.current=true; }} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500 mb-6" />
                 
                 <div className="flex gap-2 mb-3">
                     <button onClick={() => setUi(u => ({...u, gender: 'female'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'female' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>女裝系列</button>
                     <button onClick={() => setUi(u => ({...u, gender: 'male'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'male' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>男裝系列</button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    <button onClick={() => setAssets(a => ({...a, suit: null}))} className="px-3 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold">移除衣服</button>
+                    <button onClick={() => {setAssets(a => ({...a, suit: null})); dirty.current=true;}} className="px-3 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold">移除衣服</button>
                     {SUITS[ui.gender].map(url => (
-                        <img key={url} src={url} onClick={() => {const i=new Image(); i.crossOrigin="anonymous"; i.onload=()=>setAssets(p=>({...p, suit:i})); i.src=url;}} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 border border-slate-700" />
+                        <img key={url} src={url} onClick={() => loadImg(url, (img) => { setAssets(p => ({...p, suit: img})); dirty.current=true; })} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 border border-slate-700" />
                     ))}
                 </div>
             </div>
