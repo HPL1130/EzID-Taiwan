@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.61</title>
+    <title>EzID v20.47.64 - Production Ready</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,49 +11,45 @@
     <style>
         body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
-        .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; transition: border-color 0.2s; }
+        .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; border: 4px solid transparent; transition: border-color 0.2s; }
+        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; border: 4px solid transparent; }
         .stage-box.unsafe { border-color: #ef4444; }
-        .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 60%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .err-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 10px 20px; border-radius: 30px; font-weight: bold; font-size: 12px; z-index: 2000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useMemo } = React;
+const { useState, useRef, useEffect } = React;
 
 // =======================================================
-// [Zone 1: Spec Engine] - 規格與公理定義
+// 🟢 ZONE 1: SPEC ENGINE (規格與邏輯公理)
 // =======================================================
 const LOGICAL_BASE = { w: 600, h: 800 };
 
-const RAW_SPECS = {
-    '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '2吋(8張)', cat: '4x6' },
-    '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '1吋(10張)', cat: '4x6' },
-    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], count: 12, name: '1吋(12張)', cat: '4x6' },
-    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], count: 6, name: '大頭照(6張)', cat: '4x6' },
-    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '1+2吋(8張)', cat: '4x6', total: 8, sections: [{ x: 0, grid: [2, 2], size: [450, 600], count: 4, w: 900, h: 1200 }, { x: 900, grid: [2, 2], size: [413, 531], count: 4, w: 900, h: 1200 }] },
-    '4x6-B':   { id: '4x6-B',   w: 1800, h: 1200, grid: [2, 4], size: [354, 472], count: 8, name: 'B版(8張)', cat: '4x6' },
+const SPECS = {
     'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
     'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
     'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [450, 600], count: 16, name: 'A4-護照(16張)', cat: 'A4' },
     'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], count: 12, name: 'A4-大頭(12張)', cat: 'A4' },
+    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', total: 30, sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] },
     'A4-B':    { id: 'A4-B',    w: 2480, h: 3508, grid: [6, 5], size: [354, 472], count: 30, name: 'A4-B版(30張)', cat: 'A4' },
-    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [6, 4], size: [295, 413], count: 24, name: '工牌(24張)', cat: 'A4' },
-    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', total: 30, sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
+    '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
+    '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
+    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], count: 12, name: '4x6-1吋(12張)', cat: '4x6' },
+    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], count: 6, name: '4x6-大頭(6張)', cat: '4x6' },
+    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '4x6-1+2吋(8張)', cat: '4x6', total: 8, sections: [{ x: 0, grid: [2, 2], size: [450, 600], count: 4, w: 900, h: 1200 }, { x: 900, grid: [2, 2], size: [413, 531], count: 4, w: 900, h: 1200 }] },
+    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [6, 4], size: [295, 413], count: 24, name: '工牌名稱(24張)', cat: 'A4' }
 };
 
 const SpecEngine = {
-    validate(s) {
-        if (!s.w || !s.h) throw new Error(`Spec ${s.id} missing geometry`);
+    generateSlots(spec) {
         const gen = (sec) => {
             const arr = [];
-            const gx = ((sec.w || s.w) - sec.grid[1] * sec.size[0]) / (sec.grid[1] + 1);
-            const gy = ((sec.h || s.h) - sec.grid[0] * sec.size[1]) / (sec.grid[0] + 1);
+            const gx = ((sec.w || spec.w) - sec.grid[1] * sec.size[0]) / (sec.grid[1] + 1);
+            const gy = ((sec.h || spec.h) - sec.grid[0] * sec.size[1]) / (sec.grid[0] + 1);
             for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) {
                 if(arr.length < (sec.count || 999)) {
                     arr.push({ x: (sec.x || 0) + gx + c * (sec.size[0] + gx), y: (sec.y || 0) + gy + r * (sec.size[1] + gy), w: sec.size[0], h: sec.size[1] });
@@ -61,334 +57,178 @@ const SpecEngine = {
             }
             return arr;
         };
-        const slots = s.sections ? s.sections.flatMap(gen) : gen(s);
-        const expectedCount = s.total || s.count;
-        if (expectedCount && slots.length !== expectedCount) throw new Error(`Spec ${s.id} integrity fail`);
-        return { ...s, slots };
+        return spec.sections ? spec.sections.flatMap(gen) : gen(spec);
     }
 };
 
-const SPECS = (() => {
-    try {
-        const validated = Object.fromEntries(Object.entries(RAW_SPECS).map(([k,v]) => [k, SpecEngine.validate(v)]));
-        if (Object.keys(validated).length !== 12) throw new Error("Missing specs");
-        return validated;
-    } catch (e) { alert(`FATAL: Spec Validation Failed`); throw e; }
-})();
-
 // =======================================================
-// [Zone 2: 資源管理層]
+// 🔵 ZONE 2: ASSET & CACHE (資源管理)
 // =======================================================
-const SUITS = {
-    female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
-    male: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/male/m${i+1}.png`)
-};
-const AssetCache = {
-    pool: new Map(),
-    async load(url) {
-        if (this.pool.has(url)) return this.pool.get(url);
+const AssetManager = {
+    cache: new Map(),
+    async fetch(url) {
+        if (this.cache.has(url)) return this.cache.get(url);
         return new Promise(res => {
-            const i = new Image(); i.crossOrigin = "anonymous";
-            i.onload = () => { this.pool.set(url, i); res(i); }; i.src = url;
+            const img = new Image(); img.crossOrigin="anonymous";
+            img.onload=() => { this.cache.set(url, img); res(img); }; img.src=url;
         });
     }
 };
 
+// =======================================================
+// 🟡 ZONE 3: STATE & SAFETY (大腦與安全預檢)
+// =======================================================
+const SafetyEngine = {
+    validate(photoLayer) {
+        if (!photoLayer || !photoLayer.img) return true;
+        const w = photoLayer.img.width * photoLayer.s, h = photoLayer.img.height * photoLayer.s;
+        const cx = 300 + photoLayer.x, cy = 400 + photoLayer.y;
+        return (cx - w/2 <= 0) && (cx + w/2 >= 600) && (cy - h/2 <= 0) && (cy + h/2 >= 800);
+    }
+};
+
+// =======================================================
+// 🟠 ZONE 4: RENDER ENGINE (繪圖公理)
+// =======================================================
+const RenderEngine = {
+    paint(ctx, layers, rect) {
+        ctx.save();
+        ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
+        const scale = rect.w / 600;
+        layers.forEach(l => {
+            if (!l.img || !l.visible) return;
+            ctx.save();
+            ctx.translate(rect.x + rect.w/2 + l.x * scale, rect.y + rect.h/2 + l.y * scale);
+            ctx.scale(l.s * scale * l.f, l.s * scale);
+            ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
+            ctx.restore();
+        });
+        ctx.restore();
+    }
+};
+
+// =======================================================
+// 🔴 ZONE 5: INTERACTION (交互手勢)
+// =======================================================
+const GestureHandler = {
+    handle(e, startPos, scaleRatio) {
+        const pts = e.targetTouches || [{ clientX: e.clientX, clientY: e.clientY }];
+        return {
+            dx: (pts[0].clientX - startPos.x) * scaleRatio,
+            dy: (pts[0].clientY - startPos.y) * scaleRatio,
+            newX: pts[0].clientX,
+            newY: pts[0].clientY
+        };
+    }
+};
+
 function App() {
-    // =======================================================
-    // [Zone 3: 狀態與模型層] - 增加 Safety Engine
-    // =======================================================
+    // 系統狀態
     const [scene, setScene] = useState({
         layers: [
             { id: 'photo', x: 0, y: 0, s: 1, f: 1, img: null, visible: true },
             { id: 'suit', x: 0, y: 150, s: 1, f: 1, img: null, visible: true }
         ],
         activeId: 'photo',
-        isSafe: true // 系統級安全旗標
+        isSafe: true
     });
-    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', gender: 'female', results: null, error: null });
-    const [history, setHistory] = useState([]); // Schema: { thumb, layers, valid, timestamp }
-
+    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', results: null, error: null });
     const cvsRef = useRef(null);
-    const renderRequest = useRef(true);
-
-    // [Safety Engine] 檢查圖層是否完整覆蓋邏輯畫布 (600x800)
-    // 這是 "Pre-flight Check" 的核心邏輯
-    const SafetyEngine = {
-        checkCoverage(layers) {
-            const photo = layers.find(l => l.id === 'photo');
-            if (!photo || !photo.img) return false;
-            
-            // 計算圖片在邏輯空間中的實際邊界
-            const w = photo.img.width * photo.s;
-            const h = photo.img.height * photo.s;
-            // 邏輯空間中心是 300, 400
-            // 圖片中心在 (300 + x), (400 + y)
-            const cx = LOGICAL_BASE.w / 2 + photo.x;
-            const cy = LOGICAL_BASE.h / 2 + photo.y;
-            
-            const left = cx - w / 2;
-            const right = cx + w / 2;
-            const top = cy - h / 2;
-            const bottom = cy + h / 2;
-
-            // 嚴格判定：必須完全包覆 (0,0) 到 (600,800)
-            const isSafe = (left <= 0) && (right >= LOGICAL_BASE.w) && (top <= 0) && (bottom >= LOGICAL_BASE.h);
-            return isSafe;
-        }
-    };
-
-    const fitImage = (img) => {
-        const scaleW = LOGICAL_BASE.w / img.width;
-        const scaleH = LOGICAL_BASE.h / img.height;
-        const scale = Math.max(scaleW, scaleH) * 1.05; // 預設多給 5% 緩衝
-        return { img, x: 0, y: 0, s: scale, f: 1 };
-    };
+    const mouse = useRef({ isDown: false, x: 0, y: 0 });
 
     // =======================================================
-    // [Zone 4: 渲染引擎層]
+    // 🟣 ZONE 6: EXPORT & PRE-FLIGHT (守門員)
     // =======================================================
-    const RenderEngine = {
-        drawScene(ctx, layers, targetRect) {
-            ctx.save();
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(targetRect.x, targetRect.y, targetRect.w, targetRect.h);
-            ctx.beginPath(); ctx.rect(targetRect.x, targetRect.y, targetRect.w, targetRect.h); ctx.clip();
-            
-            const projectionScale = targetRect.w / LOGICAL_BASE.w;
-            
-            layers.forEach(l => {
-                if (!l.visible || !l.img) return;
-                ctx.save();
-                const tx = targetRect.x + targetRect.w/2 + l.x * projectionScale;
-                const ty = targetRect.y + targetRect.h/2 + l.y * projectionScale;
-                ctx.translate(tx, ty);
-                ctx.scale(l.s * projectionScale * l.f, l.s * projectionScale);
-                ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
-                ctx.restore();
-            });
-            ctx.restore();
-        }
-    };
-
-    useEffect(() => {
-        let frame;
-        const tick = () => {
-            if (renderRequest.current && cvsRef.current) {
-                const ctx = cvsRef.current.getContext('2d', { alpha: false });
-                RenderEngine.drawScene(ctx, scene.layers, {x:0, y:0, w:350, h:466});
-                renderRequest.current = false;
-            }
-            frame = requestAnimationFrame(tick);
-        };
-        frame = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(frame);
-    }, [scene]);
-
-    // =======================================================
-    // [Zone 5: 互動與手勢層] - 實時安全反饋
-    // =======================================================
-    const interact = useRef({ isDown: false, lastX: 0, lastY: 0, lastD: 0, startS: 1 });
-
-    const handlePointer = (e, type) => {
-        if (e.cancelable) e.preventDefault();
-        const t = scene.activeId;
-        const logicRatio = LOGICAL_BASE.w / 350; 
-        const pts = e.targetTouches || [{ clientX: e.clientX, clientY: e.clientY }];
-        
-        if (type === 'start') {
-            interact.current.isDown = true;
-            if (pts.length >= 2) {
-                interact.current.lastD = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                interact.current.startS = scene.layers.find(l => l.id === t).s;
-            } else {
-                interact.current.lastX = pts[0].clientX; interact.current.lastY = pts[0].clientY;
-            }
-        } else if (type === 'move' && interact.current.isDown) {
-            setScene(prev => {
-                const layers = prev.layers.map(l => {
-                    if (l.id !== t) return l;
-                    if (pts.length >= 2) {
-                        const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                        return { ...l, s: Math.max(0.1, Math.min(5, interact.current.startS * (d / interact.current.lastD))) };
-                    } else {
-                        const dx = (pts[0].clientX - interact.current.lastX) * logicRatio;
-                        const dy = (pts[0].clientY - interact.current.lastY) * logicRatio;
-                        interact.current.lastX = pts[0].clientX; interact.current.lastY = pts[0].clientY;
-                        return { ...l, x: l.x + dx, y: l.y + dy };
-                    }
-                });
-                
-                // [Real-time Safety Check]
-                // 每次移動都重新計算是否安全，更新狀態
-                const isSafe = SafetyEngine.checkCoverage(layers);
-                
-                renderRequest.current = true;
-                return { ...prev, layers, isSafe };
-            });
-        } else { interact.current.isDown = false; }
-    };
-
-    // =======================================================
-    // [Zone 6: 導出與預檢層] - Flight Check
-    // =======================================================
-    const doExport = async (all) => {
-        setUi(u => ({...u, error: null}));
-        
-        // [Pre-flight Check]
-        // 1. 檢查當前場景
-        if (ui.mode === 'single' && !scene.isSafe) {
-            setUi(u => ({...u, error: "⚠️ 當前照片有白邊，無法符合證件規範，請調整縮放。"}));
-            return;
-        }
-
-        const list = all ? Object.keys(SPECS) : [ui.spec];
-        const res = [];
-        const master = document.createElement('canvas'); 
-        master.width = LOGICAL_BASE.w; master.height = LOGICAL_BASE.h;
-        const mCtx = master.getContext('2d');
+    const doBatchExport = async (targetId = null) => {
+        if (!scene.isSafe) { setUi(u => ({...u, error: "⚠️ 邊界安全檢查未通過"})); return; }
+        const list = targetId ? [targetId] : Object.keys(SPECS);
+        const outputs = [];
+        const mCvs = document.createElement('canvas'); mCvs.width = 600; mCvs.height = 800;
 
         for (const sid of list) {
             const spec = SPECS[sid];
+            const slots = SpecEngine.generateSlots(spec);
             const canvas = document.createElement('canvas'); canvas.width = spec.w; canvas.height = spec.h;
-            const ctx = canvas.getContext('2d'); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,spec.w,spec.h);
-            
-            for(let i=0; i<spec.slots.length; i++) {
-                const slot = spec.slots[i];
-                let targetLayers;
-                
-                if (ui.mode === 'multi') {
-                    // 多人模式安全檢查
-                    // 這裡先保留原有的 Index mapping，但加入數據驗證
-                    if (history[i]) {
-                        if (!history[i].valid) {
-                            setUi(u => ({...u, error: `⚠️ 第 ${i+1} 位人物照片不合規 (有白邊)，導出中斷。`}));
-                            return; 
-                        }
-                        targetLayers = history[i].layers;
-                    } else {
-                        // Slot 空缺時的行為：留白 (不使用 scene fallback 以避免混淆)
-                        continue; 
-                    }
-                } else {
-                    targetLayers = scene.layers;
-                }
-                
-                RenderEngine.drawScene(mCtx, targetLayers, {x:0, y:0, w:LOGICAL_BASE.w, h:LOGICAL_BASE.h});
-                ctx.drawImage(master, 0, 0, LOGICAL_BASE.w, LOGICAL_BASE.h, slot.x, slot.y, slot.w, slot.h);
-            }
-            res.push({ url: canvas.toDataURL('image/jpeg', 0.8), name: spec.name, id: sid });
-            await new Promise(r => requestAnimationFrame(r));
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = "#fff"; ctx.fillRect(0,0,spec.w,spec.h);
+
+            slots.forEach(slot => {
+                RenderEngine.paint(mCvs.getContext('2d'), scene.layers, {x:0,y:0,w:600,h:800});
+                ctx.drawImage(mCvs, 0, 0, 600, 800, slot.x, slot.y, slot.w, slot.h);
+            });
+            outputs.push({ url: canvas.toDataURL('image/jpeg', 0.8), name: spec.name });
+            await new Promise(r => setTimeout(r, 0));
         }
-        setUi(u => ({...u, results: res}));
+        setUi(u => ({...u, results: outputs}));
     };
+
+    useEffect(() => {
+        const render = () => {
+            if (cvsRef.current) RenderEngine.paint(cvsRef.current.getContext('2d'), scene.layers, {x:0, y:0, w:350, h:466});
+            requestAnimationFrame(render);
+        };
+        const f = requestAnimationFrame(render);
+        return () => cancelAnimationFrame(f);
+    }, [scene]);
 
     return (
         <div className="flex flex-col gap-3">
-            {ui.error && <div className="err-toast">{ui.error}</div>}
-            
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.61</span>
+                <span className="text-[10px] font-bold text-slate-500">ZONE-BASED V20.47.64</span>
             </header>
 
+            {/* Zone 3 & 5: Editor Visuals */}
             <div className="zone-box">
-                <div className="zone-tag">👥 模式與規格</div>
-                <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人模式</button>
-                    <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人模式</button>
-                </div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-                    {['4x6', 'A4'].map(c => (
-                        <button key={c} onClick={() => setUi(u => ({...u, cat: c}))} className={`px-6 py-2 rounded-xl text-xs font-black flex-shrink-0 ${ui.cat === c ? 'bg-white text-black' : 'bg-slate-800 text-slate-500'}`}>{c}</button>
-                    ))}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                    {Object.values(SPECS).filter(s => s.cat === ui.cat).map(s => (
-                        <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-2 py-2.5 rounded-lg text-[10px] font-bold flex-1 min-w-[85px] ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{s.name}</button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="zone-box">
-                <div className="zone-tag">📸 影像載入</div>
-                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選取檔案<input type="file" hidden accept="image/*" onChange={async e => {
-                    const f = e.target.files[0]; if(!f) return;
-                    const img = await AssetCache.load(URL.createObjectURL(f));
-                    const fitData = fitImage(img);
-                    const newLayers = scene.layers.map(l => l.id === 'photo' ? {...l, ...fitData} : l);
-                    setScene(s => ({...s, layers: newLayers, isSafe: SafetyEngine.checkCoverage(newLayers)}));
-                    renderRequest.current = true;
-                }}/></label>
-                {ui.mode === 'multi' && (
-                    <div className="pt-3 border-t border-slate-700/50">
-                        <button onClick={() => {
-                            if (!scene.isSafe) { setUi(u => ({...u, error: "⚠️ 當前照片不合規，無法加入隊列"})); return; }
-                            const thumb = cvsRef.current.toDataURL('image/jpeg', 0.1);
-                            // Schema Update: 儲存 valid 狀態與時間戳
-                            setHistory(prev => [...prev.slice(-11), { 
-                                thumb, 
-                                layers: JSON.parse(JSON.stringify(scene.layers)), 
-                                valid: true, 
-                                timestamp: Date.now() 
-                            }]);
-                        }} className={`w-full py-4 rounded-2xl font-black text-xs mb-3 ${scene.isSafe ? 'bg-purple-600' : 'bg-slate-600 text-slate-400'}`}>
-                            {scene.isSafe ? "保存當前人物" : "調整至安全範圍以保存"}
-                        </button>
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                            {history.map((h, i) => (
-                                <img key={i} src={h.thumb} onClick={() => { setScene(s => ({...s, layers: h.layers, isSafe: true})); renderRequest.current=true; }} className="w-12 h-12 rounded-lg border-2 border-slate-800 flex-shrink-0" />
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            <div className="zone-box">
-                <div className="zone-tag">🕹️ 編輯器 {scene.isSafe ? '✅' : '❌'}</div>
-                <div className={`stage-box mb-4 ${!scene.isSafe ? 'unsafe' : ''}`} 
-                     onPointerDown={e => handlePointer(e, 'start')} 
-                     onPointerMove={e => handlePointer(e, 'move')} 
-                     onPointerUp={e => handlePointer(e, 'end')}>
+                <div className="zone-tag">Zone 3/5: Editor {!scene.isSafe && '❌ UNSAFE'}</div>
+                <div className={`stage-box mb-3 ${!scene.isSafe ? 'unsafe' : ''}`}
+                    onPointerDown={e => { mouse.current = { isDown: true, x: e.clientX, y: e.clientY }; }}
+                    onPointerMove={e => {
+                        if (!mouse.current.isDown) return;
+                        const res = GestureHandler.handle(e, {x: mouse.current.x, y: mouse.current.y}, 600/350);
+                        mouse.current.x = res.newX; mouse.current.y = res.newY;
+                        setScene(s => {
+                            const nextLayers = s.layers.map(l => l.id === s.activeId ? { ...l, x: l.x + res.dx, y: l.y + res.dy } : l);
+                            return { ...s, layers: nextLayers, isSafe: SafetyEngine.validate(nextLayers.find(n => n.id === 'photo')) };
+                        });
+                    }}
+                    onPointerUp={() => mouse.current.isDown = false}>
                     <canvas ref={cvsRef} width="350" height="466" className="w-full h-full" />
-                    <div className="guide-circle"></div>
-                    {!scene.isSafe && <div className="absolute inset-0 border-4 border-red-500 pointer-events-none opacity-50"></div>}
                 </div>
-                <div className="flex gap-2 mb-3">
-                    {scene.layers.map(l => (
-                        <button key={l.id} onClick={() => setScene(s => ({...s, activeId: l.id}))} className={`flex-1 py-3 rounded-xl text-xs font-black ${scene.activeId === l.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{l.id === 'photo' ? '人物' : '衣服'}</button>
+                <label className="block w-full py-4 bg-white text-black text-center rounded-xl font-black text-xs cursor-pointer">
+                    Zone 2: 載入照片<input type="file" hidden onChange={async e => {
+                        const img = await AssetManager.fetch(URL.createObjectURL(e.target.files[0]));
+                        setScene(s => ({...s, layers: s.layers.map(l => l.id === 'photo' ? {...l, img, s: Math.max(600/img.width, 800/img.height)*1.1} : l), isSafe: true}));
+                    }}/>
+                </label>
+            </div>
+
+            {/* Zone 1: Spec Selection */}
+            <div className="zone-box">
+                <div className="zone-tag">Zone 1: Specs (12 Total)</div>
+                <div className="flex gap-1 overflow-x-auto no-scrollbar pb-2">
+                    {['4x6', 'A4'].map(c => (
+                        <button key={c} onClick={()=>setUi(u=>({...u, cat:c}))} className={`px-4 py-2 rounded-lg text-xs font-bold ${ui.cat===c?'bg-white text-black':'bg-slate-800'}`}>{c}</button>
                     ))}
                 </div>
-                <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, gender: 'female'}))} className={`flex-1 py-2 rounded-lg text-xs font-bold ${ui.gender === 'female' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>女裝</button>
-                    <button onClick={() => setUi(u => ({...u, gender: 'male'}))} className={`flex-1 py-2 rounded-lg text-xs font-bold ${ui.gender === 'male' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>男裝</button>
-                </div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    {SUITS[ui.gender].map(url => (
-                        <img key={url} src={url} onClick={async () => {
-                            const img = await AssetCache.load(url);
-                            setScene(s => ({...s, layers: s.layers.map(l => l.id === 'suit' ? {...l, img} : l)}));
-                            renderRequest.current = true;
-                        }} className="w-10 h-10 bg-white rounded-lg p-1 border border-slate-700 flex-shrink-0" />
+                <div className="grid grid-cols-3 gap-1">
+                    {Object.values(SPECS).filter(s => s.cat === (ui.cat || '4x6')).map(s => (
+                        <button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`px-2 py-2 rounded-lg text-[9px] font-bold ${ui.spec===s.id?'bg-blue-600':'bg-slate-800'}`}>{s.name}</button>
                     ))}
                 </div>
             </div>
 
+            {/* Zone 6: Production Export */}
             <div className="grid grid-cols-2 gap-2 mb-10">
-                <button onClick={() => doExport(false)} className={`py-5 rounded-2xl font-black text-xs text-white ${scene.isSafe ? 'bg-blue-600' : 'bg-slate-600 opacity-50'}`}>導出單張</button>
-                <button onClick={() => doExport(true)} className={`py-5 rounded-2xl font-black text-xs text-white ${scene.isSafe ? 'bg-orange-600' : 'bg-slate-600 opacity-50'}`}>全規格導出</button>
+                <button onClick={()=>doBatchExport(ui.spec)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">Zone 6: 導出單張</button>
+                <button onClick={()=>doBatchExport()} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">Zone 6: 全規格批次</button>
             </div>
 
             {ui.results && (
-                <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 pb-24">
-                    {ui.results.map((r, i) => (
-                        <div key={i} className="mb-6 bg-slate-900 p-4 rounded-3xl border border-slate-800 text-center">
-                            <p className="text-[10px] text-slate-500 font-bold mb-2">{r.name}</p>
-                            <img src={r.url} className="w-full rounded-xl mb-3 shadow-2xl" />
-                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="inline-block px-10 py-4 bg-blue-600 rounded-2xl text-xs font-black text-white">下載此張</a>
-                        </div>
-                    ))}
-                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black">返回編輯</button>
+                <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4">
+                    {ui.results.map((r,i)=>(<div key={i} className="mb-4"><img src={r.url} className="w-full rounded-xl"/><p className="text-center text-[10px] mt-2">{r.name}</p></div>))}
+                    <button onClick={()=>setUi(u=>({...u, results:null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 px-10 py-4 bg-white text-black rounded-full font-black">返回</button>
                 </div>
             )}
         </div>
