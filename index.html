@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.59</title>
+    <title>EzID v20.47.60</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -22,44 +22,86 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useMemo } = React;
 
 // =======================================================
-// [Zone 1: 常數規格層] - 12種規格定義 (不可侵犯契約)
+// [Zone 1: Spec Engine] - 規格執法與驗證層
 // =======================================================
+// 定義邏輯世界基準：所有編輯操作都在 600x800 的世界中進行
+const LOGICAL_BASE = { w: 600, h: 800 };
+
 const RAW_SPECS = {
-    '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8張)', cat: '4x6' },
-    '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '1吋(10張)', cat: '4x6' },
-    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], name: '1吋(12張)', cat: '4x6' },
-    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], name: '大頭照(6張)', cat: '4x6' },
-    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '1+2吋(8張)', cat: '4x6', sections: [{ x: 0, grid: [2, 2], size: [450, 600], count: 4, w: 900, h: 1200 }, { x: 900, grid: [2, 2], size: [413, 531], count: 4, w: 900, h: 1200 }] },
-    '4x6-B':   { id: '4x6-B',   w: 1800, h: 1200, grid: [2, 4], size: [354, 472], name: 'B版(8張)', cat: '4x6' },
-    'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], name: 'A4-2吋(20張)', cat: 'A4' },
-    'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], name: 'A4-1吋(42張)', cat: 'A4' },
-    'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [450, 600], name: 'A4-護照(16張)', cat: 'A4' },
-    'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], name: 'A4-大頭(12張)', cat: 'A4' },
-    'A4-B':    { id: 'A4-B',    w: 2480, h: 3508, grid: [6, 5], size: [354, 472], name: 'A4-B版(30張)', cat: 'A4' },
-    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [6, 4], size: [295, 413], name: '工牌(24張)', cat: 'A4' },
-    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
+    '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '2吋(8張)', cat: '4x6' },
+    '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '1吋(10張)', cat: '4x6' },
+    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], count: 12, name: '1吋(12張)', cat: '4x6' },
+    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], count: 6, name: '大頭照(6張)', cat: '4x6' },
+    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '1+2吋(8張)', cat: '4x6', total: 8, sections: [{ x: 0, grid: [2, 2], size: [450, 600], count: 4, w: 900, h: 1200 }, { x: 900, grid: [2, 2], size: [413, 531], count: 4, w: 900, h: 1200 }] },
+    '4x6-B':   { id: '4x6-B',   w: 1800, h: 1200, grid: [2, 4], size: [354, 472], count: 8, name: 'B版(8張)', cat: '4x6' },
+    'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
+    'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
+    'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [450, 600], count: 16, name: 'A4-護照(16張)', cat: 'A4' },
+    'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], count: 12, name: 'A4-大頭(12張)', cat: 'A4' },
+    'A4-B':    { id: 'A4-B',    w: 2480, h: 3508, grid: [6, 5], size: [354, 472], count: 30, name: 'A4-B版(30張)', cat: 'A4' },
+    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [6, 4], size: [295, 413], count: 24, name: '工牌(24張)', cat: 'A4' },
+    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', total: 30, sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
 };
 
 const SpecEngine = {
     validate(s) {
+        // [Safety Check 1] 確保必要欄位存在
+        if (!s.w || !s.h) throw new Error(`Spec ${s.id} missing geometry`);
+        
         const gen = (sec) => {
             const arr = [];
+            // [Safety Check 2] 確保 gap 計算不會產生 NaN 或負數 (簡單防呆)
             const gx = ((sec.w || s.w) - sec.grid[1] * sec.size[0]) / (sec.grid[1] + 1);
             const gy = ((sec.h || s.h) - sec.grid[0] * sec.size[1]) / (sec.grid[0] + 1);
-            for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++)
-                if(arr.length < (sec.count || 999)) arr.push({ x: (sec.x || 0) + gx + c * (sec.size[0] + gx), y: (sec.y || 0) + gy + r * (sec.size[1] + gy), w: sec.size[0], h: sec.size[1] });
+            
+            for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) {
+                // [Safety Check 3] 不得生成超過預期 count 的 slot
+                if(arr.length < (sec.count || 999)) {
+                    const slot = { 
+                        x: (sec.x || 0) + gx + c * (sec.size[0] + gx), 
+                        y: (sec.y || 0) + gy + r * (sec.size[1] + gy), 
+                        w: sec.size[0], 
+                        h: sec.size[1] 
+                    };
+                    // [Safety Check 4] 邊界檢查
+                    if (slot.x + slot.w > s.w + 1 || slot.y + slot.h > s.h + 1) {
+                         console.error(`Spec ${s.id} slot out of bounds`, slot); // 實際產品應 throw error
+                    }
+                    arr.push(slot);
+                }
+            }
             return arr;
         };
-        return { ...s, slots: s.sections ? s.sections.flatMap(gen) : gen(s) };
+
+        const slots = s.sections ? s.sections.flatMap(gen) : gen(s);
+        
+        // [Safety Check 5] 總數驗證
+        const expectedCount = s.total || s.count;
+        if (expectedCount && slots.length !== expectedCount) {
+             throw new Error(`Spec ${s.id} integrity fail: expected ${expectedCount}, got ${slots.length}`);
+        }
+
+        return { ...s, slots };
     }
 };
-const SPECS = Object.fromEntries(Object.entries(RAW_SPECS).map(([k,v]) => [k, SpecEngine.validate(v)]));
+
+// 啟動時立即執行全規格驗證 (Fail Fast)
+const SPECS = (() => {
+    try {
+        const validated = Object.fromEntries(Object.entries(RAW_SPECS).map(([k,v]) => [k, SpecEngine.validate(v)]));
+        if (Object.keys(validated).length !== 12) throw new Error("Missing specs");
+        return validated;
+    } catch (e) {
+        alert(`FATAL: Spec Validation Failed - ${e.message}`);
+        throw e;
+    }
+})();
 
 // =======================================================
-// [Zone 2: 資源管理層] - 衣服網址與快取
+// [Zone 2: 資源管理層]
 // =======================================================
 const SUITS = {
     female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
@@ -79,12 +121,12 @@ const AssetCache = {
 
 function App() {
     // =======================================================
-    // [Zone 3: 狀態與物理層] - 自動校準 (Auto-Fitting)
+    // [Zone 3: 狀態與物理層] - 邏輯座標系 (600x800)
     // =======================================================
     const [scene, setScene] = useState({
         layers: [
-            { id: 'photo', x: 0, y: 0, s: 0.5, f: 1, img: null, visible: true },
-            { id: 'suit', x: 0, y: 80, s: 0.8, f: 1, img: null, visible: true }
+            { id: 'photo', x: 0, y: 0, s: 1, f: 1, img: null, visible: true },
+            { id: 'suit', x: 0, y: 150, s: 1, f: 1, img: null, visible: true }
         ],
         activeId: 'photo'
     });
@@ -94,28 +136,41 @@ function App() {
     const cvsRef = useRef(null);
     const renderRequest = useRef(true);
 
+    // Auto-Fit: 確保圖片 "Cover" 整個邏輯畫布 (600x800)，而非只對高度
     const fitImage = (img) => {
-        // 目標：讓圖片高度佔據畫布基準 (450px) 的 70%
-        const targetH = 450 * 0.7;
-        const initialScale = targetH / img.height;
-        return { img, x: 0, y: 0, s: initialScale, f: 1 };
+        const scaleW = LOGICAL_BASE.w / img.width;
+        const scaleH = LOGICAL_BASE.h / img.height;
+        const scale = Math.max(scaleW, scaleH); // 取大者以覆蓋
+        return { img, x: 0, y: 0, s: scale, f: 1 };
     };
 
     // =======================================================
-    // [Zone 4: 渲染引擎層] - 座標投影對齊
+    // [Zone 4: 渲染引擎層] - 座標一致性核心
     // =======================================================
     const RenderEngine = {
-        drawScene(ctx, layers, rect) {
+        // 核心邏輯：輸入邏輯座標，輸出到目標 Canvas (targetRect)
+        drawScene(ctx, layers, targetRect) {
             ctx.save();
+            // 1. 清空與裁切目標區域
             ctx.fillStyle = "#ffffff";
-            ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-            ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
+            ctx.fillRect(targetRect.x, targetRect.y, targetRect.w, targetRect.h);
+            ctx.beginPath(); 
+            ctx.rect(targetRect.x, targetRect.y, targetRect.w, targetRect.h); 
+            ctx.clip();
+
+            // 2. 計算投影比率：目標寬度 / 邏輯寬度 (600)
+            const projectionScale = targetRect.w / LOGICAL_BASE.w;
+
             layers.forEach(l => {
                 if (!l.visible || !l.img) return;
-                const scaleRatio = rect.w / 350; 
                 ctx.save();
-                ctx.translate(rect.x + rect.w/2 + l.x * scaleRatio, rect.y + rect.h/2 + l.y * scaleRatio);
-                ctx.scale(l.s * scaleRatio * l.f, l.s * scaleRatio);
+                // 3. 座標轉換：Logic -> Target
+                // Center + (LayerPos * Projection)
+                const tx = targetRect.x + targetRect.w/2 + l.x * projectionScale;
+                const ty = targetRect.y + targetRect.h/2 + l.y * projectionScale;
+                
+                ctx.translate(tx, ty);
+                ctx.scale(l.s * projectionScale * l.f, l.s * projectionScale);
                 ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
                 ctx.restore();
             });
@@ -128,7 +183,9 @@ function App() {
         const tick = () => {
             if (renderRequest.current && cvsRef.current) {
                 const ctx = cvsRef.current.getContext('2d', { alpha: false });
-                RenderEngine.drawScene(ctx, scene.layers, {x:0, y:0, w:350, h:450});
+                // UI 渲染：將 600x800 投影到 350x450 (會有輕微長寬比差異，但以寬度為基準)
+                // 為了不讓 UI 變形，我們保持寬度基準，高度自動延伸或裁切
+                RenderEngine.drawScene(ctx, scene.layers, {x:0, y:0, w:350, h:466}); // 350 * (800/600) ~= 466
                 renderRequest.current = false;
             }
             frame = requestAnimationFrame(tick);
@@ -138,13 +195,18 @@ function App() {
     }, [scene]);
 
     // =======================================================
-    // [Zone 5: 互動與手勢層]
+    // [Zone 5: 互動與手勢層] - 映射回邏輯座標
     // =======================================================
     const interact = useRef({ isDown: false, lastX: 0, lastY: 0, lastD: 0, startS: 1 });
 
     const handlePointer = (e, type) => {
         if (e.cancelable) e.preventDefault();
         const t = scene.activeId;
+        // 計算 UI -> Logic 的逆向比率
+        // UI Width = 350, Logic Width = 600 => Ratio = 350/600
+        // Delta Logic = Delta UI / Ratio = Delta UI * (600/350)
+        const logicRatio = LOGICAL_BASE.w / 350; 
+
         const pts = e.targetTouches || [{ clientX: e.clientX, clientY: e.clientY }];
         
         if (type === 'start') {
@@ -163,8 +225,9 @@ function App() {
                         const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
                         return { ...l, s: Math.max(0.1, Math.min(5, interact.current.startS * (d / interact.current.lastD))) };
                     } else {
-                        const dx = (pts[0].clientX - interact.current.lastX);
-                        const dy = (pts[0].clientY - interact.current.lastY);
+                        // 轉換螢幕位移到邏輯位移
+                        const dx = (pts[0].clientX - interact.current.lastX) * logicRatio;
+                        const dy = (pts[0].clientY - interact.current.lastY) * logicRatio;
                         interact.current.lastX = pts[0].clientX; interact.current.lastY = pts[0].clientY;
                         return { ...l, x: l.x + dx, y: l.y + dy };
                     }
@@ -176,23 +239,34 @@ function App() {
     };
 
     // =======================================================
-    // [Zone 6: 導出與介面層]
+    // [Zone 6: 導出與介面層] - 批次生產與校驗
     // =======================================================
     const doExport = async (all) => {
         const list = all ? Object.keys(SPECS) : [ui.spec];
         const res = [];
-        const master = document.createElement('canvas'); master.width = 600; master.height = 800;
+        
+        // 建立一個 "Master" 畫布，尺寸就是我們的邏輯基準
+        const master = document.createElement('canvas'); 
+        master.width = LOGICAL_BASE.w; 
+        master.height = LOGICAL_BASE.h;
         const mCtx = master.getContext('2d');
 
         for (const sid of list) {
             const spec = SPECS[sid];
             const canvas = document.createElement('canvas'); canvas.width = spec.w; canvas.height = spec.h;
             const ctx = canvas.getContext('2d'); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,spec.w,spec.h);
+            
             for(let i=0; i<spec.slots.length; i++) {
                 const slot = spec.slots[i];
+                // 多人模式下，若該 Slot 沒有對應的 History，則使用當前 Scene
+                // 這是 "Fallback to current" 的行為，也可設計為留白
                 const targetLayers = (ui.mode === 'multi' && history[i]) ? history[i].layers : scene.layers;
-                RenderEngine.drawScene(mCtx, targetLayers, {x:0, y:0, w:600, h:800});
-                ctx.drawImage(master, 0, 0, 600, 800, slot.x, slot.y, slot.w, slot.h);
+                
+                // 1. 渲染到 Master (1:1 Logic Scale)
+                RenderEngine.drawScene(mCtx, targetLayers, {x:0, y:0, w:LOGICAL_BASE.w, h:LOGICAL_BASE.h});
+                
+                // 2. 複製到 Slot (不論 Slot 是 1吋還2吋，內容都是來自 Master)
+                ctx.drawImage(master, 0, 0, LOGICAL_BASE.w, LOGICAL_BASE.h, slot.x, slot.y, slot.w, slot.h);
             }
             res.push({ url: canvas.toDataURL('image/jpeg', 0.8), name: spec.name, id: sid });
             await new Promise(r => requestAnimationFrame(r));
@@ -204,11 +278,11 @@ function App() {
         <div className="flex flex-col gap-3">
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.59</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.60</span>
             </header>
 
             <div className="zone-box">
-                <div className="zone-tag">👥 模式與規格</div>
+                <div className="zone-tag">👥 模式與規格 (Verified)</div>
                 <div className="flex gap-2 mb-3">
                     <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人模式</button>
                     <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人模式</button>
@@ -226,7 +300,7 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">📸 影像載入</div>
+                <div className="zone-tag">📸 影像載入 (Auto-Cover)</div>
                 <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選取檔案<input type="file" hidden accept="image/*" onChange={async e => {
                     const f = e.target.files[0]; if(!f) return;
                     const img = await AssetCache.load(URL.createObjectURL(f));
@@ -250,9 +324,9 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">🕹️ 編輯器</div>
+                <div className="zone-tag">🕹️ 編輯器 (Logic Coords)</div>
                 <div className="stage-box mb-4" onPointerDown={e => handlePointer(e, 'start')} onPointerMove={e => handlePointer(e, 'move')} onPointerUp={e => handlePointer(e, 'end')}>
-                    <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
+                    <canvas ref={cvsRef} width="350" height="466" className="w-full h-full" />
                     <div className="guide-circle"></div>
                 </div>
                 <div className="flex gap-2 mb-3">
@@ -276,7 +350,7 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-10">
-                <button onClick={() => doExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs text-white">導出目前規格</button>
+                <button onClick={() => doExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs text-white">導出單張</button>
                 <button onClick={() => doExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs text-white">全規格導出</button>
             </div>
 
@@ -286,7 +360,7 @@ function App() {
                         <div key={i} className="mb-6 bg-slate-900 p-4 rounded-3xl border border-slate-800 text-center">
                             <p className="text-[10px] text-slate-500 font-bold mb-2">{r.name}</p>
                             <img src={r.url} className="w-full rounded-xl mb-3 shadow-2xl" />
-                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="inline-block px-10 py-4 bg-blue-600 rounded-2xl text-xs font-black text-white">點擊下載</a>
+                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="inline-block px-10 py-4 bg-blue-600 rounded-2xl text-xs font-black text-white">下載此張</a>
                         </div>
                     ))}
                     <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black">返回編輯</button>
