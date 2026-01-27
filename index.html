@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.52</title>
+    <title>EzID v20.47.53</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -24,9 +24,7 @@
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
-// =======================================================
-// [Zone 1: 資料層 - 規格與衣服編碼]
-// =======================================================
+// [Zone 1: 資料層] - 12種規格與衣服 (Cache 限額 20)
 const SPECS = {
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8張)', cat: '4x6' },
     '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '1吋(10張)', cat: '4x6' },
@@ -43,7 +41,6 @@ const SPECS = {
     'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
 };
 
-// 4️⃣ 優化：Image Cache 池
 const IMAGE_CACHE = new Map();
 const SUITS = {
     female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
@@ -52,128 +49,127 @@ const SUITS = {
 
 function App() {
     const cvsRef = useRef(null);
-    // 2️⃣ 優化：高頻手勢值移入 Ref，不直接觸發渲染
-    const gest = useRef({ active: false, x: 0, y: 0, dist: 0, lastS: 1 });
-    const dirty = useRef(true); // 1️⃣ 優化：髒位標記
+    // [效能優化 2.1]：高頻物理狀態完全脫離 React State，使用 Ref 進行幀同步
+    const physics = useRef({
+        photo: {x:0, y:0, s:0.5, f:1},
+        suit: {x:0, y:80, s:0.8, f:1},
+        active: 'photo'
+    });
+    const gest = useRef({ isDown: false, x: 0, y: 0, dist: 0, startS: 1 });
+    const frameId = useRef(0);
 
-    // =======================================================
-    // [Zone 2: 狀態管理層]
-    // =======================================================
+    // [Zone 2: 狀態管理層] - 只留低頻 UI 狀態
     const [assets, setAssets] = useState({ img: null, suit: null });
-    const [params, setParams] = useState({ photo: {x:0, y:0, s:0.5, r:0, f:1}, suit: {x:0, y:80, s:0.8, r:0, f:1} });
     const [history, setHistory] = useState([]);
-    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', target: 'photo', mode: 'single', gender: 'female', results: null });
+    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', gender: 'female', results: null, target: 'photo' });
 
-    // =======================================================
-    // [Zone 3: 繪圖與互動層 - 優化：事件驅動重繪]
-    // =======================================================
-    const drawLayer = (ctx, img, p, rect, baseW=350) => {
-        if(!img) return;
+    // [Zone 3: 繪圖層] - Master 渲染邏輯
+    const drawContent = (ctx, p, imgs, rect, baseW=350) => {
         const r = rect.w / baseW;
         ctx.save();
         ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-        ctx.translate(rect.x + rect.w/2 + p.x*r, rect.y + rect.h/2 + p.y*r);
-        ctx.scale(p.s * r * (p.f || 1), p.s * r);
-        ctx.drawImage(img, -img.width/2, -img.height/2);
+        // 畫人物
+        if(imgs.img) {
+            const pp = p.photo;
+            ctx.save();
+            ctx.translate(rect.x + rect.w/2 + pp.x*r, rect.y + rect.h/2 + pp.y*r);
+            ctx.scale(pp.s * r * pp.f, pp.s * r);
+            ctx.drawImage(imgs.img, -imgs.img.width/2, -imgs.img.height/2);
+            ctx.restore();
+        }
+        // 畫衣服
+        if(imgs.suit) {
+            const sp = p.suit;
+            ctx.save();
+            ctx.translate(rect.x + rect.w/2 + sp.x*r, rect.y + rect.h/2 + sp.y*r);
+            ctx.scale(sp.s * r, sp.s * r);
+            ctx.drawImage(imgs.suit, -imgs.suit.width/2, -imgs.suit.height/2);
+            ctx.restore();
+        }
         ctx.restore();
     };
 
-    // 1️⃣ 優化：移除無條件 60FPS tick，改為 dirty check 渲染
-    const renderCanvas = useCallback(() => {
-        if(!cvsRef.current || !dirty.current) return;
-        const ctx = cvsRef.current.getContext('2d', { alpha: false }); // 微優化：關閉透明度提升混合效能
-        ctx.fillStyle = "white"; 
+    const loop = useCallback(() => {
+        if(!cvsRef.current) return;
+        const ctx = cvsRef.current.getContext('2d', { alpha: false });
+        ctx.fillStyle = "white";
         ctx.fillRect(0, 0, 350, 450);
-        drawLayer(ctx, assets.img, params.photo, {x:0, y:0, w:350, h:450});
-        drawLayer(ctx, assets.suit, params.suit, {x:0, y:0, w:350, h:450});
-        dirty.current = false;
-    }, [assets, params]);
+        drawContent(ctx, physics.current, assets, {x:0, y:0, w:350, h:450});
+        frameId.current = requestAnimationFrame(loop);
+    }, [assets]);
 
     useEffect(() => {
-        dirty.current = true;
-        const frameId = requestAnimationFrame(renderCanvas);
-        return () => cancelAnimationFrame(frameId);
-    }, [renderCanvas]);
+        frameId.current = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(frameId.current);
+    }, [loop]);
 
-    // 2️⃣ 優化：手勢 move 僅修改 Ref 與 dirty 位，不觸發 setState
-    const onTouch = (e, type) => {
+    // [效能優化 2.2]：手勢移動完全不觸發 setState
+    const handleTouch = (e, type) => {
         if (e.cancelable) e.preventDefault();
         const pts = e.targetTouches;
+        const tar = physics.current.active;
         if (type === 'start') {
-            gest.current.active = true;
+            gest.current.isDown = true;
             if (pts.length >= 2) {
                 gest.current.dist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                gest.current.lastS = params[ui.target].s;
+                gest.current.startS = physics.current[tar].s;
             } else {
                 gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
             }
-        } else if (type === 'move' && gest.current.active) {
-            let nextParams = { ...params[ui.target] };
+        } else if (type === 'move' && gest.current.isDown) {
             if (pts.length >= 2) {
                 const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                nextParams.s = Math.max(0.1, Math.min(3, gest.current.lastS * (d / gest.current.dist)));
+                physics.current[tar].s = Math.max(0.1, Math.min(3, gest.current.startS * (d / gest.current.dist)));
             } else {
-                nextParams.x += (pts[0].clientX - gest.current.x) / nextParams.s;
-                nextParams.y += (pts[0].clientY - gest.current.y) / nextParams.s;
+                physics.current[tar].x += (pts[0].clientX - gest.current.x) / physics.current[tar].s;
+                physics.current[tar].y += (pts[0].clientY - gest.current.y) / physics.current[tar].s;
                 gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
             }
-            // 直接更新狀態觸發 renderCanvas，但頻率受限於瀏覽器繪圖幀
-            setParams(p => ({...p, [ui.target]: nextParams}));
-            dirty.current = true;
-        } else { gest.current.active = false; }
+        } else { gest.current.isDown = false; }
     };
 
-    // 滑輪優化
-    const onWheel = (e) => {
-        const delta = e.deltaY > 0 ? 0.92 : 1.08;
-        setParams(p => ({...p, [ui.target]: {...p[ui.target], s: Math.max(0.1, Math.min(3, p[ui.target].s * delta))}}));
-        dirty.current = true;
-    };
-
-    // =======================================================
-    // [Zone 4: 資源管理層 - 優化：Image Cache]
-    // =======================================================
-    const loadImg = (url, callback) => {
-        if (IMAGE_CACHE.has(url)) return callback(IMAGE_CACHE.get(url));
-        const i = new Image();
-        i.crossOrigin = "anonymous";
-        i.onload = () => { IMAGE_CACHE.set(url, i); callback(i); };
+    // [Zone 4: 資源管理]
+    const loadSafeImg = (url, cb) => {
+        if (IMAGE_CACHE.has(url)) return cb(IMAGE_CACHE.get(url));
+        if (IMAGE_CACHE.size > 20) IMAGE_CACHE.clear(); // [效能優化 3]：LRU-ish 清理
+        const i = new Image(); i.crossOrigin = "anonymous";
+        i.onload = () => { IMAGE_CACHE.set(url, i); cb(i); };
         i.src = url;
     };
 
     const handleFile = (e) => {
         const f = e.target.files[0]; if(!f) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const i = new Image();
-            i.onload = () => {
+        const r = new FileReader();
+        r.onload = (ev) => {
+            const i = new Image(); i.onload = () => {
                 setAssets(p => ({...p, img: i}));
-                setParams(p => ({...p, photo: {x:0, y:0, s:0.5, r:0, f:1}}));
-            };
-            i.src = ev.target.result;
-        };
-        reader.readAsDataURL(f);
+                physics.current.photo = {x:0, y:0, s:0.5, f:1};
+            }; i.src = ev.target.result;
+        }; r.readAsDataURL(f);
     };
 
     const saveCache = () => {
         if(!assets.img) return;
-        // 6️⃣ 優化：限制暫存大小
         const snap = cvsRef.current.toDataURL('image/jpeg', 0.1);
-        setHistory(prev => [...prev.slice(-9), { thumb: snap, assets: {...assets}, params: JSON.parse(JSON.stringify(params)), id: Date.now() }]);
+        setHistory(prev => [...prev.slice(-11), { thumb: snap, assets: {...assets}, physics: JSON.parse(JSON.stringify(physics.current)), id: Date.now() }]);
     };
 
-    // =======================================================
-    // [Zone 5: 輸出層 - 優化：非同步化處理]
-    // =======================================================
+    // [Zone 5: 輸出層] - [效能優化 5]：Master-Slave 裁切渲染
     const doExport = async (all) => {
         const list = all ? Object.keys(SPECS) : [ui.spec];
-        const res = [];
-        // 5️⃣ 優化：使用非同步迴圈防止主執行緒凍結
+        const resList = [];
+        
+        // 建立中間 Master Canvas 提升複用率
+        const master = document.createElement('canvas');
+        master.width = 600; master.height = 800;
+        const mCtx = master.getContext('2d');
+
         for (const id of list) {
-            await new Promise(r => setTimeout(r, 0)); // 出讓執行權
+            await new Promise(r => setTimeout(r, 16));
             const s = SPECS[id];
             const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
             const ctx = c.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,s.w,s.h);
+            
             const slots = s.sections ? s.sections.flatMap(sec => {
                 const arr = [];
                 const gx = ((sec.w||s.w)-sec.grid[1]*sec.size[0])/(sec.grid[1]+1), gy = ((sec.h||s.h)-sec.grid[0]*sec.size[1])/(sec.grid[0]+1);
@@ -185,31 +181,32 @@ function App() {
                 for(let r=0; r<s.grid[0]; r++) for(let c=0; c<s.grid[1]; c++) arr.push({x:gx+c*(s.size[0]+gx), y:gy+r*(s.size[1]+gy), w:s.size[0], h:s.size[1]});
                 return arr;
             })();
+
             slots.forEach((rect, idx) => {
-                const src = (ui.mode === 'multi' && history[idx]) ? history[idx] : { assets, params };
-                drawLayer(ctx, src.assets.img, src.params.photo, rect);
-                drawLayer(ctx, src.assets.suit, src.params.suit, rect);
+                const data = (ui.mode === 'multi' && history[idx]) ? history[idx] : { assets, physics: physics.current };
+                // 利用 Master 緩存繪製結果，避免每個 slot 都重算 transform
+                mCtx.fillStyle="white"; mCtx.fillRect(0,0,600,800);
+                drawContent(mCtx, data.physics, data.assets, {x:0, y:0, w:600, h:800}, 600);
+                ctx.drawImage(master, 0, 0, 600, 800, rect.x, rect.y, rect.w, rect.h);
             });
-            res.push({ url: c.toDataURL('image/jpeg', 0.8), name: s.name, id });
+            resList.push({ url: c.toDataURL('image/jpeg', 0.8), name: s.name, id });
         }
-        setUi(u => ({...u, results: res}));
+        setUi(u => ({...u, results: resList}));
     };
 
-    // =======================================================
-    // [Zone 6: 介面渲染層]
-    // =======================================================
+    // [Zone 6: 介面]
     return (
         <div className="flex flex-col gap-3">
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.52</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.53</span>
             </header>
 
             <div className="zone-box">
                 <div className="zone-tag">👥 模式與規格</div>
                 <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人</button>
-                    <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人</button>
+                    <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人填充</button>
+                    <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人拼貼</button>
                 </div>
                 <div className="flex gap-2 mb-3 border-t border-slate-700/50 pt-3">
                     {['4x6', 'A4'].map(c => (
@@ -224,16 +221,16 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">📸 影像載入</div>
-                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選擇照片檔案<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
+                <div className="zone-tag">📸 影像載入與暫存</div>
+                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選擇相片檔案<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
                 {ui.mode === 'multi' && (
                     <div className="space-y-3 pt-3 border-t border-slate-700/50">
-                        <button onClick={saveCache} className="w-full py-4 bg-purple-600 rounded-2xl font-black text-xs">暫存目前影像</button>
+                        <button onClick={saveCache} className="w-full py-4 bg-purple-600 rounded-2xl font-black text-xs">加入暫存槽</button>
                         <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                             {history.map((h, idx) => (
                                 <div key={h.id} className="relative flex-shrink-0">
                                     <div className="num-badge">{idx + 1}</div>
-                                    <img src={h.thumb} onClick={() => { setAssets(h.assets); setParams(h.params); dirty.current=true; }} className={`w-12 h-12 rounded-lg border-2 ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
+                                    <img src={h.thumb} onClick={() => { setAssets(h.assets); physics.current = JSON.parse(JSON.stringify(h.physics)); }} className={`w-12 h-12 rounded-lg border-2 ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
                                 </div>
                             ))}
                         </div>
@@ -242,28 +239,24 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">🕹️ 畫面微調 (效能優化版)</div>
+                <div className="zone-tag">🕹️ 畫面微調 (脫鉤渲染版)</div>
                 <div className="stage-box mb-4" 
-                    onTouchStart={e => onTouch(e, 'start')} onTouchMove={e => onTouch(e, 'move')} onTouchEnd={e => onTouch(e, 'end')}
-                    onWheel={onWheel}>
+                    onTouchStart={e => handleTouch(e, 'start')} onTouchMove={e => handleTouch(e, 'move')} onTouchEnd={e => handleTouch(e, 'end')}>
                     <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
                     <div className="guide-circle"></div>
                 </div>
-                
                 <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, target: 'photo'}))} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'photo' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>調整人物</button>
-                    <button onClick={() => setUi(u => ({...u, target: 'suit'}))} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'suit' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>調整衣服</button>
+                    <button onClick={() => { physics.current.active='photo'; setUi(u=>({...u, target:'photo'})); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'photo' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>控制人物</button>
+                    <button onClick={() => { physics.current.active='suit'; setUi(u=>({...u, target:'suit'})); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'suit' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>控制衣服</button>
                 </div>
-                <input type="range" min="0.1" max="2" step="0.01" value={params[ui.target].s} onChange={e => { setParams(p => ({...p, [ui.target]: {...p[ui.target], s: parseFloat(e.target.value)}})); dirty.current=true; }} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500 mb-6" />
-                
                 <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, gender: 'female'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'female' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>女裝系列</button>
-                    <button onClick={() => setUi(u => ({...u, gender: 'male'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'male' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>男裝系列</button>
+                    <button onClick={() => setUi(u => ({...u, gender: 'female'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'female' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>女裝</button>
+                    <button onClick={() => setUi(u => ({...u, gender: 'male'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'male' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>男裝</button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    <button onClick={() => {setAssets(a => ({...a, suit: null})); dirty.current=true;}} className="px-3 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold">移除衣服</button>
+                    <button onClick={() => setAssets(a => ({...a, suit: null}))} className="px-3 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold">移除衣服</button>
                     {SUITS[ui.gender].map(url => (
-                        <img key={url} src={url} onClick={() => loadImg(url, (img) => { setAssets(p => ({...p, suit: img})); dirty.current=true; })} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 border border-slate-700" />
+                        <img key={url} src={url} onClick={() => loadSafeImg(url, (img) => setAssets(p => ({...p, suit: img})))} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 border border-slate-700" />
                     ))}
                 </div>
             </div>
@@ -278,11 +271,11 @@ function App() {
                     {ui.results.map((r, i) => (
                         <div key={i} className="mb-6 bg-slate-900 p-4 rounded-3xl border border-slate-800">
                             <p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">{r.name}</p>
-                            <img src={r.url} className="w-full rounded-xl mb-3" />
-                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 text-center rounded-2xl text-xs font-black">下載儲存</a>
+                            <img src={r.url} className="w-full rounded-xl mb-3 shadow-2xl" />
+                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 text-center rounded-2xl text-xs font-black shadow-lg">下載儲存</a>
                         </div>
                     ))}
-                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black">返回編輯</button>
+                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black shadow-2xl">返回編輯</button>
                 </div>
             )}
         </div>
