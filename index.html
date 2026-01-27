@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.48.06</title>
+    <title>EzID v20.48.09</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -23,17 +23,17 @@
 <script type="text/babel">
 const { useState, useRef, useEffect } = React;
 
-// 1️⃣ [MODULE] EZ_SPEC_ENGINE (核心規格定義 - 已縮減為 6 種，保留 MIX sections 定義)
+// 1️⃣ [MODULE] EZ_SPEC_ENGINE (核心規格定義 - 鎖定 6 種，保留 MIX sections 結構)
 const SPECS = {
-    'A4-1':   { id: 'A4-1',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
-    'A4-2':   { id: 'A4-2',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
-    'A4-MIX': { id: 'A4-MIX', w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y:0, grid:[3,4], count:12, size:[413, 531] }, { y:1754, grid:[3,6], count:18, size:[295, 413] }] },
-    '46-1':   { id: '46-1',   w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
-    '46-2':   { id: '46-2',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
-    '46-MIX': { id: '46-MIX', w: 1800, h: 1200, name: '4x6-1+2吋(8張)', cat: '4x6', sections: [{ x:0, grid:[2,2], count:4, size:[413, 531] }, { x:900, grid:[2,2], count:4, size:[295, 413] }] }
+    'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
+    'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
+    'A4-MIX': { id: 'A4-MIX', w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
+    '4x6-8':  { id: '4x6-8',  w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
+    '4x6-10': { id: '4x6-10', w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
+    '4x6-MIX':{ id: '4x6-MIX',w: 1800, h: 1200, name: '4x6-1+2吋(8張)', cat: '4x6', sections: [{ x: 0, grid: [2, 2], size: [413, 531], count: 4 }, { x: 900, grid: [2, 2], size: [295, 413], count: 4 }] }
 };
 
-// 2️⃣ [MODULE] EZ_ASSET_LOADER (圖片緩存)
+// 2️⃣ [MODULE] EZ_ASSET_LOADER (圖片緩存管理)
 const AssetLoader = {
     cache: new Map(),
     async load(url) {
@@ -45,24 +45,27 @@ const AssetLoader = {
     }
 };
 
-// 3️⃣ [MODULE] EZ_SAFETY_GUARD (白邊檢測)
+// 3️⃣ [MODULE] EZ_SAFETY_GUARD (白邊自檢與格位覆蓋檢測)
 const SafetyGuard = {
     check(layers, activeId) {
         const p = layers.find(l => l.id === activeId);
         if (!p || !p.img) return true;
         const w = p.img.width * p.s, h = p.img.height * p.s;
         const cx = 300 + p.x, cy = 400 + p.y;
-        return (cx - w/2 <= 1) && (cx + w/2 >= 599) && (cy - h/2 <= 1) && (cy + h/2 >= 799);
+        // 判定是否完全覆蓋 600x800 的渲染緩衝區
+        const isCovered = (cx - w/2 <= 1) && (cx + w/2 >= 599) && (cy - h/2 <= 1) && (cy + h/2 >= 799);
+        return isCovered;
     }
 };
 
-// 4️⃣ [MODULE] EZ_CORE_RENDERER (Canvas 渲染與輔助圈)
+// 4️⃣ [MODULE] EZ_CORE_RENDERER (Canvas 渲染與橢圓輔助圈)
 const CoreRenderer = {
     draw(ctx, layers, rect, hideGuides = false) {
         if (!ctx) return;
         ctx.save();
         ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         const sc = rect.w / 600;
+        
         layers.forEach(l => {
             if (!l.img) return;
             ctx.save();
@@ -72,18 +75,25 @@ const CoreRenderer = {
             ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
             ctx.restore();
         });
+
         if (!hideGuides) {
-            ctx.strokeStyle = "rgba(59, 130, 246, 0.4)"; ctx.setLineDash([6, 3]); ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(rect.x + rect.w/2, rect.y + rect.h * 0.38, rect.w * 0.22, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(rect.x + rect.w * 0.2, rect.y + rect.h * 0.75); ctx.lineTo(rect.x + rect.w * 0.8, rect.y + rect.h * 0.75); ctx.stroke();
+            ctx.strokeStyle = "rgba(59, 130, 246, 0.5)"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+            // 繪製橢圓人物引導圈
+            ctx.beginPath();
+            ctx.ellipse(rect.x + rect.w/2, rect.y + rect.h * 0.42, rect.w * 0.28, rect.h * 0.32, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            // 眼位與肩膀基準線
+            ctx.setLineDash([2, 4]);
+            ctx.beginPath(); ctx.moveTo(rect.x, rect.y + rect.h * 0.42); ctx.lineTo(rect.x + rect.w, rect.y + rect.h * 0.42); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(rect.x + rect.w * 0.15, rect.y + rect.h * 0.8); ctx.lineTo(rect.x + rect.w * 0.85, rect.y + rect.h * 0.8); ctx.stroke();
         }
         ctx.restore();
     }
 };
 
+// 5️⃣ [MODULE] EZ_UI_STATE (UI 狀態管理與圖層控制)
 function App() {
-    // 5️⃣ [MODULE] EZ_UI_STATE (多人模式管理)
-    const [ui, setUi] = useState({ spec: '46-MIX', results: null, mode: 'single' });
+    const [ui, setUi] = useState({ spec: '4x6-MIX', results: null, mode: 'single' });
     const [scene, setScene] = useState({ layers: [{ id: 1, x: 0, y: 0, s: 1, img: null }], activeId: 1, isSafe: true });
     const canvasRef = useRef(null);
     const pointer = useRef({ x: 0, y: 0, dist: 0 });
@@ -106,10 +116,12 @@ function App() {
         const targets = isAll ? Object.keys(SPECS) : [ui.spec];
         const resList = [];
         const buf = document.createElement('canvas'); buf.width = 600; buf.height = 800;
+        
         for (const sid of targets) {
             const s = SPECS[sid];
             const out = document.createElement('canvas'); out.width = s.w; out.height = s.h;
             const ctx = out.getContext('2d'); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,s.w,s.h);
+            
             const getSlots = (cfg) => {
                 const arr = [];
                 const workW = (s.cat === '4x6' && s.sections) ? 900 : s.w;
@@ -121,12 +133,13 @@ function App() {
                 }
                 return arr;
             };
+
             const slots = s.sections ? s.sections.flatMap(getSlots) : getSlots(s);
             slots.forEach(slot => {
                 CoreRenderer.draw(buf.getContext('2d'), scene.layers, {x:0, y:0, w:600, h:800}, true);
                 ctx.drawImage(buf, 0, 0, 600, 800, slot.x, slot.y, slot.w, slot.h);
             });
-            resList.push({ url: out.toDataURL('image/jpeg', 0.88), name: s.name });
+            resList.push({ url: out.toDataURL('image/jpeg', 0.9), name: s.name });
         }
         setUi(u => ({...u, results: resList}));
     };
@@ -140,6 +153,7 @@ function App() {
                     <button onClick={()=>setUi(u=>({...u, mode:'multi'}))} className={`px-4 py-1 text-[10px] rounded-md ${ui.mode==='multi'?'bg-blue-600 text-white':'text-slate-400'}`}>多人</button>
                 </div>
             </header>
+
             <div className="zone-box">
                 <div className="zone-tag">❶ 選擇規格</div>
                 <div className="grid grid-cols-2 gap-1">
@@ -148,6 +162,7 @@ function App() {
                     ))}
                 </div>
             </div>
+
             <div className="canvas-wrapper">
                 <div className={`stage-box ${!scene.isSafe?'border-4 border-red-500':''}`}
                     onTouchMove={e => {
@@ -170,7 +185,9 @@ function App() {
                 >
                     <canvas ref={canvasRef} width="350" height="466" className="w-full h-full" />
                 </div>
+                {!scene.isSafe && <p className="text-red-400 text-[10px] mt-2 font-bold text-center">SAFETY GUARD: 偵測到邊緣白邊</p>}
             </div>
+
             <div className="zone-box">
                 <div className="zone-tag">❷ 圖層管理 ({ui.mode==='single'?'單人':'多人'})</div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
@@ -181,16 +198,17 @@ function App() {
                     ))}
                     <label className="w-14 h-14 bg-slate-800 rounded-xl flex items-center justify-center text-2xl shrink-0 cursor-pointer border-dashed border border-slate-600">+<input type="file" hidden onChange={handleFile}/></label>
                 </div>
-                {!scene.isSafe && <p className="text-red-400 text-[10px] mt-2 font-bold uppercase tracking-widest text-center">SAFETY GUARD: WHITE GAP DETECTED</p>}
             </div>
+
             <div className="grid grid-cols-2 gap-2">
                 <button onClick={()=>handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">單規格輸出</button>
                 <button onClick={()=>handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">全規格批次</button>
             </div>
+
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 text-center">
                     {ui.results.map((r,i)=>(<div key={i} className="mb-8"><img src={r.url} className="w-full rounded-xl shadow-2xl mb-2"/><a href={r.url} download={`${r.name}.jpg`} className="text-blue-400 text-sm underline">點擊下載 {r.name}</a></div>))}
-                    <button onClick={()=>setUi(u=>({...u, results:null}))} className="px-12 py-4 bg-white text-black rounded-full font-black mt-4 mb-20 shadow-2xl">返回編輯</button>
+                    <button onClick={()=>setUi(u=>({...u, results:null}))} className="px-12 py-4 bg-white text-black rounded-full font-black mt-4 mb-20">返回編輯</button>
                 </div>
             )}
         </div>
