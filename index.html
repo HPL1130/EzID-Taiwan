@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.53</title>
+    <title>EzID v20.47.55</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,9 +13,10 @@
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
         .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; cursor: move; }
+        .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; }
         .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         .num-badge { position: absolute; top: -4px; left: -4px; background: #3b82f6; color: white; width: 18px; height: 18px; border-radius: 6px; font-size: 10px; font-weight: 900; display: flex; align-items: center; justify-content: center; border: 2px solid #020617; z-index: 20; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body>
@@ -24,7 +25,9 @@
 <script type="text/babel">
 const { useState, useRef, useEffect, useCallback } = React;
 
-// [Zone 1: 資料層] - 12種規格與衣服 (Cache 限額 20)
+// =======================================================
+// [Zone 1: 常數規格層] - 12種規格定義 (不可侵犯契約)
+// =======================================================
 const SPECS = {
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8張)', cat: '4x6' },
     '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '1吋(10張)', cat: '4x6' },
@@ -41,176 +44,165 @@ const SPECS = {
     'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
 };
 
-const IMAGE_CACHE = new Map();
+// =======================================================
+// [Zone 2: 資源管理層] - 衣服網址與 LRU 快取
+// =======================================================
 const SUITS = {
     female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
     male: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/male/m${i+1}.png`)
 };
 
+const IMAGE_CACHE = {
+    pool: new Map(), keys: [],
+    get(url, cb) {
+        if (this.pool.has(url)) return cb(this.pool.get(url));
+        const i = new Image(); i.crossOrigin = "anonymous";
+        i.onload = () => {
+            if (this.keys.length > 30) { const old = this.keys.shift(); this.pool.delete(old); }
+            this.pool.set(url, i); this.keys.push(url); cb(i);
+        };
+        i.src = url;
+    }
+};
+
 function App() {
-    const cvsRef = useRef(null);
-    // [效能優化 2.1]：高頻物理狀態完全脫離 React State，使用 Ref 進行幀同步
-    const physics = useRef({
-        photo: {x:0, y:0, s:0.5, f:1},
-        suit: {x:0, y:80, s:0.8, f:1},
-        active: 'photo'
+    // =======================================================
+    // [Zone 3: 狀態與物理層] - SSOT (單一事實來源)
+    // =======================================================
+    const [layers, setLayers] = useState({ 
+        photo: { x: 0, y: 0, s: 0.5, f: 1, img: null }, 
+        suit: { x: 0, y: 80, s: 0.8, f: 1, img: null } 
     });
-    const gest = useRef({ isDown: false, x: 0, y: 0, dist: 0, startS: 1 });
-    const frameId = useRef(0);
-
-    // [Zone 2: 狀態管理層] - 只留低頻 UI 狀態
-    const [assets, setAssets] = useState({ img: null, suit: null });
+    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', gender: 'female', target: 'photo', results: null });
     const [history, setHistory] = useState([]);
-    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', gender: 'female', results: null, target: 'photo' });
 
-    // [Zone 3: 繪圖層] - Master 渲染邏輯
-    const drawContent = (ctx, p, imgs, rect, baseW=350) => {
+    const cvsRef = useRef(null);
+    const isDirty = useRef(true);
+    const gest = useRef({ active: false, x: 0, y: 0, d: 0, s: 1 });
+
+    // =======================================================
+    // [Zone 4: 渲染引擎層] - 幀治理與 Master 重用
+    // =======================================================
+    const drawLayer = (ctx, layer, rect, baseW) => {
+        if (!layer.img) return;
         const r = rect.w / baseW;
         ctx.save();
         ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-        // 畫人物
-        if(imgs.img) {
-            const pp = p.photo;
-            ctx.save();
-            ctx.translate(rect.x + rect.w/2 + pp.x*r, rect.y + rect.h/2 + pp.y*r);
-            ctx.scale(pp.s * r * pp.f, pp.s * r);
-            ctx.drawImage(imgs.img, -imgs.img.width/2, -imgs.img.height/2);
-            ctx.restore();
-        }
-        // 畫衣服
-        if(imgs.suit) {
-            const sp = p.suit;
-            ctx.save();
-            ctx.translate(rect.x + rect.w/2 + sp.x*r, rect.y + rect.h/2 + sp.y*r);
-            ctx.scale(sp.s * r, sp.s * r);
-            ctx.drawImage(imgs.suit, -imgs.suit.width/2, -imgs.suit.height/2);
-            ctx.restore();
-        }
+        ctx.translate(rect.x + rect.w/2 + layer.x*r, rect.y + rect.h/2 + layer.y*r);
+        ctx.scale(layer.s * r * layer.f, layer.s * r);
+        ctx.drawImage(layer.img, -layer.img.width/2, -layer.img.height/2);
         ctx.restore();
     };
 
-    const loop = useCallback(() => {
-        if(!cvsRef.current) return;
+    const render = useCallback(() => {
+        if (!isDirty.current || !cvsRef.current) return;
         const ctx = cvsRef.current.getContext('2d', { alpha: false });
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, 350, 450);
-        drawContent(ctx, physics.current, assets, {x:0, y:0, w:350, h:450});
-        frameId.current = requestAnimationFrame(loop);
-    }, [assets]);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 350, 450);
+        drawLayer(ctx, layers.photo, {x:0, y:0, w:350, h:450}, 350);
+        drawLayer(ctx, layers.suit, {x:0, y:0, w:350, h:450}, 350);
+        isDirty.current = false;
+    }, [layers]);
 
     useEffect(() => {
-        frameId.current = requestAnimationFrame(loop);
-        return () => cancelAnimationFrame(frameId.current);
-    }, [loop]);
+        let frame;
+        const tick = () => { render(); frame = requestAnimationFrame(tick); };
+        frame = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frame);
+    }, [render]);
 
-    // [效能優化 2.2]：手勢移動完全不觸發 setState
-    const handleTouch = (e, type) => {
+    // =======================================================
+    // [Zone 5: 互動與手勢層] - 物理座標脫鉤處理
+    // =======================================================
+    const onTouch = (e, type) => {
         if (e.cancelable) e.preventDefault();
         const pts = e.targetTouches;
-        const tar = physics.current.active;
+        const t = ui.target;
         if (type === 'start') {
-            gest.current.isDown = true;
+            gest.current.active = true;
             if (pts.length >= 2) {
-                gest.current.dist = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                gest.current.startS = physics.current[tar].s;
-            } else {
-                gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
-            }
-        } else if (type === 'move' && gest.current.isDown) {
-            if (pts.length >= 2) {
-                const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
-                physics.current[tar].s = Math.max(0.1, Math.min(3, gest.current.startS * (d / gest.current.dist)));
-            } else {
-                physics.current[tar].x += (pts[0].clientX - gest.current.x) / physics.current[tar].s;
-                physics.current[tar].y += (pts[0].clientY - gest.current.y) / physics.current[tar].s;
-                gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
-            }
-        } else { gest.current.isDown = false; }
-    };
-
-    // [Zone 4: 資源管理]
-    const loadSafeImg = (url, cb) => {
-        if (IMAGE_CACHE.has(url)) return cb(IMAGE_CACHE.get(url));
-        if (IMAGE_CACHE.size > 20) IMAGE_CACHE.clear(); // [效能優化 3]：LRU-ish 清理
-        const i = new Image(); i.crossOrigin = "anonymous";
-        i.onload = () => { IMAGE_CACHE.set(url, i); cb(i); };
-        i.src = url;
+                gest.current.d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+                gest.current.s = layers[t].s;
+            } else { gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY; }
+        } else if (type === 'move' && gest.current.active) {
+            setLayers(prev => {
+                const next = { ...prev };
+                if (pts.length >= 2) {
+                    const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
+                    next[t].s = Math.max(0.1, Math.min(3, gest.current.s * (d / gest.current.d)));
+                } else {
+                    next[t].x += (pts[0].clientX - gest.current.x) / next[t].s;
+                    next[t].y += (pts[0].clientY - gest.current.y) / next[t].s;
+                    gest.current.x = pts[0].clientX; gest.current.y = pts[0].clientY;
+                }
+                isDirty.current = true;
+                return next;
+            });
+        } else { gest.current.active = false; }
     };
 
     const handleFile = (e) => {
         const f = e.target.files[0]; if(!f) return;
-        const r = new FileReader();
-        r.onload = (ev) => {
+        const r = new FileReader(); r.onload = (ev) => {
             const i = new Image(); i.onload = () => {
-                setAssets(p => ({...p, img: i}));
-                physics.current.photo = {x:0, y:0, s:0.5, f:1};
+                setLayers(l => ({...l, photo: {...l.photo, img: i, x:0, y:0, s:0.5}}));
+                isDirty.current = true;
             }; i.src = ev.target.result;
         }; r.readAsDataURL(f);
     };
 
-    const saveCache = () => {
-        if(!assets.img) return;
-        const snap = cvsRef.current.toDataURL('image/jpeg', 0.1);
-        setHistory(prev => [...prev.slice(-11), { thumb: snap, assets: {...assets}, physics: JSON.parse(JSON.stringify(physics.current)), id: Date.now() }]);
-    };
-
-    // [Zone 5: 輸出層] - [效能優化 5]：Master-Slave 裁切渲染
+    // =======================================================
+    // [Zone 6: 導出與介面層] - 批次生產與 UI 渲染
+    // =======================================================
     const doExport = async (all) => {
         const list = all ? Object.keys(SPECS) : [ui.spec];
-        const resList = [];
-        
-        // 建立中間 Master Canvas 提升複用率
+        const results = [];
         const master = document.createElement('canvas');
         master.width = 600; master.height = 800;
         const mCtx = master.getContext('2d');
 
-        for (const id of list) {
-            await new Promise(r => setTimeout(r, 16));
-            const s = SPECS[id];
+        for (const sid of list) {
+            const s = SPECS[sid];
             const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
-            const ctx = c.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,s.w,s.h);
+            const ctx = c.getContext('2d'); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, s.w, s.h);
             
-            const slots = s.sections ? s.sections.flatMap(sec => {
+            const secs = s.sections || [{ x:0, y:0, grid:s.grid, size:s.size, count:999, w:s.w, h:s.h }];
+            const slots = secs.flatMap(sec => {
                 const arr = [];
                 const gx = ((sec.w||s.w)-sec.grid[1]*sec.size[0])/(sec.grid[1]+1), gy = ((sec.h||s.h)-sec.grid[0]*sec.size[1])/(sec.grid[0]+1);
-                for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) if(arr.length<sec.count) arr.push({x:(sec.x||0)+gx+c*(sec.size[0]+gx), y:(sec.y||0)+gy+r*(sec.size[1]+gy), w:sec.size[0], h:sec.size[1]});
+                for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) if(arr.length < sec.count) arr.push({ x:(sec.x||0)+gx+c*(sec.size[0]+gx), y:(sec.y||0)+gy+r*(sec.size[1]+gy), w:sec.size[0], h:sec.size[1] });
                 return arr;
-            }) : (() => {
-                const arr = [];
-                const gx=(s.w-s.grid[1]*s.size[0])/(s.grid[1]+1), gy=(s.h-s.grid[0]*s.size[1])/(s.grid[0]+1);
-                for(let r=0; r<s.grid[0]; r++) for(let c=0; c<s.grid[1]; c++) arr.push({x:gx+c*(s.size[0]+gx), y:gy+r*(s.size[1]+gy), w:s.size[0], h:s.size[1]});
-                return arr;
-            })();
+            });
 
             slots.forEach((rect, idx) => {
-                const data = (ui.mode === 'multi' && history[idx]) ? history[idx] : { assets, physics: physics.current };
-                // 利用 Master 緩存繪製結果，避免每個 slot 都重算 transform
-                mCtx.fillStyle="white"; mCtx.fillRect(0,0,600,800);
-                drawContent(mCtx, data.physics, data.assets, {x:0, y:0, w:600, h:800}, 600);
+                const data = (ui.mode === 'multi' && history[idx]) ? history[idx] : layers;
+                mCtx.fillStyle = "#ffffff"; mCtx.fillRect(0, 0, 600, 800);
+                drawLayer(mCtx, data.photo, {x:0, y:0, w:600, h:800}, 600);
+                drawLayer(mCtx, data.suit, {x:0, y:0, w:600, h:800}, 600);
                 ctx.drawImage(master, 0, 0, 600, 800, rect.x, rect.y, rect.w, rect.h);
             });
-            resList.push({ url: c.toDataURL('image/jpeg', 0.8), name: s.name, id });
+            results.push({ url: c.toDataURL('image/jpeg', 0.8), name: s.name, id: sid });
+            await new Promise(r => requestAnimationFrame(r));
         }
-        setUi(u => ({...u, results: resList}));
+        setUi(u => ({...u, results}));
     };
 
-    // [Zone 6: 介面]
     return (
         <div className="flex flex-col gap-3">
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.53</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.55</span>
             </header>
 
+            {/* Zone 6 UI - 規格選擇 */}
             <div className="zone-box">
                 <div className="zone-tag">👥 模式與規格</div>
                 <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人填充</button>
-                    <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人拼貼</button>
+                    <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人模式</button>
+                    <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人模式</button>
                 </div>
-                <div className="flex gap-2 mb-3 border-t border-slate-700/50 pt-3">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                     {['4x6', 'A4'].map(c => (
-                        <button key={c} onClick={() => setUi(u => ({...u, cat: c}))} className={`flex-1 py-2 rounded-xl text-xs font-black ${ui.cat === c ? 'bg-white text-black' : 'bg-slate-800 text-slate-500'}`}>{c}</button>
+                        <button key={c} onClick={() => setUi(u => ({...u, cat: c}))} className={`px-6 py-2 rounded-xl text-xs font-black flex-shrink-0 ${ui.cat === c ? 'bg-white text-black' : 'bg-slate-800 text-slate-500'}`}>{c}</button>
                     ))}
                 </div>
                 <div className="flex flex-wrap gap-1">
@@ -220,17 +212,21 @@ function App() {
                 </div>
             </div>
 
+            {/* Zone 6 UI - 影像載入 */}
             <div className="zone-box">
-                <div className="zone-tag">📸 影像載入與暫存</div>
-                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選擇相片檔案<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
+                <div className="zone-tag">📸 影像管理</div>
+                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選取相片檔案<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
                 {ui.mode === 'multi' && (
-                    <div className="space-y-3 pt-3 border-t border-slate-700/50">
-                        <button onClick={saveCache} className="w-full py-4 bg-purple-600 rounded-2xl font-black text-xs">加入暫存槽</button>
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                            {history.map((h, idx) => (
-                                <div key={h.id} className="relative flex-shrink-0">
-                                    <div className="num-badge">{idx + 1}</div>
-                                    <img src={h.thumb} onClick={() => { setAssets(h.assets); physics.current = JSON.parse(JSON.stringify(h.physics)); }} className={`w-12 h-12 rounded-lg border-2 ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
+                    <div className="pt-3 border-t border-slate-700/50">
+                        <button onClick={() => {
+                            const thumb = cvsRef.current.toDataURL('image/jpeg', 0.1);
+                            setHistory(prev => [...prev.slice(-11), { thumb, ...JSON.parse(JSON.stringify(layers)) }]);
+                        }} className="w-full py-4 bg-purple-600 rounded-2xl font-black text-xs mb-3">保存當前人物</button>
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                            {history.map((h, i) => (
+                                <div key={i} className="relative flex-shrink-0">
+                                    <div className="num-badge">{i+1}</div>
+                                    <img src={h.thumb} onClick={() => { setLayers({photo:h.photo, suit:h.suit}); isDirty.current=true; }} className="w-12 h-12 rounded-lg border-2 border-slate-800" />
                                 </div>
                             ))}
                         </div>
@@ -238,44 +234,46 @@ function App() {
                 )}
             </div>
 
+            {/* Zone 6 UI - 編輯器 */}
             <div className="zone-box">
-                <div className="zone-tag">🕹️ 畫面微調 (脫鉤渲染版)</div>
-                <div className="stage-box mb-4" 
-                    onTouchStart={e => handleTouch(e, 'start')} onTouchMove={e => handleTouch(e, 'move')} onTouchEnd={e => handleTouch(e, 'end')}>
+                <div className="zone-tag">🕹️ 編輯器</div>
+                <div className="stage-box mb-4" onTouchStart={e => onTouch(e, 'start')} onTouchMove={e => onTouch(e, 'move')} onTouchEnd={e => onTouch(e, 'end')}>
                     <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
                     <div className="guide-circle"></div>
                 </div>
-                <div className="flex gap-2 mb-3">
-                    <button onClick={() => { physics.current.active='photo'; setUi(u=>({...u, target:'photo'})); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'photo' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>控制人物</button>
-                    <button onClick={() => { physics.current.active='suit'; setUi(u=>({...u, target:'suit'})); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black ${ui.target === 'suit' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>控制衣服</button>
+                <div className="flex gap-2 mb-4">
+                    <button onClick={() => setUi(u=>({...u, target:'photo'}))} className={`flex-1 py-3 rounded-xl text-xs font-black ${ui.target === 'photo' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>調整人物</button>
+                    <button onClick={() => setUi(u=>({...u, target:'suit'}))} className={`flex-1 py-3 rounded-xl text-xs font-black ${ui.target === 'suit' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>調整衣服</button>
                 </div>
                 <div className="flex gap-2 mb-3">
-                    <button onClick={() => setUi(u => ({...u, gender: 'female'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'female' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>女裝</button>
-                    <button onClick={() => setUi(u => ({...u, gender: 'male'}))} className={`flex-1 py-2 rounded-lg text-[10px] font-bold ${ui.gender === 'male' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>男裝</button>
+                    <button onClick={() => setUi(u => ({...u, gender: 'female'}))} className={`flex-1 py-2 rounded-lg text-xs font-bold ${ui.gender === 'female' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>女裝</button>
+                    <button onClick={() => setUi(u => ({...u, gender: 'male'}))} className={`flex-1 py-2 rounded-lg text-xs font-bold ${ui.gender === 'male' ? 'bg-indigo-600' : 'bg-slate-800 text-slate-500'}`}>男裝</button>
                 </div>
                 <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    <button onClick={() => setAssets(a => ({...a, suit: null}))} className="px-3 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold">移除衣服</button>
+                    <button onClick={() => { setLayers(l => ({...l, suit: {...l.suit, img: null}})); isDirty.current=true; }} className="px-3 bg-red-900/20 text-red-500 rounded-lg text-[10px] font-bold">移除</button>
                     {SUITS[ui.gender].map(url => (
-                        <img key={url} src={url} onClick={() => loadSafeImg(url, (img) => setAssets(p => ({...p, suit: img})))} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 border border-slate-700" />
+                        <img key={url} src={url} onClick={() => IMAGE_CACHE.get(url, (img) => { setLayers(l => ({...l, suit: {...l.suit, img}})); isDirty.current=true; })} className="w-10 h-10 bg-white rounded-lg p-1 border border-slate-700 flex-shrink-0" />
                     ))}
                 </div>
             </div>
 
+            {/* Zone 6 UI - 導出 */}
             <div className="grid grid-cols-2 gap-2 mb-10">
-                <button onClick={() => doExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">導出目前尺寸</button>
-                <button onClick={() => doExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">12種全導出</button>
+                <button onClick={() => doExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">導出目前規格</button>
+                <button onClick={() => doExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">全規格批次導出</button>
             </div>
 
+            {/* Zone 6 UI - 導出結果彈窗 */}
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 pb-24">
                     {ui.results.map((r, i) => (
-                        <div key={i} className="mb-6 bg-slate-900 p-4 rounded-3xl border border-slate-800">
-                            <p className="text-[10px] text-slate-500 font-bold mb-2 ml-1">{r.name}</p>
+                        <div key={i} className="mb-6 bg-slate-900 p-4 rounded-3xl border border-slate-800 text-center">
+                            <p className="text-[10px] text-slate-500 font-bold mb-2">{r.name}</p>
                             <img src={r.url} className="w-full rounded-xl mb-3 shadow-2xl" />
-                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 text-center rounded-2xl text-xs font-black shadow-lg">下載儲存</a>
+                            <a href={r.url} download={`EzID_${r.id}.jpg`} className="inline-block px-10 py-4 bg-blue-600 rounded-2xl text-xs font-black">點擊下載</a>
                         </div>
                     ))}
-                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black shadow-2xl">返回編輯</button>
+                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black">返回編輯</button>
                 </div>
             )}
         </div>
