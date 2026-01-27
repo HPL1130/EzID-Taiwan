@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.60</title>
+    <title>EzID v20.47.61</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -11,11 +11,13 @@
     <style>
         body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
-        .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
+        .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; transition: border-color 0.2s; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; }
-        .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
+        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; border: 4px solid transparent; transition: border-color 0.2s; }
+        .stage-box.unsafe { border-color: #ef4444; }
+        .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 60%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .err-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 10px 20px; border-radius: 30px; font-weight: bold; font-size: 12px; z-index: 2000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
@@ -25,9 +27,8 @@
 const { useState, useRef, useEffect, useMemo } = React;
 
 // =======================================================
-// [Zone 1: Spec Engine] - 規格執法與驗證層
+// [Zone 1: Spec Engine] - 規格與公理定義
 // =======================================================
-// 定義邏輯世界基準：所有編輯操作都在 600x800 的世界中進行
 const LOGICAL_BASE = { w: 600, h: 800 };
 
 const RAW_SPECS = {
@@ -48,56 +49,31 @@ const RAW_SPECS = {
 
 const SpecEngine = {
     validate(s) {
-        // [Safety Check 1] 確保必要欄位存在
         if (!s.w || !s.h) throw new Error(`Spec ${s.id} missing geometry`);
-        
         const gen = (sec) => {
             const arr = [];
-            // [Safety Check 2] 確保 gap 計算不會產生 NaN 或負數 (簡單防呆)
             const gx = ((sec.w || s.w) - sec.grid[1] * sec.size[0]) / (sec.grid[1] + 1);
             const gy = ((sec.h || s.h) - sec.grid[0] * sec.size[1]) / (sec.grid[0] + 1);
-            
             for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) {
-                // [Safety Check 3] 不得生成超過預期 count 的 slot
                 if(arr.length < (sec.count || 999)) {
-                    const slot = { 
-                        x: (sec.x || 0) + gx + c * (sec.size[0] + gx), 
-                        y: (sec.y || 0) + gy + r * (sec.size[1] + gy), 
-                        w: sec.size[0], 
-                        h: sec.size[1] 
-                    };
-                    // [Safety Check 4] 邊界檢查
-                    if (slot.x + slot.w > s.w + 1 || slot.y + slot.h > s.h + 1) {
-                         console.error(`Spec ${s.id} slot out of bounds`, slot); // 實際產品應 throw error
-                    }
-                    arr.push(slot);
+                    arr.push({ x: (sec.x || 0) + gx + c * (sec.size[0] + gx), y: (sec.y || 0) + gy + r * (sec.size[1] + gy), w: sec.size[0], h: sec.size[1] });
                 }
             }
             return arr;
         };
-
         const slots = s.sections ? s.sections.flatMap(gen) : gen(s);
-        
-        // [Safety Check 5] 總數驗證
         const expectedCount = s.total || s.count;
-        if (expectedCount && slots.length !== expectedCount) {
-             throw new Error(`Spec ${s.id} integrity fail: expected ${expectedCount}, got ${slots.length}`);
-        }
-
+        if (expectedCount && slots.length !== expectedCount) throw new Error(`Spec ${s.id} integrity fail`);
         return { ...s, slots };
     }
 };
 
-// 啟動時立即執行全規格驗證 (Fail Fast)
 const SPECS = (() => {
     try {
         const validated = Object.fromEntries(Object.entries(RAW_SPECS).map(([k,v]) => [k, SpecEngine.validate(v)]));
         if (Object.keys(validated).length !== 12) throw new Error("Missing specs");
         return validated;
-    } catch (e) {
-        alert(`FATAL: Spec Validation Failed - ${e.message}`);
-        throw e;
-    }
+    } catch (e) { alert(`FATAL: Spec Validation Failed`); throw e; }
 })();
 
 // =======================================================
@@ -107,7 +83,6 @@ const SUITS = {
     female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
     male: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/male/m${i+1}.png`)
 };
-
 const AssetCache = {
     pool: new Map(),
     async load(url) {
@@ -121,54 +96,72 @@ const AssetCache = {
 
 function App() {
     // =======================================================
-    // [Zone 3: 狀態與物理層] - 邏輯座標系 (600x800)
+    // [Zone 3: 狀態與模型層] - 增加 Safety Engine
     // =======================================================
     const [scene, setScene] = useState({
         layers: [
             { id: 'photo', x: 0, y: 0, s: 1, f: 1, img: null, visible: true },
             { id: 'suit', x: 0, y: 150, s: 1, f: 1, img: null, visible: true }
         ],
-        activeId: 'photo'
+        activeId: 'photo',
+        isSafe: true // 系統級安全旗標
     });
-    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', gender: 'female', results: null });
-    const [history, setHistory] = useState([]);
+    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', gender: 'female', results: null, error: null });
+    const [history, setHistory] = useState([]); // Schema: { thumb, layers, valid, timestamp }
 
     const cvsRef = useRef(null);
     const renderRequest = useRef(true);
 
-    // Auto-Fit: 確保圖片 "Cover" 整個邏輯畫布 (600x800)，而非只對高度
+    // [Safety Engine] 檢查圖層是否完整覆蓋邏輯畫布 (600x800)
+    // 這是 "Pre-flight Check" 的核心邏輯
+    const SafetyEngine = {
+        checkCoverage(layers) {
+            const photo = layers.find(l => l.id === 'photo');
+            if (!photo || !photo.img) return false;
+            
+            // 計算圖片在邏輯空間中的實際邊界
+            const w = photo.img.width * photo.s;
+            const h = photo.img.height * photo.s;
+            // 邏輯空間中心是 300, 400
+            // 圖片中心在 (300 + x), (400 + y)
+            const cx = LOGICAL_BASE.w / 2 + photo.x;
+            const cy = LOGICAL_BASE.h / 2 + photo.y;
+            
+            const left = cx - w / 2;
+            const right = cx + w / 2;
+            const top = cy - h / 2;
+            const bottom = cy + h / 2;
+
+            // 嚴格判定：必須完全包覆 (0,0) 到 (600,800)
+            const isSafe = (left <= 0) && (right >= LOGICAL_BASE.w) && (top <= 0) && (bottom >= LOGICAL_BASE.h);
+            return isSafe;
+        }
+    };
+
     const fitImage = (img) => {
         const scaleW = LOGICAL_BASE.w / img.width;
         const scaleH = LOGICAL_BASE.h / img.height;
-        const scale = Math.max(scaleW, scaleH); // 取大者以覆蓋
+        const scale = Math.max(scaleW, scaleH) * 1.05; // 預設多給 5% 緩衝
         return { img, x: 0, y: 0, s: scale, f: 1 };
     };
 
     // =======================================================
-    // [Zone 4: 渲染引擎層] - 座標一致性核心
+    // [Zone 4: 渲染引擎層]
     // =======================================================
     const RenderEngine = {
-        // 核心邏輯：輸入邏輯座標，輸出到目標 Canvas (targetRect)
         drawScene(ctx, layers, targetRect) {
             ctx.save();
-            // 1. 清空與裁切目標區域
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(targetRect.x, targetRect.y, targetRect.w, targetRect.h);
-            ctx.beginPath(); 
-            ctx.rect(targetRect.x, targetRect.y, targetRect.w, targetRect.h); 
-            ctx.clip();
-
-            // 2. 計算投影比率：目標寬度 / 邏輯寬度 (600)
+            ctx.beginPath(); ctx.rect(targetRect.x, targetRect.y, targetRect.w, targetRect.h); ctx.clip();
+            
             const projectionScale = targetRect.w / LOGICAL_BASE.w;
-
+            
             layers.forEach(l => {
                 if (!l.visible || !l.img) return;
                 ctx.save();
-                // 3. 座標轉換：Logic -> Target
-                // Center + (LayerPos * Projection)
                 const tx = targetRect.x + targetRect.w/2 + l.x * projectionScale;
                 const ty = targetRect.y + targetRect.h/2 + l.y * projectionScale;
-                
                 ctx.translate(tx, ty);
                 ctx.scale(l.s * projectionScale * l.f, l.s * projectionScale);
                 ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
@@ -183,9 +176,7 @@ function App() {
         const tick = () => {
             if (renderRequest.current && cvsRef.current) {
                 const ctx = cvsRef.current.getContext('2d', { alpha: false });
-                // UI 渲染：將 600x800 投影到 350x450 (會有輕微長寬比差異，但以寬度為基準)
-                // 為了不讓 UI 變形，我們保持寬度基準，高度自動延伸或裁切
-                RenderEngine.drawScene(ctx, scene.layers, {x:0, y:0, w:350, h:466}); // 350 * (800/600) ~= 466
+                RenderEngine.drawScene(ctx, scene.layers, {x:0, y:0, w:350, h:466});
                 renderRequest.current = false;
             }
             frame = requestAnimationFrame(tick);
@@ -195,18 +186,14 @@ function App() {
     }, [scene]);
 
     // =======================================================
-    // [Zone 5: 互動與手勢層] - 映射回邏輯座標
+    // [Zone 5: 互動與手勢層] - 實時安全反饋
     // =======================================================
     const interact = useRef({ isDown: false, lastX: 0, lastY: 0, lastD: 0, startS: 1 });
 
     const handlePointer = (e, type) => {
         if (e.cancelable) e.preventDefault();
         const t = scene.activeId;
-        // 計算 UI -> Logic 的逆向比率
-        // UI Width = 350, Logic Width = 600 => Ratio = 350/600
-        // Delta Logic = Delta UI / Ratio = Delta UI * (600/350)
         const logicRatio = LOGICAL_BASE.w / 350; 
-
         const pts = e.targetTouches || [{ clientX: e.clientX, clientY: e.clientY }];
         
         if (type === 'start') {
@@ -225,30 +212,40 @@ function App() {
                         const d = Math.hypot(pts[0].clientX - pts[1].clientX, pts[0].clientY - pts[1].clientY);
                         return { ...l, s: Math.max(0.1, Math.min(5, interact.current.startS * (d / interact.current.lastD))) };
                     } else {
-                        // 轉換螢幕位移到邏輯位移
                         const dx = (pts[0].clientX - interact.current.lastX) * logicRatio;
                         const dy = (pts[0].clientY - interact.current.lastY) * logicRatio;
                         interact.current.lastX = pts[0].clientX; interact.current.lastY = pts[0].clientY;
                         return { ...l, x: l.x + dx, y: l.y + dy };
                     }
                 });
+                
+                // [Real-time Safety Check]
+                // 每次移動都重新計算是否安全，更新狀態
+                const isSafe = SafetyEngine.checkCoverage(layers);
+                
                 renderRequest.current = true;
-                return { ...prev, layers };
+                return { ...prev, layers, isSafe };
             });
         } else { interact.current.isDown = false; }
     };
 
     // =======================================================
-    // [Zone 6: 導出與介面層] - 批次生產與校驗
+    // [Zone 6: 導出與預檢層] - Flight Check
     // =======================================================
     const doExport = async (all) => {
+        setUi(u => ({...u, error: null}));
+        
+        // [Pre-flight Check]
+        // 1. 檢查當前場景
+        if (ui.mode === 'single' && !scene.isSafe) {
+            setUi(u => ({...u, error: "⚠️ 當前照片有白邊，無法符合證件規範，請調整縮放。"}));
+            return;
+        }
+
         const list = all ? Object.keys(SPECS) : [ui.spec];
         const res = [];
-        
-        // 建立一個 "Master" 畫布，尺寸就是我們的邏輯基準
         const master = document.createElement('canvas'); 
-        master.width = LOGICAL_BASE.w; 
-        master.height = LOGICAL_BASE.h;
+        master.width = LOGICAL_BASE.w; master.height = LOGICAL_BASE.h;
         const mCtx = master.getContext('2d');
 
         for (const sid of list) {
@@ -258,14 +255,26 @@ function App() {
             
             for(let i=0; i<spec.slots.length; i++) {
                 const slot = spec.slots[i];
-                // 多人模式下，若該 Slot 沒有對應的 History，則使用當前 Scene
-                // 這是 "Fallback to current" 的行為，也可設計為留白
-                const targetLayers = (ui.mode === 'multi' && history[i]) ? history[i].layers : scene.layers;
+                let targetLayers;
                 
-                // 1. 渲染到 Master (1:1 Logic Scale)
+                if (ui.mode === 'multi') {
+                    // 多人模式安全檢查
+                    // 這裡先保留原有的 Index mapping，但加入數據驗證
+                    if (history[i]) {
+                        if (!history[i].valid) {
+                            setUi(u => ({...u, error: `⚠️ 第 ${i+1} 位人物照片不合規 (有白邊)，導出中斷。`}));
+                            return; 
+                        }
+                        targetLayers = history[i].layers;
+                    } else {
+                        // Slot 空缺時的行為：留白 (不使用 scene fallback 以避免混淆)
+                        continue; 
+                    }
+                } else {
+                    targetLayers = scene.layers;
+                }
+                
                 RenderEngine.drawScene(mCtx, targetLayers, {x:0, y:0, w:LOGICAL_BASE.w, h:LOGICAL_BASE.h});
-                
-                // 2. 複製到 Slot (不論 Slot 是 1吋還2吋，內容都是來自 Master)
                 ctx.drawImage(master, 0, 0, LOGICAL_BASE.w, LOGICAL_BASE.h, slot.x, slot.y, slot.w, slot.h);
             }
             res.push({ url: canvas.toDataURL('image/jpeg', 0.8), name: spec.name, id: sid });
@@ -276,13 +285,15 @@ function App() {
 
     return (
         <div className="flex flex-col gap-3">
+            {ui.error && <div className="err-toast">{ui.error}</div>}
+            
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.60</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded text-white">V20.47.61</span>
             </header>
 
             <div className="zone-box">
-                <div className="zone-tag">👥 模式與規格 (Verified)</div>
+                <div className="zone-tag">👥 模式與規格</div>
                 <div className="flex gap-2 mb-3">
                     <button onClick={() => setUi(u => ({...u, mode: 'single'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'single' ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>單人模式</button>
                     <button onClick={() => setUi(u => ({...u, mode: 'multi'}))} className={`flex-1 py-3 rounded-2xl text-xs font-black ${ui.mode === 'multi' ? 'bg-purple-600' : 'bg-slate-800 text-slate-500'}`}>多人模式</button>
@@ -300,23 +311,33 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">📸 影像載入 (Auto-Cover)</div>
+                <div className="zone-tag">📸 影像載入</div>
                 <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer mb-3">選取檔案<input type="file" hidden accept="image/*" onChange={async e => {
                     const f = e.target.files[0]; if(!f) return;
                     const img = await AssetCache.load(URL.createObjectURL(f));
                     const fitData = fitImage(img);
-                    setScene(s => ({...s, layers: s.layers.map(l => l.id === 'photo' ? {...l, ...fitData} : l)}));
+                    const newLayers = scene.layers.map(l => l.id === 'photo' ? {...l, ...fitData} : l);
+                    setScene(s => ({...s, layers: newLayers, isSafe: SafetyEngine.checkCoverage(newLayers)}));
                     renderRequest.current = true;
                 }}/></label>
                 {ui.mode === 'multi' && (
                     <div className="pt-3 border-t border-slate-700/50">
                         <button onClick={() => {
+                            if (!scene.isSafe) { setUi(u => ({...u, error: "⚠️ 當前照片不合規，無法加入隊列"})); return; }
                             const thumb = cvsRef.current.toDataURL('image/jpeg', 0.1);
-                            setHistory(prev => [...prev.slice(-11), { thumb, layers: JSON.parse(JSON.stringify(scene.layers)) }]);
-                        }} className="w-full py-4 bg-purple-600 rounded-2xl font-black text-xs mb-3">保存當前人物</button>
+                            // Schema Update: 儲存 valid 狀態與時間戳
+                            setHistory(prev => [...prev.slice(-11), { 
+                                thumb, 
+                                layers: JSON.parse(JSON.stringify(scene.layers)), 
+                                valid: true, 
+                                timestamp: Date.now() 
+                            }]);
+                        }} className={`w-full py-4 rounded-2xl font-black text-xs mb-3 ${scene.isSafe ? 'bg-purple-600' : 'bg-slate-600 text-slate-400'}`}>
+                            {scene.isSafe ? "保存當前人物" : "調整至安全範圍以保存"}
+                        </button>
                         <div className="flex gap-2 overflow-x-auto no-scrollbar">
                             {history.map((h, i) => (
-                                <img key={i} src={h.thumb} onClick={() => { setScene(s => ({...s, layers: h.layers})); renderRequest.current=true; }} className="w-12 h-12 rounded-lg border-2 border-slate-800 flex-shrink-0" />
+                                <img key={i} src={h.thumb} onClick={() => { setScene(s => ({...s, layers: h.layers, isSafe: true})); renderRequest.current=true; }} className="w-12 h-12 rounded-lg border-2 border-slate-800 flex-shrink-0" />
                             ))}
                         </div>
                     </div>
@@ -324,10 +345,14 @@ function App() {
             </div>
 
             <div className="zone-box">
-                <div className="zone-tag">🕹️ 編輯器 (Logic Coords)</div>
-                <div className="stage-box mb-4" onPointerDown={e => handlePointer(e, 'start')} onPointerMove={e => handlePointer(e, 'move')} onPointerUp={e => handlePointer(e, 'end')}>
+                <div className="zone-tag">🕹️ 編輯器 {scene.isSafe ? '✅' : '❌'}</div>
+                <div className={`stage-box mb-4 ${!scene.isSafe ? 'unsafe' : ''}`} 
+                     onPointerDown={e => handlePointer(e, 'start')} 
+                     onPointerMove={e => handlePointer(e, 'move')} 
+                     onPointerUp={e => handlePointer(e, 'end')}>
                     <canvas ref={cvsRef} width="350" height="466" className="w-full h-full" />
                     <div className="guide-circle"></div>
+                    {!scene.isSafe && <div className="absolute inset-0 border-4 border-red-500 pointer-events-none opacity-50"></div>}
                 </div>
                 <div className="flex gap-2 mb-3">
                     {scene.layers.map(l => (
@@ -350,8 +375,8 @@ function App() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-10">
-                <button onClick={() => doExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs text-white">導出單張</button>
-                <button onClick={() => doExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs text-white">全規格導出</button>
+                <button onClick={() => doExport(false)} className={`py-5 rounded-2xl font-black text-xs text-white ${scene.isSafe ? 'bg-blue-600' : 'bg-slate-600 opacity-50'}`}>導出單張</button>
+                <button onClick={() => doExport(true)} className={`py-5 rounded-2xl font-black text-xs text-white ${scene.isSafe ? 'bg-orange-600' : 'bg-slate-600 opacity-50'}`}>全規格導出</button>
             </div>
 
             {ui.results && (
