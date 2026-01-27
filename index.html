@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.36</title>
+    <title>EzID v20.47.41</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -16,17 +16,16 @@
         .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; }
         .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .btn-active { background: #2563eb !important; color: white !important; box-shadow: 0 0 15px rgba(37, 99, 235, 0.4); }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useMemo } = React;
+const { useState, useRef, useEffect } = React;
 
 // =======================================================
-// [Zone 1: Spec Contract - 規格核心 (嚴格遵守 12 種)]
+// [Zone 1: Spec Data - 12 種規格定義區] (禁止刪除 MIX sections)
 // =======================================================
 const SPECS = {
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8)', cat: '4x6' },
@@ -34,7 +33,7 @@ const SPECS = {
     '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], name: '1吋(12)', cat: '4x6' },
     '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], name: '大頭(6)', cat: '4x6' },
     '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '綜合(8)', cat: '4x6', sections: [{ x: 0, grid: [2, 2], size: [450, 600], count: 4, w: 900, h: 1200 }, { x: 900, grid: [2, 2], size: [413, 531], count: 4, w: 900, h: 1200 }] },
-    '4x6-STD': { id: '4x6-STD', w: 1800, h: 1200, grid: [1, 1], size: [1200, 1800], name: '滿版(1)', cat: '4x6' }, // 額外補充至 6 種
+    '4x6-STD': { id: '4x6-STD', w: 1800, h: 1200, grid: [1, 1], size: [1200, 1800], name: '滿版(1)', cat: '4x6' },
     'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], name: '2吋(20)', cat: 'A4' },
     'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], name: '1吋(42)', cat: 'A4' },
     'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [450, 600], name: '護照(16)', cat: 'A4' },
@@ -54,24 +53,15 @@ function App() {
     const drag = useRef({ active: false, x: 0, y: 0 });
 
     // =======================================================
-    // [Zone 2: Data State - 數據中心]
+    // [Zone 2: State Center - 狀態中心]
     // =======================================================
     const [assets, setAssets] = useState({ img: null, suit: null });
-    const [params, setParams] = useState({ 
-        photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }, 
-        suit: { x: 0, y: 80, s: 0.8, r: 0, f: 1 } 
-    });
+    const [params, setParams] = useState({ photo: {x:0, y:0, s:0.5, r:0, f:1}, suit: {x:0, y:80, s:0.8, r:0, f:1} });
     const [history, setHistory] = useState([]);
-    const [ui, setUi] = useState({ 
-        cat: '4x6', // 預設類別
-        spec: '4x6-8', 
-        target: 'photo', 
-        gender: 'female', 
-        results: null 
-    });
+    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', target: 'photo', gender: 'female', results: null });
 
     // =======================================================
-    // [Zone 3: Canvas Engine - 繪圖引擎]
+    // [Zone 3: Canvas Logic - 畫布繪製與即時預覽]
     // =======================================================
     const drawLayer = (ctx, img, p, rect, baseW=350) => {
         if(!img) return;
@@ -98,40 +88,35 @@ function App() {
     }, [assets, params]);
 
     // =======================================================
-    // [Zone 4: Photo & Cache - 載入/存檔區]
+    // [Zone 4: Asset Manager - 資產與暫存管理器]
     // =======================================================
-    const onPhotoIn = (e) => {
-        const file = e.target.files[0]; if(!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const i = new Image(); i.onload = () => setAssets(a => ({ ...a, img: i }));
+    const handleFile = (e) => {
+        const f = e.target.files[0]; if(!f) return;
+        const r = new FileReader();
+        r.onload = (ev) => {
+            const i = new Image(); i.onload = () => setAssets(p => ({...p, img: i}));
             i.src = ev.target.result;
-        }; reader.readAsDataURL(file);
+        }; r.readAsDataURL(f);
     };
 
-    const saveToCache = () => {
+    const saveCache = () => {
         if(!assets.img) return;
         const snap = cvsRef.current.toDataURL('image/jpeg', 0.2);
-        setHistory(prev => [{
-            thumb: snap,
-            assets: { ...assets },
-            params: JSON.parse(JSON.stringify(params)),
-            id: Date.now()
-        }, ...prev].slice(0, 30)); // 擴充至 30 以應付 A4-MIX
+        setHistory(prev => [{ thumb: snap, assets: {...assets}, params: JSON.parse(JSON.stringify(params)), id: Date.now() }, ...prev].slice(0,30));
     };
 
     // =======================================================
-    // [Zone 5: Move & Control - 移動區]
+    // [Zone 5: Export Service - 導出引擎 (雙軌邏輯實作)]
     // =======================================================
-    const handleExport = async (all) => {
+    const doExport = (all) => {
         const list = all ? Object.keys(SPECS).filter(k => k !== '4x6-STD') : [ui.spec];
         const res = [];
-        for(let id of list) {
+        list.forEach(id => {
             const s = SPECS[id];
             const isMix = id.includes('MIX');
             const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
-            const ctx = c.getContext('2d'); ctx.fillStyle = "white"; ctx.fillRect(0,0,s.w,s.h);
-            const layout = s.sections ? s.sections.flatMap(sec => {
+            const ctx = c.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,s.w,s.h);
+            const slots = s.sections ? s.sections.flatMap(sec => {
                 const arr = [];
                 const gx = ((sec.w||s.w)-sec.grid[1]*sec.size[0])/(sec.grid[1]+1);
                 const gy = ((sec.h||s.h)-sec.grid[0]*sec.size[1])/(sec.grid[0]+1);
@@ -139,133 +124,116 @@ function App() {
                 return arr;
             }) : (() => {
                 const arr = [];
-                const gx = (s.w-s.grid[1]*s.size[0])/(s.grid[1]+1), gy = (s.h-s.grid[0]*s.size[1])/(s.grid[0]+1);
+                const gx=(s.w-s.grid[1]*s.size[0])/(s.grid[1]+1), gy=(s.h-s.grid[0]*s.size[1])/(s.grid[0]+1);
                 for(let r=0; r<s.grid[0]; r++) for(let c=0; c<s.grid[1]; c++) arr.push({x:gx+c*(s.size[0]+gx), y:gy+r*(s.size[1]+gy), w:s.size[0], h:s.size[1]});
                 return arr;
             })();
-            layout.forEach((rect, idx) => {
-                const src = (isMix && history[idx % history.length]) ? history[idx % history.length] : { assets, params };
+            slots.forEach((rect, idx) => {
+                const src = (isMix && history[idx]) ? history[idx] : { assets, params };
                 drawLayer(ctx, src.assets.img, src.params.photo, rect);
                 drawLayer(ctx, src.assets.suit, src.params.suit, rect);
             });
             res.push({ url: c.toDataURL('image/jpeg', 0.8), name: s.name, id });
-        }
+        });
         setUi(u => ({...u, results: res}));
     };
 
+    // =======================================================
+    // [Zone 6: UI Renderer - 介面渲染]
+    // =======================================================
     return (
         <div className="flex flex-col gap-3">
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded tracking-tighter">V20.47.36</span>
+                <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-1 rounded">V20.47.41</span>
             </header>
 
-            {/* [Zone 1: 版面區 - 優先選擇] */}
+            {/* UI Zone: 規格選取 */}
             <div className="zone-box">
-                <div className="zone-tag">📐 第一步：選擇輸出版面規格</div>
+                <div className="zone-tag">📐 Step 1: 選定規格</div>
                 <div className="flex gap-2 mb-3">
                     {['4x6', 'A4'].map(c => (
-                        <button key={c} onClick={() => setUi(u => ({...u, cat: c, spec: c==='4x6'?'4x6-8':'A4-20'}))} className={`flex-1 py-2 rounded-xl text-xs font-black ${ui.cat === c ? 'bg-blue-600 shadow-lg' : 'bg-slate-800 text-slate-500'}`}>{c} 系列</button>
+                        <button key={c} onClick={() => setUi(u => ({...u, cat: c, spec: c==='4x6'?'4x6-8':'A4-20'}))} className={`flex-1 py-2 rounded-xl text-xs font-black ${ui.cat === c ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{c} 系列</button>
                     ))}
                 </div>
                 <div className="flex flex-wrap gap-1">
                     {Object.values(SPECS).filter(s => s.cat === ui.cat).map(s => (
-                        <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-2 py-2.5 rounded-lg text-[10px] font-bold flex-1 min-w-[85px] transition-all ${ui.spec === s.id ? 'btn-active' : 'bg-slate-800 text-slate-500'}`}>{s.name}</button>
+                        <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-2 py-2.5 rounded-lg text-[10px] font-bold flex-1 min-w-[85px] ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{s.name}</button>
                     ))}
                 </div>
             </div>
 
-            {/* [Zone 2: 載入區] */}
+            {/* UI Zone: 照片與暫存 */}
             <div className="zone-box">
-                <div className="zone-tag">📸 第二步：載入人像照片</div>
-                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer active:scale-95 transition-all shadow-xl">選擇人像照片檔案<input type="file" hidden accept="image/*" onChange={onPhotoIn}/></label>
-                
-                {/* MIX 模式下的暫存區 */}
+                <div className="zone-tag">📸 Step 2: 載入與暫存</div>
+                <label className="block w-full py-4 bg-white text-black text-center rounded-2xl font-black text-xs cursor-pointer active:scale-95 transition-all">選擇人像照片<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
                 {ui.spec.includes('MIX') && (
                     <div className="mt-4 pt-4 border-t border-slate-700/50">
-                        <button onClick={saveToCache} className="w-full py-3 bg-indigo-600 rounded-xl font-black text-[10px] uppercase tracking-widest mb-3">💾 存檔目前調整至 MIX 槽</button>
-                        {history.length > 0 && (
-                            <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                                {history.map(h => (
-                                    <div key={h.id} className="relative flex-shrink-0">
-                                        <img src={h.thumb} onClick={() => { setAssets(h.assets); setParams(h.params); }} className={`w-12 h-12 rounded-lg border-2 object-cover ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
-                                        <div className="absolute -top-1 -right-1 bg-red-500 w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-bold" onClick={(e)=>{e.stopPropagation(); setHistory(prev => prev.filter(i=>i.id !== h.id))}}>✕</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <button onClick={saveCache} className="w-full py-3 bg-indigo-600 rounded-xl font-black text-[10px] uppercase mb-3">💾 存入 MIX 暫存槽</button>
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                            {history.map(h => (
+                                <div key={h.id} className="relative flex-shrink-0">
+                                    <img src={h.thumb} onClick={() => { setAssets(h.assets); setParams(h.params); }} className={`w-12 h-12 rounded-lg border-2 object-cover ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`} />
+                                    <div className="absolute -top-1 -right-1 bg-red-500 w-4 h-4 rounded-full text-[8px] flex items-center justify-center font-bold" onClick={(e)=>{e.stopPropagation(); setHistory(p => p.filter(i=>i.id!==h.id))}}>✕</div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* [Zone 3: 衣服區] */}
+            {/* UI Zone: 畫布與對齊 */}
             <div className="zone-box">
-                <div className="zone-tag">👕 第三步：選擇衣物</div>
-                <div className="flex gap-1 mb-2">
-                    {['female', 'male'].map(g => (
-                        <button key={g} onClick={() => setUi(u => ({...u, gender: g}))} className={`flex-1 py-1 rounded-md text-[9px] font-black uppercase ${ui.gender === g ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{g}</button>
-                    ))}
-                </div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    <button onClick={() => setAssets(a => ({...a, suit: null}))} className="w-10 h-10 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold border border-red-500/20">移除</button>
-                    {SUITS[ui.gender].map(url => (
-                        <img key={url} src={url} onClick={() => {const i=new Image(); i.crossOrigin="anonymous"; i.onload=()=>setAssets(prev=>({...prev, suit:i})); i.src=url;}} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 active:ring-2 ring-blue-500 border border-slate-700" />
-                    ))}
-                </div>
-            </div>
-
-            {/* [Zone 4: 移動區] */}
-            <div className="zone-box">
-                <div className="zone-tag">🕹️ 第四步：對齊調整</div>
-                <div className="stage-box mb-4"
-                    onPointerDown={e => { drag.current = { active: true, x: e.clientX, y: e.clientY }; e.target.setPointerCapture(e.pointerId); }}
+                <div className="zone-tag">🕹️ Step 3: 對齊調整</div>
+                <div className="stage-box mb-4" onPointerDown={e => { drag.current = { active: true, x: e.clientX, y: e.clientY }; e.target.setPointerCapture(e.pointerId); }}
                     onPointerMove={e => {
                         if(!drag.current.active) return;
                         const dx = (e.clientX - drag.current.x)/params[ui.target].s;
                         const dy = (e.clientY - drag.current.y)/params[ui.target].s;
                         setParams(p => ({...p, [ui.target]: {...p[ui.target], x: p[ui.target].x+dx, y: p[ui.target].y+dy}}));
                         drag.current.x = e.clientX; drag.current.y = e.clientY;
-                    }}
-                    onPointerUp={() => drag.current.active = false}>
+                    }} onPointerUp={() => drag.current.active = false}>
                     <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
                     <div className="guide-circle"></div>
                 </div>
                 <div className="flex gap-2 mb-3">
                     {['photo', 'suit'].map(t => (
-                        <button key={t} onClick={() => setUi(u => ({...u, target: t}))} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${ui.target === t ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{t==='photo'?'調整人物':'調整衣服'}</button>
+                        <button key={t} onClick={() => setUi(u => ({...u, target: t}))} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase ${ui.target === t ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{t==='photo'?'人物':'衣服'}</button>
                     ))}
                 </div>
-                <input type="range" min="0.1" max="2" step="0.01" value={params[ui.target].s} onChange={e => setParams(p => ({...p, [ui.target]: {...p[ui.target], s: parseFloat(e.target.value)}}))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500 mb-3" />
+                <input type="range" min="0.1" max="2" step="0.01" value={params[ui.target].s} onChange={e => setParams(p => ({...p, [ui.target]: {...p[ui.target], s: parseFloat(e.target.value)}}))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500" />
             </div>
 
-            {/* [Zone 5: 輸出區] */}
-            <div className="pb-10">
-                <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">導出目前版面</button>
-                    <button onClick={() => handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">12 種全導出</button>
+            {/* UI Zone: 衣服選取 */}
+            <div className="zone-box">
+                <div className="zone-tag">👕 Step 4: 更換衣物</div>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    <button onClick={() => setAssets(a => ({...a, suit: null}))} className="w-10 h-10 bg-red-900/20 text-red-500 rounded-lg flex-shrink-0 text-[10px] font-bold border border-red-500/20">移除</button>
+                    {SUITS[ui.gender].map(url => (
+                        <img key={url} src={url} onClick={() => {const i=new Image(); i.crossOrigin="anonymous"; i.onload=()=>setAssets(p=>({...p, suit:i})); i.src=url;}} className="w-10 h-10 bg-white rounded-lg p-1 flex-shrink-0 border border-slate-700" />
+                    ))}
                 </div>
             </div>
 
-            {/* [Zone 6: 自檢區] */}
-            <div className="text-[8px] font-black text-slate-800 flex justify-between px-2 uppercase mb-4">
-                <span>Contract: 12 Specs Active</span>
-                <span>Workflow: Spec First</span>
+            {/* 輸出控制 */}
+            <div className="grid grid-cols-2 gap-2 mb-10">
+                <button onClick={() => doExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">導出目前版面</button>
+                <button onClick={() => doExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">12 種全導出</button>
             </div>
 
             {/* 結果展示 Overlay */}
             {ui.results && (
-                <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 flex flex-col items-center">
-                    <div className="w-full max-w-sm space-y-4 pb-20">
-                        <p className="text-center text-blue-500 font-black tracking-widest text-sm uppercase">Export Gallery</p>
+                <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4">
+                    <div className="max-w-sm mx-auto space-y-4 pb-20">
                         {ui.results.map((r, i) => (
                             <div key={i} className="bg-slate-900 p-4 rounded-3xl space-y-3">
                                 <p className="text-[10px] text-slate-500 font-black">{r.name}</p>
-                                <img src={r.url} className="w-full rounded-xl" />
-                                <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs">下載圖片</a>
+                                <img src={r.url} className="w-full rounded-xl shadow-2xl" />
+                                <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs uppercase">下載圖片</a>
                             </div>
                         ))}
                     </div>
-                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 w-48 py-4 bg-white text-black rounded-full font-black shadow-2xl">返回編輯</button>
+                    <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-48 py-4 bg-white text-black rounded-full font-black">返回</button>
                 </div>
             )}
         </div>
