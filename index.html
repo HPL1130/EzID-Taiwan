@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.95</title>
+    <title>EzID v20.47.99</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
+        body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; }
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
         .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; border: 4px solid transparent; }
-        .stage-box.unsafe { border-color: #ef4444; }
+        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; margin: 0 auto; }
+        .canvas-wrapper { padding: 10px 45px; }
     </style>
 </head>
 <body>
@@ -23,39 +23,32 @@
 <script type="text/babel">
 const { useState, useRef, useEffect } = React;
 
-// [MODULE 1] EZ_SPEC_ENGINE (12種規格契約)
+// [MODULE 1] EZ_SPEC_ENGINE (精簡為 6 種核心規格)
 const SPECS = {
-    'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
-    'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
-    'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [413, 531], count: 16, name: 'A4-2吋標準(16張)', cat: 'A4' },
-    'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], count: 12, name: 'A4-護照/大頭(12張)', cat: 'A4' },
-    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', total: 30, sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
-    'A4-B':    { id: 'A4-B',    w: 2480, h: 3508, grid: [6, 5], size: [354, 472], count: 30, name: 'A4-B版(30張)', cat: 'A4' },
-    '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
-    '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
-    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], count: 12, name: '4x6-1吋密集(12張)', cat: '4x6' },
-    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], count: 6, name: '4x6-護照(6張)', cat: '4x6' },
-    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '4x6-1+2吋(9張)', cat: '4x6', total: 9, sections: [{ x: 0, grid: [2, 2], size: [413, 531], count: 4 }, { x: 900, grid: [2, 2], size: [295, 413], count: 4 }] },
-    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: '工牌2吋版(20張)', cat: 'A4' }
+    'A4-1':   { id: 'A4-1',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
+    'A4-2':   { id: 'A4-2',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
+    'A4-MIX': { id: 'A4-MIX', w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
+    '46-1':   { id: '46-1',   w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
+    '46-2':   { id: '46-2',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
+    '46-MIX': { id: '46-MIX', w: 1800, h: 1200, name: '4x6-1+2吋(9張)', cat: '4x6', sections: [{ x: 0, grid: [2, 2], size: [413, 531], count: 4 }, { x: 900, grid: [2, 2], size: [295, 413], count: 4 }] }
 };
 
-// [MODULE 2] EZ_ASSET_LOADER (資源緩存避免耗能)
+// [MODULE 2] EZ_ASSET_LOADER (圖片緩存)
 const AssetLoader = {
     cache: new Map(),
     async load(url) {
         if (this.cache.get(url)) return this.cache.get(url);
         return new Promise(res => {
             const img = new Image(); img.crossOrigin = "anonymous";
-            img.onload = () => { this.cache.set(url, img); res(img); };
-            img.src = url;
+            img.onload = () => { this.cache.set(url, img); res(img); }; img.src = url;
         });
     }
 };
 
 // [MODULE 3] EZ_SAFETY_GUARD (白邊檢測)
 const SafetyGuard = {
-    check(layers) {
-        const p = layers.find(l => l.id === 'photo');
+    check(layers, activeId) {
+        const p = layers.find(l => l.id === activeId);
         if (!p || !p.img) return true;
         const w = p.img.width * p.s, h = p.img.height * p.s;
         const cx = 300 + p.x, cy = 400 + p.y;
@@ -63,92 +56,103 @@ const SafetyGuard = {
     }
 };
 
-// [MODULE 4] EZ_CORE_RENDERER (Canvas 核心繪圖)
+// [MODULE 4] EZ_CORE_RENDERER (Canvas 渲染與輔助圈)
 const CoreRenderer = {
-    draw(ctx, layers, rect) {
+    draw(ctx, layers, rect, hideGuides = false) {
         if (!ctx) return;
         ctx.save();
         ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-        ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
         const sc = rect.w / 600;
         layers.forEach(l => {
             if (!l.img) return;
             ctx.save();
+            ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
             ctx.translate(rect.x + rect.w/2 + l.x * sc, rect.y + rect.h/2 + l.y * sc);
             ctx.scale(l.s * sc, l.s * sc);
             ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
             ctx.restore();
         });
+        if (!hideGuides) {
+            ctx.strokeStyle = "rgba(59, 130, 246, 0.4)"; ctx.setLineDash([6, 3]); ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(rect.x + rect.w/2, rect.y + rect.h * 0.38, rect.w * 0.22, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(rect.x + rect.w * 0.2, rect.y + rect.h * 0.75); ctx.lineTo(rect.x + rect.w * 0.8, rect.y + rect.h * 0.75); ctx.stroke();
+        }
         ctx.restore();
     }
 };
 
 function App() {
-    // [MODULE 5] EZ_UI_STATE (完整狀態管理)
-    const [ui, setUi] = useState({ spec: '4x6-8', results: null, exporting: false });
-    const [scene, setScene] = useState({ layers: [{ id: 'photo', x: 0, y: 0, s: 1, img: null }], activeId: 'photo', isSafe: true });
+    // [MODULE 5] EZ_UI_STATE (多人模式管理)
+    const [ui, setUi] = useState({ spec: '46-2', results: null, mode: 'single' });
+    const [scene, setScene] = useState({ layers: [{ id: 1, x: 0, y: 0, s: 1, img: null }], activeId: 1, isSafe: true });
     const canvasRef = useRef(null);
     const pointer = useRef({ x: 0, y: 0, dist: 0 });
 
     useEffect(() => {
         CoreRenderer.draw(canvasRef.current?.getContext('2d'), scene.layers, {x:0, y:0, w:350, h:466});
-    }, [scene.layers]);
+    }, [scene.layers, scene.activeId]);
 
-    // [MODULE 6] EZ_EXPORT_MANAGER (全規格批次輸出)
+    const handleFile = async (e) => {
+        const f = e.target.files[0]; if(!f) return;
+        const img = await AssetLoader.load(URL.createObjectURL(f));
+        const sc = Math.max(600/img.width, 800/img.height) * 1.05;
+        const newLayer = { id: Date.now(), x: 0, y: 0, s: sc, img };
+        if (ui.mode === 'single') setScene({ ...scene, layers: [newLayer], activeId: newLayer.id, isSafe: true });
+        else setScene(s => ({ ...s, layers: [...s.layers, newLayer], activeId: newLayer.id, isSafe: true }));
+    };
+
+    // [MODULE 6] EZ_EXPORT_MANAGER (批次輸出)
     const handleExport = async (isAll) => {
-        setUi(u => ({...u, exporting: true}));
-        await new Promise(r => setTimeout(r, 100));
         const targets = isAll ? Object.keys(SPECS) : [ui.spec];
         const resList = [];
         const buf = document.createElement('canvas'); buf.width = 600; buf.height = 800;
-
         for (const sid of targets) {
             const s = SPECS[sid];
             const out = document.createElement('canvas'); out.width = s.w; out.height = s.h;
             const ctx = out.getContext('2d'); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,s.w,s.h);
             const getSlots = (cfg) => {
                 const arr = [];
-                const sw = cfg.w || s.w; const sh = cfg.h || s.h;
-                const gx = (sw - cfg.grid[1] * cfg.size[0]) / (cfg.grid[1] + 1);
-                const gy = (sh - cfg.grid[0] * cfg.size[1]) / (cfg.grid[0] + 1);
+                const gapX = ((cfg.w || s.w) - cfg.grid[1] * cfg.size[0]) / (cfg.grid[1] + 1);
+                const sectionH = s.sections ? (s.h / 2) : s.h;
+                const gapY = (sectionH - cfg.grid[0] * cfg.size[1]) / (cfg.grid[0] + 1);
                 for(let r=0; r<cfg.grid[0]; r++) for(let c=0; c<cfg.grid[1]; c++) {
-                    if(arr.length < (cfg.count || 999)) arr.push({ x: (cfg.x||0) + gx + c * (cfg.size[0] + gx), y: (cfg.y||0) + gy + r * (cfg.size[1] + gy), w: cfg.size[0], h: cfg.size[1] });
+                    if(arr.length < (cfg.count || 999)) arr.push({ x: (cfg.x||0) + gapX + c * (cfg.size[0] + gapX), y: (cfg.y||0) + gapY + r * (cfg.size[1] + gapY), w: cfg.size[0], h: cfg.size[1] });
                 }
                 return arr;
             };
             const slots = s.sections ? s.sections.flatMap(getSlots) : getSlots(s);
             slots.forEach(slot => {
-                CoreRenderer.draw(buf.getContext('2d'), scene.layers, {x:0, y:0, w:600, h:800});
+                CoreRenderer.draw(buf.getContext('2d'), scene.layers, {x:0, y:0, w:600, h:800}, true);
                 ctx.drawImage(buf, 0, 0, 600, 800, slot.x, slot.y, slot.w, slot.h);
             });
-            resList.push({ url: out.toDataURL('image/jpeg', 0.85), name: s.name });
+            resList.push({ url: out.toDataURL('image/jpeg', 0.88), name: s.name });
         }
-        setUi(u => ({...u, results: resList, exporting: false}));
+        setUi(u => ({...u, results: resList}));
     };
 
     return (
-        <div className="flex flex-col gap-3 pb-10">
+        <div className="flex flex-col gap-3 pb-24">
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] text-slate-500">v20.47.95</span>
+                <div className="flex bg-slate-800 rounded-lg p-1">
+                    <button onClick={()=>setUi(u=>({...u, mode:'single'}))} className={`px-4 py-1 text-[10px] rounded-md ${ui.mode==='single'?'bg-blue-600 text-white':'text-slate-400'}`}>單人</button>
+                    <button onClick={()=>setUi(u=>({...u, mode:'multi'}))} className={`px-4 py-1 text-[10px] rounded-md ${ui.mode==='multi'?'bg-blue-600 text-white':'text-slate-400'}`}>多人</button>
+                </div>
             </header>
             <div className="zone-box">
                 <div className="zone-tag">❶ 選擇規格</div>
-                <div className="flex flex-wrap gap-1">
+                <div className="grid grid-cols-2 gap-1">
                     {Object.values(SPECS).map(s=>(
-                        <button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`px-2 py-2 rounded-lg text-[10px] flex-1 min-w-[100px] ${ui.spec===s.id?'bg-blue-600 text-white':'bg-slate-800 text-slate-400'}`}>{s.name}</button>
+                        <button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`px-2 py-3 rounded-lg text-[10px] text-left pl-3 ${ui.spec===s.id?'bg-blue-600 text-white':'bg-slate-800 text-slate-400'}`}>{s.name}</button>
                     ))}
                 </div>
             </div>
-            <div className="zone-box">
-                <div className="zone-tag">❷ 編輯位置</div>
-                <div className={`stage-box mb-3 ${!scene.isSafe?'unsafe':''}`}
+            <div className="canvas-wrapper">
+                <div className={`stage-box ${!scene.isSafe?'border-4 border-red-500':''}`}
                     onTouchMove={e => {
-                        e.preventDefault();
                         if (e.touches.length === 2) {
                             const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                            const ratio = d / (pointer.current.dist || d);
-                            pointer.current.dist = d;
+                            const ratio = d / (pointer.current.dist || d); pointer.current.dist = d;
                             setScene(s => ({...s, layers: s.layers.map(l => l.id === s.activeId ? {...l, s: l.s * ratio} : l)}));
                         } else {
                             const dx = (e.touches[0].clientX - pointer.current.x) * (600/350);
@@ -157,7 +161,7 @@ function App() {
                             setScene(s => ({...s, layers: s.layers.map(l => l.id === s.activeId ? {...l, x: l.x + dx, y: l.y + dy} : l)}));
                         }
                     }}
-                    onTouchEnd={() => setScene(s => ({...s, isSafe: SafetyGuard.check(s.layers)}))}
+                    onTouchEnd={() => setScene(s => ({...s, isSafe: SafetyGuard.check(s.layers, s.activeId)}))}
                     onTouchStart={e => {
                         if (e.touches.length === 2) pointer.current.dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
                         else { pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY; }
@@ -165,14 +169,17 @@ function App() {
                 >
                     <canvas ref={canvasRef} width="350" height="466" className="w-full h-full" />
                 </div>
-                <label className="block w-full py-4 bg-white text-black text-center rounded-xl font-black text-xs">
-                    更換照片<input type="file" hidden onChange={async e=>{
-                        const f = e.target.files[0]; if(!f) return;
-                        const img = await AssetLoader.load(URL.createObjectURL(f));
-                        const sc = Math.max(600/img.width, 800/img.height) * 1.05;
-                        setScene(s=>({ ...s, layers: s.layers.map(l=>l.id==='photo'?{...l, img, x:0, y:0, s:sc}:l), isSafe: true }));
-                    }}/>
-                </label>
+            </div>
+            <div className="zone-box">
+                <div className="zone-tag">❷ 圖層管理 ({ui.mode==='single'?'單人':'多人'})</div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                    {scene.layers.map((l, i) => (
+                        <button key={l.id} onClick={()=>setScene(s=>({...s, activeId:l.id}))} className={`w-14 h-14 rounded-xl border-2 shrink-0 ${scene.activeId===l.id?'border-blue-500':'border-slate-700'}`}>
+                            {l.img ? <img src={l.img.src} className="w-full h-full object-cover rounded-lg"/> : `圖${i+1}`}
+                        </button>
+                    ))}
+                    <label className="w-14 h-14 bg-slate-800 rounded-xl flex items-center justify-center text-2xl shrink-0 cursor-pointer">+<input type="file" hidden onChange={handleFile}/></label>
+                </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
                 <button onClick={()=>handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">單規格輸出</button>
@@ -180,8 +187,8 @@ function App() {
             </div>
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 text-center">
-                    {ui.results.map((r,i)=>(<div key={i} className="mb-6"><img src={r.url} className="w-full rounded-xl mb-2"/><a href={r.url} download={`${r.name}.jpg`} className="text-blue-400 text-xs underline">下載 {r.name}</a></div>))}
-                    <button onClick={()=>setUi(u=>({...u, results:null}))} className="px-10 py-4 bg-white text-black rounded-full font-black mt-4 mb-10">返回編輯</button>
+                    {ui.results.map((r,i)=>(<div key={i} className="mb-8"><img src={r.url} className="w-full rounded-xl shadow-2xl mb-2"/><a href={r.url} download={`${r.name}.jpg`} className="text-blue-400 text-sm underline">點擊下載 {r.name}</a></div>))}
+                    <button onClick={()=>setUi(u=>({...u, results:null}))} className="px-12 py-4 bg-white text-black rounded-full font-black mt-4 mb-20">返回編輯</button>
                 </div>
             )}
         </div>
