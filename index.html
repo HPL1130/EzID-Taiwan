@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.48.09</title>
+    <title>EzID v20.48.13</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -30,7 +30,7 @@ const SPECS = {
     'A4-MIX': { id: 'A4-MIX', w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
     '4x6-8':  { id: '4x6-8',  w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
     '4x6-10': { id: '4x6-10', w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
-    '4x6-MIX':{ id: '4x6-MIX',w: 1800, h: 1200, name: '4x6-1+2吋(8張)', cat: '4x6', sections: [{ x: 0, grid: [2, 2], size: [413, 531], count: 4 }, { x: 900, grid: [2, 2], size: [295, 413], count: 4 }] }
+    '4x6-MIX':{ id: '4x6-MIX',w: 1800, h: 1200, name: '4x6-1(5)+2(4)吋', cat: '4x6', sections: [{ x: 0, grid: [2, 2], size: [413, 531], count: 4 }, { x: 900, grid: [1, 5], size: [295, 413], count: 5 }] }
 };
 
 // 2️⃣ [MODULE] EZ_ASSET_LOADER (圖片緩存管理)
@@ -52,9 +52,7 @@ const SafetyGuard = {
         if (!p || !p.img) return true;
         const w = p.img.width * p.s, h = p.img.height * p.s;
         const cx = 300 + p.x, cy = 400 + p.y;
-        // 判定是否完全覆蓋 600x800 的渲染緩衝區
-        const isCovered = (cx - w/2 <= 1) && (cx + w/2 >= 599) && (cy - h/2 <= 1) && (cy + h/2 >= 799);
-        return isCovered;
+        return (cx - w/2 <= 1) && (cx + w/2 >= 599) && (cy - h/2 <= 1) && (cy + h/2 >= 799);
     }
 };
 
@@ -78,11 +76,9 @@ const CoreRenderer = {
 
         if (!hideGuides) {
             ctx.strokeStyle = "rgba(59, 130, 246, 0.5)"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
-            // 繪製橢圓人物引導圈
             ctx.beginPath();
             ctx.ellipse(rect.x + rect.w/2, rect.y + rect.h * 0.42, rect.w * 0.28, rect.h * 0.32, 0, 0, Math.PI * 2);
             ctx.stroke();
-            // 眼位與肩膀基準線
             ctx.setLineDash([2, 4]);
             ctx.beginPath(); ctx.moveTo(rect.x, rect.y + rect.h * 0.42); ctx.lineTo(rect.x + rect.w, rect.y + rect.h * 0.42); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(rect.x + rect.w * 0.15, rect.y + rect.h * 0.8); ctx.lineTo(rect.x + rect.w * 0.85, rect.y + rect.h * 0.8); ctx.stroke();
@@ -136,7 +132,8 @@ function App() {
 
             const slots = s.sections ? s.sections.flatMap(getSlots) : getSlots(s);
             slots.forEach(slot => {
-                CoreRenderer.draw(buf.getContext('2d'), scene.layers, {x:0, y:0, w:600, h:800}, true);
+                const bCtx = buf.getContext('2d');
+                CoreRenderer.draw(bCtx, scene.layers, {x:0, y:0, w:600, h:800}, true);
                 ctx.drawImage(buf, 0, 0, 600, 800, slot.x, slot.y, slot.w, slot.h);
             });
             resList.push({ url: out.toDataURL('image/jpeg', 0.9), name: s.name });
@@ -185,14 +182,13 @@ function App() {
                 >
                     <canvas ref={canvasRef} width="350" height="466" className="w-full h-full" />
                 </div>
-                {!scene.isSafe && <p className="text-red-400 text-[10px] mt-2 font-bold text-center">SAFETY GUARD: 偵測到邊緣白邊</p>}
             </div>
 
             <div className="zone-box">
                 <div className="zone-tag">❷ 圖層管理 ({ui.mode==='single'?'單人':'多人'})</div>
                 <div className="flex gap-2 overflow-x-auto pb-1">
                     {scene.layers.map((l, i) => (
-                        <button key={l.id} onClick={()=>setScene(s=>({...s, activeId:l.id}))} className={`w-14 h-14 rounded-xl border-2 shrink-0 ${scene.activeId===l.id?'border-blue-500':'border-slate-700'}`}>
+                        <button key={l.id} onClick={()=>setScene(s=>({...s, activeId:l.id}))} className={`w-14 h-14 rounded-xl border-2 shrink-0 ${scene.activeId===l.id?'border-blue-500 bg-blue-900/20':'border-slate-700'}`}>
                             {l.img ? <img src={l.img.src} className="w-full h-full object-cover rounded-lg"/> : `圖${i+1}`}
                         </button>
                     ))}
