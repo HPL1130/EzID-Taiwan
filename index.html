@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.78</title>
+    <title>EzID v20.47.83</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -22,28 +22,28 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect } = React;
 
 // =======================================================
-// [MODULE 1]: EZ_SPEC_ENGINE (存儲 12 種規格定義與座標計算。)
+// [MODULE 1]: EZ_SPEC_ENGINE
 // =======================================================
 const SPECS = {
     'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
     'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
-    'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [450, 600], count: 16, name: 'A4-護照(16張)', cat: 'A4' },
-    'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], count: 12, name: 'A4-大頭(12張)', cat: 'A4' },
+    'A4-ID':   { id: 'A4-ID',   w: 2480, h: 3508, grid: [4, 4], size: [413, 531], count: 16, name: 'A4-2吋標準(16張)', cat: 'A4' },
+    'A4-BIG':  { id: 'A4-BIG',  w: 2480, h: 3508, grid: [4, 3], size: [531, 708], count: 12, name: 'A4-護照/大頭(12張)', cat: 'A4' },
     'A4-B':    { id: 'A4-B',    w: 2480, h: 3508, grid: [6, 5], size: [354, 472], count: 30, name: 'A4-B版(30張)', cat: 'A4' },
-    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', total: 30, sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] },
+    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', total: 30, sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
     '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
-    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], count: 12, name: '4x6-1吋(12張)', cat: '4x6' },
-    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], count: 6, name: '4x6-大頭(6張)', cat: '4x6' },
-    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '4x6-1+2吋(8張)', cat: '4x6', total: 8, sections: [{ x: 0, grid: [2, 2], size: [450, 600], count: 4, w: 900, h: 1200 }, { x: 900, grid: [2, 2], size: [413, 531], count: 4, w: 900, h: 1200 }] },
-    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [6, 4], size: [295, 413], count: 24, name: '工牌(24張)', cat: 'A4' }
+    '4x6-12':  { id: '4x6-12',  w: 1800, h: 1200, grid: [3, 4], size: [295, 413], count: 12, name: '4x6-1吋密集(12張)', cat: '4x6' },
+    '4x6-BIG': { id: '4x6-BIG', w: 1800, h: 1200, grid: [2, 3], size: [531, 708], count: 6, name: '4x6-護照(6張)', cat: '4x6' },
+    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '4x6-1+2吋(9張)', cat: '4x6', total: 9, sections: [{ x: 0, grid: [2, 2], size: [413, 531], count: 4 }, { x: 900, grid: [1, 5], size: [295, 413], count: 5 }] },
+    'NAME':    { id: 'NAME',    w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: '工牌2吋版(20張)', cat: 'A4' }
 };
 
 // =======================================================
-// [MODULE 2]: EZ_ASSET_LOADER (負責圖片讀取與緩存，避免重複消耗資源。)
+// [MODULE 2]: EZ_ASSET_LOADER
 // =======================================================
 const AssetLoader = {
     cache: new Map(),
@@ -57,7 +57,7 @@ const AssetLoader = {
 };
 
 // =======================================================
-// [MODULE 3]: EZ_SAFETY_GUARD (檢測照片是否正確覆蓋格位，防止白邊。)
+// [MODULE 3]: EZ_SAFETY_GUARD
 // =======================================================
 const SafetyGuard = {
     check(layers) {
@@ -65,12 +65,12 @@ const SafetyGuard = {
         if (!p || !p.img) return true;
         const w = p.img.width * p.s, h = p.img.height * p.s;
         const cx = 300 + p.x, cy = 400 + p.y;
-        return (cx - w/2 <= 0.5) && (cx + w/2 >= 599.5) && (cy - h/2 <= 0.5) && (cy + h/2 >= 799.5);
+        return (cx - w/2 <= 1) && (cx + w/2 >= 599) && (cy - h/2 <= 1) && (cy + h/2 >= 799);
     }
 };
 
 // =======================================================
-// [MODULE 4]: EZ_CORE_RENDERER (處理 Canvas 繪圖邏輯（平移、縮放、裁切）。)
+// [MODULE 4]: EZ_CORE_RENDERER
 // =======================================================
 const CoreRenderer = {
     draw(ctx, layers, rect) {
@@ -78,12 +78,12 @@ const CoreRenderer = {
         ctx.save();
         ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-        const scale = rect.w / 600;
+        const sc = rect.w / 600;
         layers.forEach(l => {
             if (!l.img) return;
             ctx.save();
-            ctx.translate(rect.x + rect.w/2 + l.x * scale, rect.y + rect.h/2 + l.y * scale);
-            ctx.scale(l.s * scale, l.s * scale);
+            ctx.translate(rect.x + rect.w/2 + l.x * sc, rect.y + rect.h/2 + l.y * sc);
+            ctx.scale(l.s * sc, l.s * sc);
             ctx.drawImage(l.img, -l.img.width/2, -l.img.height/2);
             ctx.restore();
         });
@@ -93,28 +93,26 @@ const CoreRenderer = {
 
 function App() {
     // =======================================================
-    // [MODULE 5]: EZ_UI_STATE (管理模式切換、歷史紀錄與 UI 交互。)
+    // [MODULE 5]: EZ_UI_STATE
     // =======================================================
-    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', mode: 'single', results: null, error: null });
+    const [ui, setUi] = useState({ cat: '4x6', spec: '4x6-8', results: null, error: null, exporting: false });
     const [scene, setScene] = useState({
         layers: [{ id: 'photo', x: 0, y: 0, s: 1, img: null }, { id: 'suit', x: 0, y: 150, s: 1, img: null }],
-        activeId: 'photo',
-        isSafe: true
+        activeId: 'photo', isSafe: true
     });
-    const [history, setHistory] = useState([]);
     const canvasRef = useRef(null);
     const pointer = useRef({ isDown: false, x: 0, y: 0, dist: 0 });
 
-    // 🚀 按需渲染：僅在 scene 改變時執行一次繪製，而非持續循環
     useEffect(() => {
         CoreRenderer.draw(canvasRef.current?.getContext('2d'), scene.layers, {x:0, y:0, w:350, h:466});
-    }, [scene]);
+    }, [scene.layers]);
 
     // =======================================================
-    // [MODULE 6]: EZ_EXPORT_MANAGER (執行單規格或全規格批次導出，生成 Blob。)
+    // [MODULE 6]: EZ_EXPORT_MANAGER
     // =======================================================
     const handleExport = async (isAll) => {
-        if (!scene.isSafe) { setUi(u => ({...u, error: "⚠️ 照片未完全覆蓋邊界！"})); return; }
+        setUi(u => ({...u, exporting: true, results: null}));
+        await new Promise(r => setTimeout(r, 200));
         const targets = isAll ? Object.keys(SPECS) : [ui.spec];
         const resList = [];
         const buf = document.createElement('canvas'); buf.width = 600; buf.height = 800;
@@ -134,107 +132,70 @@ function App() {
                 }
                 return arr;
             };
-
             const slots = s.sections ? s.sections.flatMap(getSlots) : getSlots(s);
-            slots.forEach((slot, i) => {
-                const targetLayers = (ui.mode === 'multi' && history[i]) ? history[i].layers : scene.layers;
-                CoreRenderer.draw(buf.getContext('2d'), targetLayers, {x:0, y:0, w:600, h:800});
+            slots.forEach(slot => {
+                CoreRenderer.draw(buf.getContext('2d'), scene.layers, {x:0, y:0, w:600, h:800});
                 ctx.drawImage(buf, 0, 0, 600, 800, slot.x, slot.y, slot.w, slot.h);
             });
-            resList.push({ url: out.toDataURL('image/jpeg', 0.8), name: s.name });
-            await new Promise(r => setTimeout(r, 10)); // 讓出執行緒，防止手機發燙
+            resList.push({ url: out.toDataURL('image/jpeg', 0.5), name: s.name });
+            await new Promise(r => setTimeout(r, 150));
         }
-        setUi(u => ({...u, results: resList}));
+        setUi(u => ({...u, results: resList, exporting: false}));
     };
 
     return (
         <div className="flex flex-col gap-3 pb-10">
-            {ui.error && <div className="err-toast" onClick={()=>setUi(u=>({...u, error:null}))}>{ui.error}</div>}
+            {ui.exporting && <div className="err-toast bg-blue-600">批次導出中 (節能散熱模式)...</div>}
             <header className="flex justify-between items-center px-1">
                 <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <span className="text-[10px] font-bold text-slate-500">v20.47.78</span>
+                <span className="text-[10px] font-bold text-slate-500">v20.47.83</span>
             </header>
-
             <div className="zone-box">
-                <div className="zone-tag">❶ 模式與規格</div>
-                <div className="flex gap-2 mb-3">
-                    <button onClick={()=>setUi(u=>({...u, mode:'single'}))} className={`flex-1 py-3 rounded-xl text-xs font-black ${ui.mode==='single'?'bg-blue-600':'bg-slate-800'}`}>單人</button>
-                    <button onClick={()=>setUi(u=>({...u, mode:'multi'}))} className={`flex-1 py-3 rounded-xl text-xs font-black ${ui.mode==='multi'?'bg-purple-600':'bg-slate-800'}`}>多人</button>
-                </div>
+                <div className="zone-tag">❶ 規格選取</div>
                 <div className="flex flex-wrap gap-1">
-                    {Object.values(SPECS).filter(s=>s.cat===ui.cat).map(s=>(
-                        <button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`px-2 py-2 rounded-lg text-[10px] flex-1 min-w-[90px] ${ui.spec===s.id?'bg-blue-600 text-white font-black':'bg-slate-800 text-slate-400'}`}>{s.name}</button>
+                    {Object.values(SPECS).map(s=>(
+                        <button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`px-2 py-2 rounded-lg text-[10px] flex-1 min-w-[100px] ${ui.spec===s.id?'bg-blue-600 text-white font-black':'bg-slate-800 text-slate-400'}`}>{s.name}</button>
                     ))}
                 </div>
             </div>
-
             <div className="zone-box">
-                <div className="zone-tag">❷ 手動調整</div>
+                <div className="zone-tag">❷ 編輯視窗</div>
                 <div className={`stage-box mb-3 ${!scene.isSafe?'unsafe':''}`}
-                    onWheel={e => {
-                        const delta = e.deltaY > 0 ? 0.95 : 1.05;
-                        setScene(s => {
-                            const nl = s.layers.map(l => l.id === s.activeId ? {...l, s: l.s * delta} : l);
-                            return {...s, layers: nl, isSafe: SafetyGuard.check(nl)};
-                        });
-                    }}
-                    onTouchStart={e => {
-                        if (e.touches.length === 2) {
-                            pointer.current.dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                        } else {
-                            pointer.current.isDown = true; pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY;
-                        }
-                    }}
                     onTouchMove={e => {
                         e.preventDefault();
                         if (e.touches.length === 2) {
                             const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
                             const ratio = d / (pointer.current.dist || d);
                             pointer.current.dist = d;
-                            setScene(s => {
-                                const nl = s.layers.map(l => l.id === s.activeId ? {...l, s: l.s * ratio} : l);
-                                return {...s, layers: nl, isSafe: SafetyGuard.check(nl)};
-                            });
-                        } else if (pointer.current.isDown) {
+                            setScene(s => ({...s, layers: s.layers.map(l => l.id === s.activeId ? {...l, s: l.s * ratio} : l)}));
+                        } else {
                             const dx = (e.touches[0].clientX - pointer.current.x) * (600/350);
                             const dy = (e.touches[0].clientY - pointer.current.y) * (600/350);
                             pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY;
-                            setScene(s => {
-                                const nl = s.layers.map(l => l.id === s.activeId ? {...l, x: l.x + dx, y: l.y + dy} : l);
-                                return {...s, layers: nl, isSafe: SafetyGuard.check(nl)};
-                            });
+                            setScene(s => ({...s, layers: s.layers.map(l => l.id === s.activeId ? {...l, x: l.x + dx, y: l.y + dy} : l)}));
                         }
                     }}
-                    onMouseDown={e => { pointer.current.isDown = true; pointer.current.x = e.clientX; pointer.current.y = e.clientY; }}
-                    onMouseMove={e => {
-                        if (!pointer.current.isDown) return;
-                        const dx = (e.clientX - pointer.current.x) * (600/350);
-                        const dy = (e.clientY - pointer.current.y) * (600/350);
-                        pointer.current.x = e.clientX; pointer.current.y = e.clientY;
-                        setScene(s => {
-                            const nl = s.layers.map(l => l.id === s.activeId ? {...l, x: l.x + dx, y: l.y + dy} : l);
-                            return {...s, layers: nl, isSafe: SafetyGuard.check(nl)};
-                        });
+                    onTouchEnd={() => setScene(s => ({...s, isSafe: SafetyGuard.check(s.layers)}))}
+                    onTouchStart={e => {
+                        if (e.touches.length === 2) pointer.current.dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                        else { pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY; }
                     }}
-                    onMouseUp={()=>pointer.current.isDown=false} onMouseLeave={()=>pointer.current.isDown=false}>
+                >
                     <canvas ref={canvasRef} width="350" height="466" className="w-full h-full" />
                 </div>
-                
-                <label className="block w-full py-4 bg-white text-black text-center rounded-xl font-black text-xs cursor-pointer mb-2">
+                <label className="block w-full py-4 bg-white text-black text-center rounded-xl font-black text-xs">
                     選取照片<input type="file" hidden onChange={async e=>{
                         const f = e.target.files[0]; if(!f) return;
                         const img = await AssetLoader.load(URL.createObjectURL(f));
-                        const baseScale = Math.max(600/img.width, 800/img.height) * 1.05;
-                        setScene(s=>({ ...s, layers: s.layers.map(l=>l.id==='photo'?{...l, img, x: 0, y: 0, s: baseScale}:l), isSafe: true }));
+                        const sc = Math.max(600/img.width, 800/img.height) * 1.05;
+                        setScene(s=>({ ...s, layers: s.layers.map(l=>l.id==='photo'?{...l, img, x:0, y:0, s:sc}:l), isSafe: true }));
                     }}/>
                 </label>
             </div>
-
-            <div className="grid grid-cols-2 gap-2 mb-10">
-                <button onClick={()=>handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs text-white">導出單規格</button>
-                <button onClick={()=>handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs text-white">批次全規格</button>
+            <div className="grid grid-cols-2 gap-2">
+                <button onClick={()=>handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">單張導出</button>
+                <button onClick={()=>handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">全規格導出</button>
             </div>
-
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4">
                     <div className="max-w-md mx-auto">
