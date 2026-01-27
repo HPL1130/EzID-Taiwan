@@ -3,20 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.47.28</title>
+    <title>EzID v20.47.32 - Code Modularized</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; }
-        #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 20px; padding-bottom: 80px; }
-        .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 24px; overflow: hidden; touch-action: none; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-        /* 核心回歸：人物對齊圈 */
+        #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 20px; }
+        .stage-box { position: relative; width: 100%; aspect-ratio: 350/450; background: #fff; border-radius: 20px; overflow: hidden; touch-action: none; }
         .guide-circle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 65%; border: 2px dashed rgba(59, 130, 246, 0.4); border-radius: 50%; pointer-events: none; z-index: 10; }
-        .cache-card { position: relative; flex: 0 0 90px; height: 120px; border-radius: 12px; border: 2px solid #1e293b; background: #1e293b; transition: 0.2s; overflow: hidden; }
-        .cache-card.active { border-color: #3b82f6; transform: translateY(-5px); }
-        .del-x { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; background: #ef4444; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; z-index: 20; cursor: pointer; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
@@ -24,9 +20,11 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useMemo } = React;
 
-/* [核心契約：不可刪除或硬編碼] */
+// =======================================================
+// [Zone 1: 版面規格區 (Spec Contract)]
+// =======================================================
 const SPECS = {
     '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], name: '2吋(8)', cat: '4x6' },
     '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], name: '1吋(10)', cat: '4x6' },
@@ -42,97 +40,132 @@ const SPECS = {
     'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: '綜合(30)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12, w: 2480, h: 1754 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18, w: 2480, h: 1754 }] }
 };
 
+// =======================================================
+// [Zone 2: 載入與暫存區 (Asset & Cache)]
+// =======================================================
 const SUITS = {
     female: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/female/f${i+1}.png`),
     male: Array.from({length: 5}, (_, i) => `https://raw.githubusercontent.com/HPL1130/EzID-Taiwan/main/clothes/male/m${i+1}.png`)
 };
 
-const Renderer = {
-    draw: (ctx, img, t, rect, baseW = 350) => {
+function App() {
+    const cvsRef = useRef(null);
+    const [assets, setAssets] = useState({ img: null, suit: null });
+    const [history, setHistory] = useState([]); // 暫存區
+
+    // =======================================================
+    // [Zone 3: 移動控制參數 (Move & Control)]
+    // =======================================================
+    const [params, setParams] = useState({ 
+        photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }, 
+        suit: { x: 0, y: 80, s: 0.8, r: 0, f: 1 } 
+    });
+    const [ui, setUi] = useState({ target: 'photo', spec: '4x6-8', gender: 'female', results: null });
+    const drag = useRef({ active: false, x: 0, y: 0 });
+
+    const handlePhotoLoad = (e) => {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const i = new Image(); i.onload = () => {
+                setAssets(prev => ({...prev, img: i}));
+                // 自動產生暫存
+                setTimeout(() => {
+                    setHistory(prev => [{ thumb: cvsRef.current.toDataURL('image/jpeg', 0.2), assets: { img: i, suit: assets.suit }, params }, ...prev].slice(0,10));
+                }, 200);
+            };
+            i.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+
+    // =======================================================
+    // [Zone 4: 渲染核心 (Render Core)]
+    // =======================================================
+    const drawObject = (ctx, img, p, rect, baseW = 350) => {
         if (!img) return;
         const r = rect.w / baseW;
         ctx.save();
         ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-        ctx.translate(rect.x + rect.w/2 + t.x * r, rect.y + rect.h/2 + t.y * r);
-        ctx.rotate(t.r * Math.PI / 180);
-        ctx.scale(t.s * r * (t.f || 1), t.s * r);
+        ctx.translate(rect.x + rect.w/2 + p.x * r, rect.y + rect.h/2 + p.y * r);
+        ctx.rotate(p.r * Math.PI / 180);
+        ctx.scale(p.s * r * (p.f || 1), p.s * r);
         ctx.drawImage(img, -img.width/2, -img.height/2);
         ctx.restore();
-    },
-    /* 核心修復：正確解析 MIX 結構 */
-    getLayout: (s) => {
-        const grid = (w, h, g, sz, ox=0, oy=0, lim=99) => {
-            const slots = [];
-            const gapX = (w - g[1]*sz[0])/(g[1]+1), gapY = (h - g[0]*sz[1])/(g[0]+1);
-            for(let r=0; r<g[0]; r++) for(let c=0; c<g[1]; c++) {
-                if(slots.length < lim) slots.push({x: ox+gapX+c*(sz[0]+gapX), y: oy+gapY+r*(sz[1]+gapY), w: sz[0], h: sz[1]});
-            }
-            return slots;
-        };
-        // MIX 必須從 sections 產生成員，否則按 grid 產生
-        return s.sections ? s.sections.flatMap(sec => grid(sec.w||s.w, sec.h||s.h, sec.grid, sec.size, sec.x||0, sec.y||0, sec.count)) : grid(s.w, s.h, s.grid, s.size);
-    }
-};
-
-function App() {
-    const cvsRef = useRef(null);
-    const [history, setHistory] = useState([]);
-    const [assets, setAssets] = useState({ img: null, suit: null });
-    const [params, setParams] = useState({ photo: { x: 0, y: 0, s: 0.5, r: 0, f: 1 }, suit: { x: 0, y: 80, s: 0.8, r: 0, f: 1 } });
-    const [ui, setUi] = useState({ target: 'photo', spec: '4x6-8', gender: 'female', activeSuit: null, results: null });
-    const drag = useRef({ active: false, x: 0, y: 0 });
+    };
 
     useEffect(() => {
-        const render = () => {
+        const tick = () => {
             if(!cvsRef.current) return;
-            const ctx = cvsRef.current.getContext('2d', {alpha: false});
+            const ctx = cvsRef.current.getContext('2d');
             ctx.fillStyle = "white"; ctx.fillRect(0,0,350,450);
-            Renderer.draw(ctx, assets.img, params.photo, {x:0, y:0, w:350, h:450});
-            Renderer.draw(ctx, assets.suit, params.suit, {x:0, y:0, w:350, h:450});
-            requestAnimationFrame(render);
+            drawObject(ctx, assets.img, params.photo, {x:0, y:0, w:350, h:450});
+            drawObject(ctx, assets.suit, params.suit, {x:0, y:0, w:350, h:450});
+            requestAnimationFrame(tick);
         };
-        const id = requestAnimationFrame(render);
+        const id = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(id);
     }, [assets, params]);
 
-    const handleFile = (e) => {
-        const f = e.target.files[0]; if(!f) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const i = new Image(); i.onload = () => setAssets(prev => ({...prev, img: i})); i.src = ev.target.result;
-        };
-        reader.readAsDataURL(f);
-    };
+    // =======================================================
+    // [Zone 5: 輸出引擎 (Export Engine - MIX Support)]
+    // =======================================================
+    const handleExport = async (batchAll = false) => {
+        if(!assets.img) return alert("未偵測到人像照片");
+        const list = batchAll ? Object.keys(SPECS) : [ui.spec];
+        const outputs = [];
 
-    const handleExport = async (all=false) => {
-        if(!assets.img) return alert("請載入照片");
-        // 成品暫存紀錄
-        const snapshot = cvsRef.current.toDataURL('image/jpeg', 0.5);
-        setHistory(prev => [{ thumb: snapshot, assets: { ...assets }, params: { ...params }, id: Date.now() }, ...prev].slice(0, 10));
-
-        const list = all ? Object.keys(SPECS) : [ui.spec];
-        const out = [];
         for(let id of list) {
             const s = SPECS[id];
-            const c = document.createElement('canvas'); c.width = s.w; c.height = s.h;
-            const ctx = c.getContext('2d'); ctx.fillStyle="white"; ctx.fillRect(0,0,s.w,s.h);
-            const slots = Renderer.getLayout(s);
-            slots.forEach(rect => {
-                Renderer.draw(ctx, assets.img, params.photo, rect);
-                Renderer.draw(ctx, assets.suit, params.suit, rect);
+            const canvas = document.createElement('canvas'); canvas.width = s.w; canvas.height = s.h;
+            const ctx = canvas.getContext('2d'); ctx.fillStyle = "white"; ctx.fillRect(0,0,s.w,s.h);
+
+            // MIX 邏輯分區渲染
+            const layout = s.sections ? s.sections.flatMap(sec => {
+                const slots = [];
+                const gapX = ((sec.w || s.w) - sec.grid[1] * sec.size[0]) / (sec.grid[1] + 1);
+                const gapY = ((sec.h || s.h) - sec.grid[0] * sec.size[1]) / (sec.grid[0] + 1);
+                for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) {
+                    if(slots.length < sec.count) slots.push({ x: (sec.x || 0) + gapX + c * (sec.size[0] + gapX), y: (sec.y || 0) + gapY + r * (sec.size[1] + gapY), w: sec.size[0], h: sec.size[1] });
+                }
+                return slots;
+            }) : (() => {
+                const slots = [];
+                const gapX = (s.w - s.grid[1] * s.size[0]) / (s.grid[1] + 1);
+                const gapY = (s.h - s.grid[0] * s.size[1]) / (s.grid[0] + 1);
+                for(let r=0; r<s.grid[0]; r++) for(let c=0; c<s.grid[1]; c++) slots.push({ x: gapX + c * (s.size[0] + gapX), y: gapY + r * (s.size[1] + gapY), w: s.size[0], h: s.size[1] });
+                return slots;
+            })();
+
+            layout.forEach(rect => {
+                drawObject(ctx, assets.img, params.photo, rect);
+                drawObject(ctx, assets.suit, params.suit, rect);
             });
-            out.push({ name: s.name, url: c.toDataURL('image/jpeg', 0.8), id });
+            outputs.push({ url: canvas.toDataURL('image/jpeg', 0.9), name: s.name, id });
         }
-        setUi(u => ({...u, results: out}));
+        setUi(prev => ({...prev, results: outputs}));
     };
 
-    return (
-        <div className="flex flex-col gap-6">
-            <header className="flex justify-between items-center">
-                <h1 className="text-3xl font-black italic text-blue-500">EzID</h1>
-                <div className="text-right text-[10px] text-slate-500 font-bold">V20.47.28<br/><span className="text-emerald-400">CORE_RECOVERY_OK</span></div>
-            </header>
+    // =======================================================
+    // [Zone 6: 自檢與 UI 監控 (Self-Check UI)]
+    // =======================================================
+    const checkState = useMemo(() => ({
+        specsOk: Object.keys(SPECS).length === 12,
+        mixOk: !!(SPECS['A4-MIX'].sections && SPECS['4x6-MIX'].sections),
+        imgOk: !!assets.img
+    }), [assets.img]);
 
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h1 className="text-3xl font-black text-blue-500 italic">EzID</h1>
+                <div className="bg-slate-800 px-3 py-1 rounded-full flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${checkState.specsOk ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                    <span className="text-[10px] font-bold">CONTRACT STATUS</span>
+                </div>
+            </div>
+
+            {/* 編輯核心模組 */}
             <div className="stage-box"
                 onPointerDown={e => { drag.current = { active: true, x: e.clientX, y: e.clientY }; e.target.setPointerCapture(e.pointerId); }}
                 onPointerMove={e => {
@@ -144,82 +177,73 @@ function App() {
                 }}
                 onPointerUp={() => drag.current.active = false}>
                 <canvas ref={cvsRef} width="350" height="450" className="w-full h-full" />
-                {/* 核心回歸：人物圈 */}
                 <div className="guide-circle"></div>
             </div>
 
-            {history.length > 0 && (
-                <div className="space-y-2">
-                    <p className="text-[10px] font-black text-slate-500 px-1 uppercase tracking-tighter">成品暫存 (點擊恢復編輯狀態)</p>
-                    <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
-                        {history.map((item) => (
-                            <div key={item.id} className={`cache-card flex-shrink-0 ${assets.img === item.assets.img ? 'active' : ''}`} 
-                                onClick={() => { setAssets(item.assets); setParams(item.params); }}>
-                                <img src={item.thumb} className="w-full h-full object-cover" />
-                                <div className="del-x" onClick={(e) => { e.stopPropagation(); setHistory(h => h.filter(i => i.id !== item.id)); }}>✕</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* 操控模組 */}
+            <div className="grid grid-cols-2 gap-3">
+                {['photo', 'suit'].map(t => (
+                    <button key={t} onClick={() => setUi(u => ({...u, target: t}))} className={`py-4 rounded-2xl font-black text-xs ${ui.target === t ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{t==='photo'?'調整人物':'調整衣服'}</button>
+                ))}
+            </div>
 
-            <div className="bg-slate-900/40 p-4 rounded-3xl space-y-4">
-                <div className="flex gap-2">
+            {/* 衣服模組 */}
+            <div className="bg-slate-900/50 p-4 rounded-3xl space-y-3">
+                <div className="flex gap-2 mb-2">
                     {['female', 'male'].map(g => (
-                        <button key={g} onClick={() => setUi(u => ({...u, gender: g}))} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase ${ui.gender === g ? 'bg-blue-600' : 'bg-slate-800 text-slate-500'}`}>{g}</button>
+                        <button key={g} onClick={() => setUi(u => ({...u, gender: g}))} className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase ${ui.gender === g ? 'bg-blue-600' : 'bg-slate-800'}`}>{g}</button>
                     ))}
                 </div>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar">
-                    <button onClick={() => { setAssets(a=>({...a, suit:null})); setUi(u=>({...u, activeSuit:null})) }} className="flex-shrink-0 w-[70px] h-[70px] rounded-xl bg-red-500/10 border-2 border-red-500/20 text-red-500 font-black text-xs">取消</button>
+                <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    <button onClick={() => setAssets(a => ({...a, suit: null}))} className="w-12 h-12 bg-red-900/20 border border-red-500/30 text-red-500 rounded-lg flex-shrink-0 text-[10px]">移除</button>
                     {SUITS[ui.gender].map(url => (
-                        <div key={url} onClick={() => {
-                            const i = new Image(); i.crossOrigin="anonymous"; i.onload = () => { setAssets(a=>({...a, suit: i})); setUi(u=>({...u, activeSuit: url})); }; i.src = url;
-                        }} className={`flex-shrink-0 w-[70px] h-[70px] rounded-xl border-2 overflow-hidden ${ui.activeSuit === url ? 'border-blue-500' : 'border-slate-800'}`}>
-                            <img src={url} className="w-full h-full object-contain bg-white p-1" />
+                        <img key={url} src={url} onClick={() => {
+                            const i = new Image(); i.crossOrigin="anonymous"; i.onload = () => setAssets(a => ({...a, suit: i})); i.src = url;
+                        }} className="w-12 h-12 bg-white rounded-lg p-1 flex-shrink-0 active:scale-90 transition-transform cursor-pointer" />
+                    ))}
+                </div>
+            </div>
+
+            {/* 暫存區顯示 */}
+            {history.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto no-scrollbar py-2">
+                    {history.map(h => (
+                        <div key={h.id} onClick={() => { setAssets(h.assets); setParams(h.params); }} className={`w-14 h-18 rounded-lg border-2 flex-shrink-0 overflow-hidden ${assets.img === h.assets.img ? 'border-blue-500' : 'border-slate-800'}`}>
+                            <img src={h.thumb} className="w-full h-full object-cover" />
                         </div>
                     ))}
                 </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-3">
-                {['photo', 'suit'].map(t => (
-                    <button key={t} onClick={() => setUi(u => ({...u, target: t}))} className={`py-4 rounded-2xl font-black text-xs ${ui.target === t ? 'bg-blue-600 shadow-lg' : 'bg-slate-800 text-slate-500'}`}>{t==='photo'?'調整照片':'調整衣服'}</button>
-                ))}
-            </div>
-
-            <div className="bg-slate-900/60 p-6 rounded-3xl space-y-4 shadow-inner">
-                <input type="range" min="0.1" max="2" step="0.01" value={params[ui.target].s} onChange={e => setParams(p => ({...p, [ui.target]: {...p[ui.target], s: parseFloat(e.target.value)}}))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none accent-blue-500" />
-                <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setParams(p => ({...p, [ui.target]: {...p[ui.target], r: p[ui.target].r+90}}))} className="py-3 bg-slate-800 rounded-xl text-[10px] font-bold">旋轉</button>
-                    <button onClick={() => setParams(p => ({...p, [ui.target]: {...p[ui.target], f: p[ui.target].f*-1}}))} className="py-3 bg-slate-800 rounded-xl text-[10px] font-bold">鏡像</button>
-                </div>
-            </div>
-
+            {/* 版面選擇區 */}
             <div className="flex flex-wrap gap-2">
                 {Object.values(SPECS).map(s => (
-                    <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-3 py-3 rounded-xl text-[10px] font-bold flex-1 min-w-[85px] ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{s.name}</button>
+                    <button key={s.id} onClick={() => setUi(u => ({...u, spec: s.id}))} className={`px-3 py-3 rounded-xl text-[10px] font-bold flex-1 min-w-[85px] ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800'}`}>{s.name}</button>
                 ))}
             </div>
 
-            <div className="flex flex-col gap-3">
-                <label className="w-full py-5 bg-white text-black rounded-3xl text-center text-sm font-black cursor-pointer shadow-xl">📸 載入照片<input type="file" hidden accept="image/*" onChange={handleFile}/></label>
+            {/* 輸出按鈕區 */}
+            <div className="flex flex-col gap-3 pb-10">
+                <label className="w-full py-5 bg-white text-black rounded-3xl text-center text-sm font-black cursor-pointer shadow-xl">📸 載入新照片<input type="file" hidden accept="image/*" onChange={handlePhotoLoad}/></label>
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => handleExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black shadow-lg">導出目前</button>
-                    <button onClick={() => handleExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black shadow-lg">全規格導出</button>
+                    <button onClick={() => handleExport(false)} className="py-6 bg-blue-600 rounded-3xl font-black">導出目前</button>
+                    <button onClick={() => handleExport(true)} className="py-6 bg-orange-600 rounded-3xl font-black">12 種全出</button>
                 </div>
             </div>
 
+            {/* 輸出結果 (Overlay) */}
             {ui.results && (
                 <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-6">
-                    <div className="max-w-sm mx-auto space-y-8 pb-20">
+                    <div className="max-w-sm mx-auto space-y-6 text-center">
+                        <p className="text-blue-500 font-black">EXPORT HUB</p>
                         {ui.results.map((r, i) => (
-                            <div key={i} className="bg-slate-900 p-4 rounded-3xl space-y-4">
-                                <p className="text-[10px] font-black text-blue-400">{r.name}</p>
-                                <img src={r.url} className="w-full rounded-2xl" />
-                                <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-4 bg-blue-600 rounded-2xl text-center font-black text-xs">下載</a>
+                            <div key={i} className="bg-slate-900 p-4 rounded-3xl space-y-3">
+                                <p className="text-[10px] text-slate-400 font-bold">{r.name}</p>
+                                <img src={r.url} className="w-full rounded-xl" />
+                                <a href={r.url} download={`EzID_${r.id}.jpg`} className="block w-full py-3 bg-blue-600 rounded-xl font-black text-xs">儲存至相簿</a>
                             </div>
                         ))}
-                        <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-64 py-5 bg-white text-black rounded-full font-black">返回</button>
+                        <button onClick={() => setUi(u => ({...u, results: null}))} className="fixed bottom-6 left-1/2 -translate-x-1/2 w-64 py-5 bg-white text-black rounded-full font-black">關閉預覽</button>
                     </div>
                 </div>
             )}
