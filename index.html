@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.48.33</title>
+    <title>EzID v20.48.35 - Final Governance</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,7 +13,9 @@
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
         .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; margin: 0 auto; }
+        .stage-box { position: relative; width: 100%; aspect-ratio: 350/466; background: #fff; border-radius: 16px; overflow: hidden; touch-action: none; margin: 0 auto; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        .custom-scrollbar::-webkit-scrollbar { height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -21,6 +23,8 @@
 
 <script type="text/babel">
 const { useState, useRef, useEffect, useMemo } = React;
+
+// ================= EzID SYSTEM PROMPT 核心契約實作 =================
 
 // 1️⃣ [MODULE] EZ_SPEC_ENGINE (規格定義與 MIX 分區邏輯)
 const SPECS = {
@@ -44,7 +48,7 @@ const AssetLoader = {
                 img.onload = () => res({ img, src: e.target.result });
                 img.src = e.target.result;
             };
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(file); // DataURL 確保縮圖持久性
         });
     }
 };
@@ -52,8 +56,8 @@ const AssetLoader = {
 // 3️⃣ [MODULE] EZ_SAFETY_GUARD (安全性檢查與邊界保護)
 const SafetyGuard = {
     validateExport(specId, layers) {
-        if (!SPECS[specId]) throw new Error("無效的規格 ID");
-        if (layers.length === 0) throw new Error("人物池為空，無法輸出");
+        if (!SPECS[specId]) throw new Error("CRITICAL: 無效的規格 Whitelist ID");
+        if (layers.length === 0) throw new Error("USER: 人物池為空，請先上傳照片");
         return true;
     }
 };
@@ -65,11 +69,13 @@ const CoreRenderer = {
         ctx.save();
         ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
+        
         const sc = rect.w / 600;
         ctx.translate(rect.x + rect.w/2 + layer.x * sc, rect.y + rect.h/2 + layer.y * sc);
         ctx.scale(layer.s * sc, layer.s * sc);
         ctx.drawImage(layer.img, -layer.img.width/2, -layer.img.height/2);
         ctx.restore();
+
         if (!hideGuides) {
             ctx.save();
             ctx.strokeStyle = "#3b82f6"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
@@ -81,7 +87,7 @@ const CoreRenderer = {
     }
 };
 
-// 5️⃣ [MODULE] EZ_UI_STATE (React 狀態管理、圖層管理與形式)
+// 5️⃣ [MODULE] EZ_UI_STATE (React 狀態管理、幾何語義感知)
 function App() {
     const [ui, setUi] = useState({ spec: '4x6-MIX', results: null, mode: 'single' });
     const [scene, setScene] = useState({ layers: [], activeId: null });
@@ -93,12 +99,26 @@ function App() {
         return c;
     }, []);
 
-    // Derived State: 語義提示文字
-    const semanticText = useMemo(() => {
+    // 終極語義補強：幾何位置感知
+    const semanticInfo = useMemo(() => {
         const s = SPECS[ui.spec];
-        const area = s.sections ? "混合分區" : "全版";
-        return `${s.name} | ${area} | 預計輸出 ${s.count || (s.sections[0].count + s.sections[1].count)} 份`;
-    }, [ui.spec]);
+        if (!s) return { label: "N/A", count: 0 };
+        
+        let sectionLabel = "全版";
+        const activeLayer = scene.layers.find(l => l.id === scene.activeId);
+
+        if (s.sections && activeLayer) {
+            const centerY = 400 + activeLayer.y; // 轉換為 800 基準座標
+            const targetSection = [...s.sections].reverse().find(sec => {
+                const mappedY = (sec.y / s.h) * 800;
+                return centerY >= mappedY;
+            });
+            if (targetSection) sectionLabel = targetSection.label;
+        }
+
+        const totalCount = s.count || s.sections.reduce((acc, sec) => acc + sec.count, 0);
+        return { label: sectionLabel, count: totalCount };
+    }, [ui.spec, scene.activeId, scene.layers]);
 
     useEffect(() => {
         const activeLayer = scene.layers.find(l => l.id === scene.activeId);
@@ -113,13 +133,13 @@ function App() {
         const f = e.target.files[0]; if (!f) return;
         const { img, src } = await AssetLoader.load(f);
         const sc = Math.max(600 / img.width, 800 / img.height) * 1.1;
-        const newLayer = { id: Date.now(), x: 0, y: 0, s: sc, img, thumb: src };
+        const newLayer = { id: `IMG_${Date.now()}`, x: 0, y: 0, s: sc, img, thumb: src };
         if (ui.mode === 'single') setScene({ layers: [newLayer], activeId: newLayer.id });
         else setScene(s => ({ layers: [...s.layers, newLayer], activeId: newLayer.id }));
         e.target.value = "";
     };
 
-    // 6️⃣ [MODULE] EZ_EXPORT_MANAGER (核心修正：Mapping 快照與防禦邏輯)
+    // 6️⃣ [MODULE] EZ_EXPORT_MANAGER (映射日誌與動態解耦)
     const handleExport = async (isAll) => {
         const targets = isAll ? Object.keys(SPECS) : [ui.spec];
         const resList = [];
@@ -127,39 +147,41 @@ function App() {
         
         try {
             SafetyGuard.validateExport(ui.spec, validLayers);
+            console.group("[EzID Export Mapping Snapshot]");
             
-            console.group("[EzID Export Mapping]");
-            console.log("導出時間:", new Date().toLocaleTimeString());
-            console.log("使用圖層數:", validLayers.length);
-
-            const bCtx = bufferCanvas.getContext('2d');
-            const outCanvas = document.createElement('canvas');
-
             for (const sid of targets) {
                 const s = SPECS[sid];
+                const mappingLog = []; 
+                const outCanvas = document.createElement('canvas');
                 outCanvas.width = s.w; outCanvas.height = s.h;
                 const ctx = outCanvas.getContext('2d');
                 ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, s.w, s.h);
                 
                 let layerIndex = 0;
-                const sections = s.sections || [{ y: 0, grid: s.grid, size: s.size, label: '全版' }];
+                const sections = s.sections || [{ y: 0, grid: s.grid, size: s.size, label: '全版', count: s.count }];
                 
-                sections.forEach(sec => {
-                    const areaH = s.sections ? (s.id === 'A4-MIX' ? 1754 : 600) : s.h;
+                sections.forEach((sec, sIdx) => {
+                    const nextY = sections[sIdx + 1] ? sections[sIdx + 1].y : s.h;
+                    const areaH = nextY - sec.y; // 動態計算區段高度
+                    
                     const gapX = (s.w - (sec.grid[1] * sec.size[0])) / (sec.grid[1] + 1);
                     const gapY = (areaH - (sec.grid[0] * sec.size[1])) / (sec.grid[0] + 1);
                     
                     for (let r = 0; r < sec.grid[0]; r++) for (let c = 0; c < sec.grid[1]; c++) {
                         const currentLayer = validLayers[layerIndex % validLayers.length];
+                        const bCtx = bufferCanvas.getContext('2d');
                         bCtx.clearRect(0, 0, 600, 800);
                         CoreRenderer.draw(bCtx, currentLayer, { x: 0, y: 0, w: 600, h: 800 }, true);
+                        
                         const px = gapX + c * (sec.size[0] + gapX);
-                        const py = (sec.y || 0) + gapY + r * (sec.size[1] + gapY);
+                        const py = sec.y + gapY + r * (sec.size[1] + gapY);
                         ctx.drawImage(bufferCanvas, 0, 0, 600, 800, px, py, sec.size[0], sec.size[1]);
+                        
+                        mappingLog.push({ slot: layerIndex + 1, section: sec.label, layerId: currentLayer.id });
                         layerIndex++;
                     }
                 });
-                console.log(`- ${s.name}: 完成映射 ${layerIndex} 個位置`);
+                console.log(`[${s.name}] Mapping Detail:`, mappingLog);
                 resList.push({ url: outCanvas.toDataURL('image/jpeg', 0.85), name: s.name, report: { layers: validLayers.length, slots: layerIndex } });
             }
             console.groupEnd();
@@ -173,72 +195,79 @@ function App() {
     return (
         <div className="flex flex-col gap-3 pb-24">
             <header className="flex justify-between items-center px-1">
-                <h1 className="text-2xl font-black text-blue-500 italic">EzID</h1>
+                <h1 className="text-2xl font-black text-blue-500 italic tracking-tighter">EzID <span className="text-[8px] font-normal not-italic text-slate-600">v20.48.35</span></h1>
                 <div className="flex bg-slate-800 p-1 rounded-lg gap-1">
-                    <button onClick={() => { setUi(u => ({ ...u, mode: 'single' })); setScene({ layers: [], activeId: null }); }} className={`px-4 py-1.5 text-[10px] rounded-md ${ui.mode === 'single' ? 'bg-blue-600 shadow-lg' : 'text-slate-400'}`}>單人</button>
-                    <button onClick={() => setUi(u => ({ ...u, mode: 'multi' }))} className={`px-4 py-1.5 text-[10px] rounded-md ${ui.mode === 'multi' ? 'bg-blue-600 shadow-lg' : 'text-slate-400'}`}>多人池</button>
+                    <button onClick={() => { setUi(u => ({ ...u, mode: 'single' })); setScene({ layers: [], activeId: null }); }} className={`px-4 py-1.5 text-[10px] rounded-md transition-all ${ui.mode === 'single' ? 'bg-blue-600 shadow-lg' : 'text-slate-400'}`}>單人模式</button>
+                    <button onClick={() => setUi(u => ({ ...u, mode: 'multi' }))} className={`px-4 py-1.5 text-[10px] rounded-md transition-all ${ui.mode === 'multi' ? 'bg-blue-600 shadow-lg' : 'text-slate-400'}`}>多人池</button>
                 </div>
             </header>
             
             <div className="zone-box">
-                <div className="zone-tag">❶ 選擇版面</div>
-                <div className="grid grid-cols-2 gap-1 mb-3">{Object.values(SPECS).map(s => (<button key={s.id} onClick={() => setUi(u => ({ ...u, spec: s.id }))} className={`p-2 rounded-lg text-[10px] text-left pl-4 ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-400'}`}>{s.name}</button>))}</div>
-                <div className="text-[10px] text-slate-400 bg-slate-900/50 p-2 rounded-lg border border-white/5 italic">語義：{semanticText}</div>
-            </div>
-
-            <div className="px-10"><div className="stage-box"
-                onTouchMove={e => {
-                    const t = e.touches;
-                    if (t.length === 2) {
-                        const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-                        const ratio = d / (pointer.current.dist || d); pointer.current.dist = d;
-                        setScene(s => ({ ...s, layers: s.layers.map(l => l.id === s.activeId ? { ...l, s: l.s * ratio } : l) }));
-                    } else {
-                        const dx = (t[0].clientX - pointer.current.x) * (600 / 350);
-                        const dy = (t[0].clientY - pointer.current.y) * (800 / 466);
-                        pointer.current.x = t[0].clientX; pointer.current.y = t[0].clientY;
-                        setScene(s => ({ ...s, layers: s.layers.map(l => l.id === s.activeId ? { ...l, x: l.x + dx, y: l.y + dy } : l) }));
-                    }
-                }}
-                onTouchStart={e => {
-                    if (e.touches.length === 2) pointer.current.dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                    else { pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY; }
-                }}
-            ><canvas ref={canvasRef} width="350" height="466" className="w-full h-full" /></div></div>
-
-            <div className="zone-box">
-                <div className="zone-tag flex justify-between">❷ 人物圖層管理 <span className="text-[9px] text-slate-500 font-normal">{ui.mode==='multi' ? '多人模式' : '單人模式'}</span></div>
-                <div className="text-[9px] text-blue-400 mb-2 opacity-70">順序規則：{FILL_ORDER_DESC}</div>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                    {scene.layers.map(l => (
-                        <div key={l.id} className={`relative w-14 h-14 rounded-xl border-2 shrink-0 ${scene.activeId === l.id ? 'border-blue-500' : 'border-slate-700'}`}>
-                            <img src={l.thumb} onClick={() => setScene(s => ({ ...s, activeId: l.id }))} className="w-full h-full object-cover rounded-lg" />
-                            <button onClick={() => setScene(s => { const n = s.layers.filter(x => x.id !== l.id); return { layers: n, activeId: n[0]?.id } })} className="absolute -top-1.5 -right-1.5 bg-red-600 rounded-full w-4 h-4 text-[8px] flex items-center justify-center font-bold text-white shadow-lg">✕</button>
-                        </div>
-                    ))}
-                    <label className="w-14 h-14 bg-slate-800 rounded-xl flex items-center justify-center text-xl shrink-0 cursor-pointer border-2 border-dashed border-slate-600">＋<input type="file" className="hidden" onChange={handleFile} /></label>
+                <div className="zone-tag">❶ 選擇輸出規格</div>
+                <div className="grid grid-cols-2 gap-1 mb-3">{Object.values(SPECS).map(s => (<button key={s.id} onClick={() => setUi(u => ({ ...u, spec: s.id }))} className={`p-2 rounded-lg text-[10px] text-left pl-4 transition-colors ${ui.spec === s.id ? 'bg-blue-600' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>{s.name}</button>))}</div>
+                <div className="text-[10px] text-slate-300 bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20 flex justify-between items-center">
+                    <span className="font-bold">語義提示：{semanticInfo.label}</span>
+                    <span className="opacity-60 italic">總容量: {semanticInfo.count} 格</span>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs active:scale-95 transition-all">單規格輸出</button>
-                <button onClick={() => handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs active:scale-95 transition-all">全規格批次</button>
+            <div className="px-10">
+                <div className="stage-box"
+                    onTouchMove={e => {
+                        const t = e.touches;
+                        if (t.length === 2) {
+                            const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+                            const ratio = d / (pointer.current.dist || d); pointer.current.dist = d;
+                            setScene(s => ({ ...s, layers: s.layers.map(l => l.id === s.activeId ? { ...l, s: l.s * ratio } : l) }));
+                        } else {
+                            const dx = (t[0].clientX - pointer.current.x) * (600 / 350);
+                            const dy = (t[0].clientY - pointer.current.y) * (800 / 466);
+                            pointer.current.x = t[0].clientX; pointer.current.y = t[0].clientY;
+                            setScene(s => ({ ...s, layers: s.layers.map(l => l.id === s.activeId ? { ...l, x: l.x + dx, y: l.y + dy } : l) }));
+                        }
+                    }}
+                    onTouchStart={e => {
+                        if (e.touches.length === 2) pointer.current.dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                        else { pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY; }
+                    }}
+                ><canvas ref={canvasRef} width="350" height="466" className="w-full h-full" /></div>
             </div>
 
-            {ui.results && <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 flex flex-col gap-4">
-                <div className="flex justify-between items-center px-1"><h2 className="text-xl font-black italic">檢核摘要</h2><button onClick={() => setUi(u => ({ ...u, results: null }))} className="text-slate-400 text-xs">返回畫布</button></div>
-                {ui.results.map((r, i) => (
-                    <div key={i} className="bg-slate-900 p-2 rounded-2xl border border-slate-800">
-                        <div className="flex justify-between px-2 py-1 text-[10px] text-slate-400 uppercase tracking-tighter">
-                            <span>✔ 圖層:{r.report.layers} 張</span>
-                            <span>✔ 格子:{r.report.slots} 位</span>
-                            <span>{r.report.layers < r.report.slots ? '⚠ 循環填充' : '✔ 完美覆蓋'}</span>
+            <div className="zone-box">
+                <div className="zone-tag flex justify-between">❷ {ui.mode === 'multi' ? '人物池管理' : '單人照片'} <span className="text-[9px] text-blue-500 font-normal">順序：{ui.mode==='multi' ? '循環填充' : '單張替換'}</span></div>
+                <div className="text-[9px] text-slate-500 mb-3 italic">{FILL_ORDER_DESC}</div>
+                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                    {scene.layers.map(l => (
+                        <div key={l.id} className={`relative w-16 h-16 rounded-xl border-2 shrink-0 transition-all ${scene.activeId === l.id ? 'border-blue-500 scale-105 shadow-xl' : 'border-slate-700 opacity-60'}`}>
+                            <img src={l.thumb} onClick={() => setScene(s => ({ ...s, activeId: l.id }))} className="w-full h-full object-cover rounded-lg" />
+                            <button onClick={() => setScene(s => { const n = s.layers.filter(x => x.id !== l.id); return { layers: n, activeId: n[0]?.id } })} className="absolute -top-2 -right-2 bg-red-600 rounded-full w-5 h-5 text-[10px] flex items-center justify-center font-bold text-white border-2 border-slate-900 shadow-lg">✕</button>
                         </div>
-                        <img src={r.url} className="w-full rounded-xl mb-2"/>
-                        <a href={r.url} download={`${r.name}.jpg`} className="block py-4 text-center bg-blue-500/10 text-blue-400 text-[10px] font-bold rounded-xl">DOWNLOAD {r.name}</a>
+                    ))}
+                    <label className="w-16 h-16 bg-slate-800 rounded-xl flex items-center justify-center text-xl shrink-0 cursor-pointer border-2 border-dashed border-slate-600 hover:border-blue-500 transition-colors">＋<input type="file" className="hidden" onChange={handleFile} /></label>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-2">
+                <button onClick={() => handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">單規格輸出</button>
+                <button onClick={() => handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs shadow-lg active:scale-95 transition-all">全規格批次</button>
+            </div>
+
+            {ui.results && <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 flex flex-col gap-4 animate-in fade-in duration-300">
+                <div className="flex justify-between items-center px-1"><h2 className="text-xl font-black italic text-blue-500">檢核與下載</h2><button onClick={() => setUi(u => ({ ...u, results: null }))} className="bg-slate-800 px-4 py-2 rounded-full text-slate-400 text-xs">返回編輯</button></div>
+                {ui.results.map((r, i) => (
+                    <div key={i} className="bg-slate-900 p-2 rounded-3xl border border-slate-800 shadow-2xl">
+                        <div className="flex justify-between px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-white/5 mb-2">
+                            <span>✔ 圖層:{r.report.layers}</span>
+                            <span>✔ 格子:{r.report.slots}</span>
+                            <span className={r.report.layers < r.report.slots ? 'text-orange-500' : 'text-green-500'}>{r.report.layers < r.report.slots ? '⚠ 循環模式' : '✔ 完美填充'}</span>
+                        </div>
+                        <img src={r.url} className="w-full rounded-2xl mb-3 shadow-inner"/>
+                        <a href={r.url} download={`${r.name}.jpg`} className="block py-4 text-center bg-blue-600 text-white text-[10px] font-black rounded-xl hover:bg-blue-500 transition-colors shadow-lg">下載 {r.name}</a>
                     </div>
                 ))}
-                <div className="text-center py-4 text-[9px] text-slate-600 italic leading-relaxed">* 畫布僅供編輯比例預覽，最終解析度將依規格自動生成。</div>
+                <div className="text-center py-6 text-[9px] text-slate-600 italic leading-relaxed px-8">
+                    * 本工具僅提供幾何比例預覽，輸出檔案之解析度與 DPI 將根據各印刷規格自動適配。
+                </div>
                 <div className="h-20"></div>
             </div>}
         </div>
