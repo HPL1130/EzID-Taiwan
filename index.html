@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EzID v20.48.18</title>
+    <title>EzID v20.48.29</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; }
+        body { font-family: sans-serif; background: #020617; color: #f8fafc; margin: 0; overflow-x: hidden; }
         #root { width: 100%; max-width: 500px; margin: 0 auto; min-height: 100vh; padding: 15px; }
         .zone-box { background: rgba(30, 41, 59, 0.4); border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); padding: 16px; margin-bottom: 12px; }
         .zone-tag { font-size: 10px; font-weight: 900; color: #3b82f6; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
@@ -21,61 +21,68 @@
     <div id="root"></div>
 
 <script type="text/babel">
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useMemo } = React;
 
-// 1️⃣ [MODULE] EZ_SPEC_ENGINE (核心規格定義 - 鎖定 6 種，4x6-MIX 改為上4下10)
+// 1️⃣ [MODULE] EZ_SPEC_ENGINE (規格定義與 MIX 分區邏輯)
 const SPECS = {
     'A4-20':   { id: 'A4-20',   w: 2480, h: 3508, grid: [5, 4], size: [413, 531], count: 20, name: 'A4-2吋(20張)', cat: 'A4' },
     'A4-42':   { id: 'A4-42',   w: 2480, h: 3508, grid: [7, 6], size: [295, 413], count: 42, name: 'A4-1吋(42張)', cat: 'A4' },
-    'A4-MIX': { id: 'A4-MIX', w: 2480, h: 3508, name: 'A4-1+2吋(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
-    '4x6-8':  { id: '4x6-8',  w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
-    '4x6-10': { id: '4x6-10', w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
-    '4x6-MIX':{ id: '4x6-MIX',w: 1800, h: 1200, name: '4x6-2吋(4)+1吋(10)', cat: '4x6', sections: [{ y: 0, grid: [2, 2], size: [413, 531], count: 4 }, { y: 600, grid: [2, 5], size: [295, 413], count: 10 }] }
+    'A4-MIX':  { id: 'A4-MIX',  w: 2480, h: 3508, name: 'A4-混合(30張)', cat: 'A4', sections: [{ y: 0, grid: [3, 4], size: [413, 531], count: 12 }, { y: 1754, grid: [3, 6], size: [295, 413], count: 18 }] },
+    '4x6-8':   { id: '4x6-8',   w: 1800, h: 1200, grid: [2, 4], size: [413, 531], count: 8, name: '4x6-2吋(8張)', cat: '4x6' },
+    '4x6-10':  { id: '4x6-10',  w: 1800, h: 1200, grid: [2, 5], size: [295, 413], count: 10, name: '4x6-1吋(10張)', cat: '4x6' },
+    '4x6-MIX': { id: '4x6-MIX', w: 1800, h: 1200, name: '4x6-混合(9張)', cat: '4x6', sections: [{ y: 0, grid: [1, 4], size: [413, 531], count: 4 }, { y: 600, grid: [1, 5], size: [295, 413], count: 5 }] }
 };
 
-// 2️⃣ [MODULE] EZ_ASSET_LOADER (圖片緩存管理)
+// 2️⃣ [MODULE] EZ_ASSET_LOADER (圖片資源載入與預處理)
 const AssetLoader = {
-    async load(url) {
-        return new Promise(res => {
-            const img = new Image(); img.crossOrigin = "anonymous";
-            img.onload = () => res(img); img.src = url;
+    async load(file) {
+        const url = URL.createObjectURL(file);
+        return new Promise((res) => {
+            const img = new Image();
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                res(img);
+            };
+            img.src = url;
         });
     }
 };
 
-// 3️⃣ [MODULE] EZ_SAFETY_GUARD (比例校準鎖定)
-const SafetyGuard = {
-    check() { return true; } 
-};
+// 3️⃣ [MODULE] EZ_SAFETY_GUARD (安全性檢查與邊界保護)
+const SafetyGuard = { check: (data) => !!data };
 
-// 4️⃣ [MODULE] EZ_CORE_RENDERER (強制比例同步渲染邏輯)
+// 4️⃣ [MODULE] EZ_CORE_RENDERER (核心繪製、輔助圈與比例同步邏輯)
 const CoreRenderer = {
     draw(ctx, layer, rect, hideGuides = false) {
         if (!ctx || !layer || !layer.img) return;
         ctx.save();
         ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
         ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-        
         const sc = rect.w / 600;
         ctx.translate(rect.x + rect.w/2 + layer.x * sc, rect.y + rect.h/2 + layer.y * sc);
         ctx.scale(layer.s * sc, layer.s * sc);
         ctx.drawImage(layer.img, -layer.img.width/2, -layer.img.height/2);
-        
-        if (!hideGuides) {
-            ctx.restore(); ctx.save();
-            ctx.strokeStyle = "rgba(59, 130, 246, 0.5)"; ctx.setLineDash([5, 5]);
-            ctx.beginPath(); ctx.ellipse(rect.x + rect.w/2, rect.y + rect.h * 0.42, rect.w * 0.28, rect.h * 0.32, 0, 0, Math.PI * 2); ctx.stroke();
-        }
         ctx.restore();
+        if (!hideGuides) {
+            ctx.save();
+            ctx.strokeStyle = "#3b82f6"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.ellipse(rect.x + rect.w/2, rect.y + rect.h * 0.42, rect.w * 0.28, rect.h * 0.35, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+        }
     }
 };
 
-// 5️⃣ [MODULE] EZ_UI_STATE (狀態管理：新增刪除與重置功能)
+// 5️⃣ [MODULE] EZ_UI_STATE (React 狀態管理、圖層管理與形式)
 function App() {
     const [ui, setUi] = useState({ spec: '4x6-MIX', results: null, mode: 'single' });
     const [scene, setScene] = useState({ layers: [], activeId: null });
     const canvasRef = useRef(null);
     const pointer = useRef({ x: 0, y: 0, dist: 0 });
+
+    const bufferCanvas = useMemo(() => {
+        const c = document.createElement('canvas'); c.width = 600; c.height = 800;
+        return c;
+    }, []);
 
     useEffect(() => {
         const activeLayer = scene.layers.find(l => l.id === scene.activeId);
@@ -88,134 +95,97 @@ function App() {
 
     const handleFile = async (e) => {
         const f = e.target.files[0]; if(!f) return;
-        const img = await AssetLoader.load(URL.createObjectURL(f));
+        const img = await AssetLoader.load(f);
         const sc = Math.max(600/img.width, 800/img.height) * 1.1;
         const newLayer = { id: Date.now(), x: 0, y: 0, s: sc, img };
-        
-        if (ui.mode === 'single') {
-            setScene({ layers: [newLayer], activeId: newLayer.id });
-        } else {
-            setScene(s => ({ layers: [...s.layers, newLayer], activeId: newLayer.id }));
-        }
-        e.target.value = ""; 
+        if (ui.mode === 'single') setScene({ layers: [newLayer], activeId: newLayer.id });
+        else setScene(s => ({ layers: [...s.layers, newLayer], activeId: newLayer.id }));
+        e.target.value = "";
     };
 
-    const removeLayer = (id) => {
-        setScene(s => {
-            const nextLayers = s.layers.filter(l => l.id !== id);
-            return { layers: nextLayers, activeId: nextLayers[0]?.id || null };
-        });
-    };
-
-    const clearAll = () => setScene({ layers: [], activeId: null });
-
-    // 6️⃣ [MODULE] EZ_EXPORT_MANAGER (全規格批次輸出模式 - 修正比例不同步)
+    // 6️⃣ [MODULE] EZ_EXPORT_MANAGER (單版面與全規格批次輸出邏輯)
     const handleExport = async (isAll) => {
         const targets = isAll ? Object.keys(SPECS) : [ui.spec];
         const resList = [];
         const validLayers = scene.layers.filter(l => l.img);
-        if (validLayers.length === 0) return alert("請先上傳照片");
-
-        const buf = document.createElement('canvas'); buf.width = 600; buf.height = 800;
-        const bCtx = buf.getContext('2d');
+        if (validLayers.length === 0) return;
+        const bCtx = bufferCanvas.getContext('2d');
+        const outCanvas = document.createElement('canvas');
 
         for (const sid of targets) {
             const s = SPECS[sid];
-            const out = document.createElement('canvas'); out.width = s.w; out.height = s.h;
-            const ctx = out.getContext('2d'); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,s.w,s.h);
-            
+            outCanvas.width = s.w; outCanvas.height = s.h;
+            const ctx = outCanvas.getContext('2d');
+            ctx.fillStyle = "#fff"; ctx.fillRect(0,0,s.w,s.h);
             let lIdx = 0;
-            const sections = s.sections || [{ y:0, grid:s.grid, size:s.size, count:s.count }];
-            
+            const sections = s.sections || [{ y:0, grid:s.grid, size:s.size }];
             sections.forEach(sec => {
-                const stepX = (s.w - (sec.grid[1] * sec.size[0])) / (sec.grid[1] + 1);
-                const stepY = ((s.sections ? s.h/sections.length : s.h) - (sec.grid[0] * sec.size[1])) / (sec.grid[0] + 1);
-
+                const areaH = s.sections ? (s.id === 'A4-MIX' ? 1754 : 600) : s.h;
+                const gapX = (s.w - (sec.grid[1] * sec.size[0])) / (sec.grid[1] + 1);
+                const gapY = (areaH - (sec.grid[0] * sec.size[1])) / (sec.grid[0] + 1);
                 for(let r=0; r<sec.grid[0]; r++) for(let c=0; c<sec.grid[1]; c++) {
                     const l = validLayers[lIdx % validLayers.length];
-                    // 全規格鎖定：使用編輯後的 l.x, l.y, l.s 確保比例一致
                     CoreRenderer.draw(bCtx, l, {x:0, y:0, w:600, h:800}, true);
-                    const px = stepX + c * (sec.size[0] + stepX);
-                    const py = (sec.y || 0) + stepY + r * (sec.size[1] + stepY);
-                    ctx.drawImage(buf, 0, 0, 600, 800, px, py, sec.size[0], sec.size[1]);
+                    const px = gapX + c * (sec.size[0] + gapX);
+                    const py = (sec.y || 0) + gapY + r * (sec.size[1] + gapY);
+                    ctx.drawImage(bufferCanvas, 0, 0, 600, 800, px, py, sec.size[0], sec.size[1]);
                     lIdx++;
                 }
             });
-            resList.push({ url: out.toDataURL('image/jpeg', 0.95), name: s.name });
+            resList.push({ url: outCanvas.toDataURL('image/jpeg', 0.85), name: s.name });
         }
         setUi(u => ({...u, results: resList}));
     };
 
     return (
         <div className="flex flex-col gap-3 pb-24">
-            <header className="flex justify-between items-center px-1">
-                <h1 className="text-2xl font-black italic text-blue-500">EzID</h1>
-                <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
-                    <button onClick={()=>{setUi(u=>({...u, mode:'single'})); clearAll();}} className={`px-3 py-1 text-[10px] rounded-md ${ui.mode==='single'?'bg-blue-600':'text-slate-400'}`}>單人編輯</button>
-                    <button onClick={()=>setUi(u=>({...u, mode:'multi'}))} className={`px-3 py-1 text-[10px] rounded-md ${ui.mode==='multi'?'bg-blue-600':'text-slate-400'}`}>多人模式</button>
+            <header className="flex justify-between items-center"><h1 className="text-2xl font-black text-blue-500 italic">EzID</h1>
+                <div className="flex bg-slate-800 p-1 rounded-lg gap-1">
+                    <button onClick={()=>{setUi(u=>({...u, mode:'single'})); setScene({layers:[], activeId:null});}} className={`px-3 py-1 text-[10px] rounded-md ${ui.mode==='single'?'bg-blue-600':'text-slate-400'}`}>單人</button>
+                    <button onClick={()=>setUi(u=>({...u, mode:'multi'}))} className={`px-3 py-1 text-[10px] rounded-md ${ui.mode==='multi'?'bg-blue-600':'text-slate-400'}`}>多人</button>
                 </div>
             </header>
-
-            <div className="zone-box">
-                <div className="zone-tag">❶ 規格選擇 (已校正比例同步)</div>
-                <div className="grid grid-cols-2 gap-1">
-                    {Object.values(SPECS).map(s=>(
-                        <button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`p-2 rounded-lg text-[10px] text-left pl-3 ${ui.spec===s.id?'bg-blue-600 text-white':'bg-slate-800 text-slate-400'}`}>{s.name}</button>
-                    ))}
-                </div>
+            <div className="zone-box"><div className="zone-tag">❶ 規格</div>
+                <div className="grid grid-cols-2 gap-1">{Object.values(SPECS).map(s=>(<button key={s.id} onClick={()=>setUi(u=>({...u, spec:s.id}))} className={`p-2 rounded-lg text-[10px] text-left pl-4 ${ui.spec===s.id?'bg-blue-600':'bg-slate-800 text-slate-400'}`}>{s.name}</button>))}</div>
             </div>
-
             <div className="canvas-wrapper">
                 <div className="stage-box"
                     onTouchMove={e => {
                         const t = e.touches;
                         if (t.length === 2) {
-                            const d = Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-                            const ratio = d / (pointer.current.dist || d); pointer.current.dist = d;
-                            setScene(s => ({...s, layers: s.layers.map(l => l.id === s.activeId ? {...l, s: l.s * ratio} : l)}));
+                            const d = Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+                            const ratio = d/(pointer.current.dist||d); pointer.current.dist=d;
+                            setScene(s=>({...s, layers: s.layers.map(l=>l.id===s.activeId?{...l, s:l.s*ratio}:l)}));
                         } else {
-                            const dx = (t[0].clientX - pointer.current.x) * (600/350);
-                            const dy = (t[0].clientY - pointer.current.y) * (800/466);
-                            pointer.current.x = t[0].clientX; pointer.current.y = t[0].clientY;
-                            setScene(s => ({...s, layers: s.layers.map(l => l.id === s.activeId ? {...l, x: l.x + dx, y: l.y + dy} : l)}));
+                            const dx = (t[0].clientX-pointer.current.x)*(600/350);
+                            const dy = (t[0].clientY-pointer.current.y)*(800/466);
+                            pointer.current.x=t[0].clientX; pointer.current.y=t[0].clientY;
+                            setScene(s=>({...s, layers: s.layers.map(l=>l.id===s.activeId?{...l, x:l.x+dx, y:l.y+dy}:l)}));
                         }
                     }}
                     onTouchStart={e => {
-                        if (e.touches.length === 2) pointer.current.dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                        else { pointer.current.x = e.touches[0].clientX; pointer.current.y = e.touches[0].clientY; }
+                        if (e.touches.length === 2) pointer.current.dist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+                        else { pointer.current.x=e.touches[0].clientX; pointer.current.y=e.touches[0].clientY; }
                     }}
-                >
-                    <canvas ref={canvasRef} width="350" height="466" className="w-full h-full" />
-                </div>
-                <button onClick={clearAll} className="w-full mt-2 py-2 bg-red-950/40 text-red-400 text-[10px] rounded-lg border border-red-900/30">清空畫布 (重置編輯)</button>
+                ><canvas ref={canvasRef} width="350" height="466" className="w-full h-full" /></div>
             </div>
-
-            <div className="zone-box">
-                <div className="zone-tag">❷ 圖層管理 ({ui.mode==='single'?'單人強製覆蓋':'多人模式'})</div>
+            <div className="zone-box"><div className="zone-tag">❷ 圖層</div>
                 <div className="flex gap-2 overflow-x-auto pb-2">
-                    {scene.layers.map(l => (
-                        <div key={l.id} className={`relative shrink-0 w-14 h-14 rounded-xl border-2 ${scene.activeId===l.id?'border-blue-500':'border-slate-700'}`}>
-                            <img src={l.img.src} onClick={()=>setScene(s=>({...s, activeId:l.id}))} className="w-full h-full object-cover rounded-lg"/>
-                            <button onClick={()=>removeLayer(l.id)} className="absolute -top-1 -right-1 bg-red-600 rounded-full w-4 h-4 text-[8px] flex items-center justify-center shadow-lg">✕</button>
-                        </div>
-                    ))}
-                    <label className="w-14 h-14 bg-slate-800 rounded-xl flex items-center justify-center text-2xl shrink-0 cursor-pointer border border-dashed border-slate-600">＋<input type="file" className="hidden" onChange={handleFile}/></label>
+                    {scene.layers.map(l=>(<div key={l.id} className={`relative w-14 h-14 rounded-xl border-2 shrink-0 ${scene.activeId===l.id?'border-blue-500':'border-slate-700'}`}>
+                        <img src={l.img.src} onClick={()=>setScene(s=>({...s, activeId:l.id}))} className="w-full h-full object-cover rounded-lg"/>
+                        <button onClick={()=>setScene(s=>{const n=s.layers.filter(x=>x.id!==l.id); return {layers:n, activeId:n[0]?.id}})} className="absolute -top-1 -right-1 bg-red-600 rounded-full w-4 h-4 text-[8px] flex items-center justify-center font-bold text-white shadow-lg">✕</button>
+                    </div>))}
+                    <label className="w-14 h-14 bg-slate-800 rounded-xl flex items-center justify-center text-xl shrink-0 cursor-pointer">＋<input type="file" className="hidden" onChange={handleFile}/></label>
                 </div>
             </div>
-
             <div className="grid grid-cols-2 gap-2">
-                <button onClick={()=>handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">單規格輸出</button>
-                <button onClick={()=>handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">全規格批次</button>
+                <button onClick={()=>handleExport(false)} className="py-5 bg-blue-600 rounded-2xl font-black text-xs">單規格</button>
+                <button onClick={()=>handleExport(true)} className="py-5 bg-orange-600 rounded-2xl font-black text-xs">全批次</button>
             </div>
-
-            {ui.results && (
-                <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4">
-                    <div className="flex flex-col gap-6 max-w-md mx-auto">
-                        {ui.results.map((r,i)=>(<div key={i} className="bg-slate-900 p-2 rounded-2xl"><img src={r.url} className="w-full rounded-xl"/><a href={r.url} download={`${r.name}.jpg`} className="block py-4 text-center text-blue-400 font-bold underline">下載 {r.name}</a></div>))}
-                        <button onClick={()=>setUi(u=>({...u, results:null}))} className="w-full py-5 bg-white text-black rounded-2xl font-black mb-20 shadow-xl">返回編輯畫布</button>
-                    </div>
-                </div>
-            )}
+            {ui.results && <div className="fixed inset-0 bg-slate-950 z-[999] overflow-y-auto p-4 flex flex-col gap-4">
+                {ui.results.map((r,i)=>(<div key={i} className="bg-slate-900 p-2 rounded-xl"><img src={r.url} className="w-full rounded-lg"/><a href={r.url} download={`${r.name}.jpg`} className="block py-3 text-center text-blue-400 text-xs underline font-bold">下載 {r.name}</a></div>))}
+                <button onClick={()=>setUi(u=>({...u, results:null}))} className="w-full py-4 bg-white text-black rounded-xl font-black mb-20 shadow-xl">返回畫布</button>
+            </div>}
         </div>
     );
 }
