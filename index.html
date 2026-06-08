@@ -66,22 +66,58 @@ const SafetyGuard = {
 const CoreRenderer = {
     draw(ctx, layer, rect, hideGuides = false) {
         if (!ctx || !layer || !layer.img) return;
+
         ctx.save();
-        ctx.fillStyle = "#fff"; ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-        ctx.beginPath(); ctx.rect(rect.x, rect.y, rect.w, rect.h); ctx.clip();
-        
-        const sc = rect.w / 600;
-        ctx.translate(rect.x + rect.w/2 + layer.x * sc, rect.y + rect.h/2 + layer.y * sc);
-        ctx.scale(layer.s * sc, layer.s * sc);
-        ctx.drawImage(layer.img, -layer.img.width/2, -layer.img.height/2);
+
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+
+        ctx.beginPath();
+        ctx.rect(rect.x, rect.y, rect.w, rect.h);
+        ctx.clip();
+
+        const scX = rect.w / 600;
+        const scY = rect.h / 800;
+
+        ctx.translate(
+            rect.x + rect.w / 2 + layer.x * scX,
+            rect.y + rect.h / 2 + layer.y * scY
+        );
+
+        ctx.scale(
+            layer.s * Math.min(scX, scY),
+            layer.s * Math.min(scX, scY)
+        );
+
+        ctx.drawImage(
+            layer.img,
+            -layer.img.width / 2,
+            -layer.img.height / 2
+        );
+
         ctx.restore();
 
         if (!hideGuides) {
             ctx.save();
-            ctx.strokeStyle = "#3b82f6"; ctx.setLineDash([5, 5]); ctx.lineWidth = 2;
+
+            ctx.strokeStyle = "#3b82f6";
+            ctx.setLineDash([5, 5]);
+            ctx.lineWidth = 2;
+
             ctx.beginPath();
-            ctx.ellipse(rect.x + rect.w/2, rect.y + rect.h * 0.42, rect.w * 0.28, rect.h * 0.35, 0, 0, Math.PI * 2);
+
+            ctx.ellipse(
+                rect.x + rect.w / 2,
+                rect.y + rect.h * 0.42,
+                rect.w * 0.28,
+                rect.h * 0.35,
+                0,
+                0,
+                Math.PI * 2
+            );
+
             ctx.stroke();
+
             ctx.restore();
         }
     }
@@ -94,11 +130,7 @@ function App() {
     const canvasRef = useRef(null);
     const pointer = useRef({ x: 0, y: 0, dist: 0 });
 
-    const bufferCanvas = useMemo(() => {
-        const c = document.createElement('canvas'); c.width = 600; c.height = 800;
-        return c;
-    }, []);
-
+   
     // 終極語義補強：幾何位置感知
     const semanticInfo = useMemo(() => {
         const s = SPECS[ui.spec];
@@ -169,13 +201,29 @@ function App() {
                     
                     for (let r = 0; r < sec.grid[0]; r++) for (let c = 0; c < sec.grid[1]; c++) {
                         const currentLayer = validLayers[layerIndex % validLayers.length];
-                        const bCtx = bufferCanvas.getContext('2d');
-                        bCtx.clearRect(0, 0, 600, 800);
-                        CoreRenderer.draw(bCtx, currentLayer, { x: 0, y: 0, w: 600, h: 800 }, true);
-                        
-                        const px = gapX + c * (sec.size[0] + gapX);
-                        const py = sec.y + gapY + r * (sec.size[1] + gapY);
-                        ctx.drawImage(bufferCanvas, 0, 0, 600, 800, px, py, sec.size[0], sec.size[1]);
+                        const exportCanvas = document.createElement('canvas');
+
+exportCanvas.width = sec.size[0];
+exportCanvas.height = sec.size[1];
+
+const exportCtx = exportCanvas.getContext('2d');
+
+CoreRenderer.draw(
+    exportCtx,
+    currentLayer,
+    {
+        x: 0,
+        y: 0,
+        w: sec.size[0],
+        h: sec.size[1]
+    },
+    true
+);
+
+ctx.drawImage(
+    exportCanvas,
+    px,
+    py
                         
                         mappingLog.push({ slot: layerIndex + 1, section: sec.label, layerId: currentLayer.id });
                         layerIndex++;
